@@ -20,10 +20,10 @@ export function FileViewer({ files, selectedFilePath, fileContent, onSelectFile 
           {files.length === 0 ? (
             <div className="empty-state">Select a project to inspect files.</div>
           ) : (
-            files.map((file) => (
+              files.map((file, index) => (
               <button
                 className={`file-item ${selectedFilePath === file.path ? 'file-item--active' : ''}`}
-                key={file.path}
+                  key={`${file.path}-${index}`}
                 onClick={() => onSelectFile(file.path)}
                 type="button"
               >

@@ -6,7 +6,7 @@ import {
   existsSync,
   unlinkSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, extname, join } from 'node:path';
 import { config, Logger, generateId, now, NotFoundError } from '@devteam/core';
 import type { Project } from '@devteam/core';
 
@@ -24,6 +24,7 @@ export class ProjectStore {
   async save(project: Project): Promise<Project> {
     const path = this.projectPath(project.id);
     writeFileSync(path, JSON.stringify(project, null, 2));
+    this.exportProjectFiles(project);
     return project;
   }
 
@@ -64,6 +65,65 @@ export class ProjectStore {
     // Prevent path traversal
     if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error(`Invalid project ID: ${id}`);
     return join(this.dir, `${id}.json`);
+  }
+
+  private exportProjectFiles(project: Project): void {
+    const outDir = join(config.storage.path, 'generated', project.id);
+    mkdirSync(outDir, { recursive: true });
+
+    const duplicateCount = new Map<string, number>();
+    const bundleParts: string[] = [
+      `# Project: ${project.name}`,
+      `# Project ID: ${project.id}`,
+      `# Generated At: ${new Date().toISOString()}`,
+      '',
+      `# Prompt`,
+      project.prompt,
+      '',
+      '# Files',
+      '',
+    ];
+
+    for (const file of project.artifacts.files ?? []) {
+      const safeRelativePath = this.sanitizeArtifactPath(file.path);
+      if (!safeRelativePath) {
+        this.logger.warn('Skipped unsafe generated file path', { projectId: project.id, path: file.path });
+        continue;
+      }
+
+      const count = duplicateCount.get(safeRelativePath) ?? 0;
+      duplicateCount.set(safeRelativePath, count + 1);
+      const finalRelativePath = count === 0 ? safeRelativePath : this.withDuplicateSuffix(safeRelativePath, count + 1);
+
+      const targetPath = join(outDir, finalRelativePath);
+      mkdirSync(dirname(targetPath), { recursive: true });
+      writeFileSync(targetPath, file.content, 'utf8');
+
+      bundleParts.push(`===== FILE: ${finalRelativePath} =====`);
+      bundleParts.push(file.content);
+      bundleParts.push('');
+    }
+
+    writeFileSync(join(outDir, 'FULL_CODE_BUNDLE.txt'), bundleParts.join('\n'), 'utf8');
+    this.logger.info('Exported generated project files', { projectId: project.id, outputDir: outDir });
+  }
+
+  private sanitizeArtifactPath(inputPath: string): string | null {
+    const normalized = inputPath.replace(/\\/g, '/').trim().replace(/^\/+/, '');
+    if (!normalized) return null;
+
+    const segments = normalized.split('/').filter(Boolean);
+    if (segments.length === 0) return null;
+    if (segments.some((segment) => segment === '.' || segment === '..')) return null;
+
+    return segments.join('/');
+  }
+
+  private withDuplicateSuffix(filePath: string, ordinal: number): string {
+    const extension = extname(filePath);
+    if (!extension) return `${filePath}__dup${ordinal}`;
+    const base = filePath.slice(0, -extension.length);
+    return `${base}__dup${ordinal}${extension}`;
   }
 }
 

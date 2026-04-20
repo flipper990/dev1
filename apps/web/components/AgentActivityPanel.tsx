@@ -28,8 +28,8 @@ export function AgentActivityPanel({ progress }: AgentActivityPanelProps) {
       </div>
 
       <div className="step-list">
-        {progress.steps.map((step) => (
-          <div className="step-item" key={step.stepId}>
+        {progress.steps.map((step, index) => (
+          <div className="step-item" key={`${step.stepId}-${index}`}>
             <div className="step-item__top">
               <span className="step-item__name">{step.name}</span>
               <span className={`step-badge step-badge--${step.status}`}>{step.status}</span>

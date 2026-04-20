@@ -195,6 +195,7 @@ export class Orchestrator {
     updateStepInState(pipeline, role as never, { status: 'running', startedAt: now() });
     this.emit(sessionId, 'step.started', { role });
     sessionManager.emit(sessionId, 'step.started', { role });
+    this.emitProgress(sessionId, pipeline);
   }
 
   private completeStep(
@@ -226,9 +227,39 @@ export class Orchestrator {
       cacheHit: result.cacheHit,
     });
     sessionManager.emit(sessionId, 'step.completed', { role, status });
+    this.emitProgress(sessionId, pipeline);
   }
 
   private emit(sessionId: string, type: string, data: unknown): void {
     this.deps.onEvent?.(sessionId, type, data);
+  }
+
+  private emitProgress(sessionId: string, pipeline: PipelineState): void {
+    const completedCount = pipeline.steps.filter((s) => s.status === 'completed' || s.status === 'skipped').length;
+    const totalCount = pipeline.steps.length;
+    const progressData = {
+      sessionId: pipeline.sessionId,
+      projectId: pipeline.projectId,
+      status: pipeline.status,
+      progress: totalCount > 0 ? completedCount / totalCount : 0,
+      steps: pipeline.steps.map((step) => ({
+        stepId: step.role,
+        name: step.role,
+        agent: step.role,
+        status: step.status,
+        durationMs: step.durationMs || 0,
+        error: step.error,
+      })),
+      currentStep: pipeline.steps.find((s) => s.status === 'running')
+        ? {
+            stepId: pipeline.steps.find((s) => s.status === 'running')!.role,
+            name: pipeline.steps.find((s) => s.status === 'running')!.role,
+            agent: pipeline.steps.find((s) => s.status === 'running')!.role,
+            description: 'Running...',
+            attempt: 1,
+          }
+        : null,
+    };
+    sessionManager.emit(sessionId, 'progress', progressData);
   }
 }

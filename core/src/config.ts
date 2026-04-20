@@ -5,23 +5,33 @@ import type { AgentRole, LLMProvider } from './types.js';
 // ─── Load .env manually (no dotenv dependency in core) ────────────────────────
 
 function loadEnv(): void {
-  try {
-    const envPath = resolve(process.cwd(), '.env');
-    const contents = readFileSync(envPath, 'utf8');
-    for (const line of contents.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const idx = trimmed.indexOf('=');
-      if (idx === -1) continue;
-      const key = trimmed.slice(0, idx).trim();
-      const val = trimmed.slice(idx + 1).trim().replace(/^["']|["']$/g, '');
-      if (key && !(key in process.env)) {
-        process.env[key] = val;
+  const envCandidates = [
+    resolve(process.cwd(), '.env'),
+    resolve(process.cwd(), '..', '.env'),
+    resolve(process.cwd(), '..', '..', '.env'),
+  ];
+
+  for (const envPath of envCandidates) {
+    try {
+      const contents = readFileSync(envPath, 'utf8');
+      for (const line of contents.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const idx = trimmed.indexOf('=');
+        if (idx === -1) continue;
+        const key = trimmed.slice(0, idx).trim();
+        const val = trimmed.slice(idx + 1).trim().replace(/^["']|["']$/g, '');
+        if (key && !(key in process.env)) {
+          process.env[key] = val;
+        }
       }
+      return;
+    } catch {
+      // Try next location
     }
-  } catch {
-    // .env not present — rely on real environment variables
   }
+
+  // .env not present — rely on real environment variables
 }
 
 loadEnv();

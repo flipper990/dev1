@@ -49,13 +49,14 @@ function createEntry(
   context?: string,
   data?: unknown,
 ): LogEntry {
-  return {
+  const entry: LogEntry = {
     level,
     message,
     timestamp: new Date().toISOString(),
-    context,
-    data,
   };
+  if (context !== undefined) entry.context = context;
+  if (data !== undefined) entry.data = data;
+  return entry;
 }
 
 export class Logger {

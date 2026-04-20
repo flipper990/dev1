@@ -44,7 +44,7 @@ export default function DashboardPage() {
   const socketRef = useRef<WebSocket | null>(null);
 
   const selectedProject = useMemo(
-    () => projects.find((project) => project.id === selectedProjectId) ?? null,
+    () => (Array.isArray(projects) ? projects.find((project) => project.id === selectedProjectId) ?? null : null),
     [projects, selectedProjectId],
   );
 
@@ -155,7 +155,7 @@ export default function DashboardPage() {
 
           // Refresh projects once done
           listProjects()
-            .then(setProjects)
+            .then((items) => setProjects(Array.isArray(items) ? items : []))
             .catch((error) => pushLog('projects', (error as Error).message, 'error'));
         },
         (message) => {

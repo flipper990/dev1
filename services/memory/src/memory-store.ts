@@ -117,16 +117,16 @@ export class MemoryStore {
 
 export class AgentMemory {
   constructor(
-    private readonly store: MemoryStore,
+    private readonly memoryStore: MemoryStore,
     private readonly agentRole: AgentRole | 'global',
   ) {}
 
   async store(entry: Omit<MemoryEntry, 'id' | 'createdAt' | 'agentRole'>): Promise<MemoryEntry> {
-    return this.store.store({ ...entry, agentRole: this.agentRole });
+    return this.memoryStore.store({ ...entry, agentRole: this.agentRole });
   }
 
   async retrieve(query: Omit<MemoryQuery, 'agentRole'>): Promise<MemoryEntry[]> {
-    return this.store.retrieve({ ...query, agentRole: this.agentRole });
+    return this.memoryStore.retrieve({ ...query, agentRole: this.agentRole });
   }
 }
 

@@ -2,6 +2,7 @@
   "name": "devteam",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "npm@11.7.0",
   "workspaces": [
     "core",
     "services/*",

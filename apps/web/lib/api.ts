@@ -33,14 +33,31 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function generateProject(prompt: string): Promise<GenerateResponse> {
-  return request<GenerateResponse>('/api/projects/generate', {
+  const result = await request<{ project: GenerateResponse['project']; pipeline: { sessionId: string } }>('/api/projects', {
     method: 'POST',
-    body: JSON.stringify({ prompts: [prompt] }),
+    body: JSON.stringify({ prompt }),
   });
+  return {
+    projectId: result.project.id,
+    sessionId: result.pipeline.sessionId,
+    project: result.project,
+  } as GenerateResponse;
 }
 
 export async function listProjects(): Promise<GeneratedProject[]> {
-  return request<GeneratedProject[]>('/api/projects');
+  const result = await request<{ projects: Record<string, unknown>[] } | Record<string, unknown>[]>('/api/projects');
+  const raw = Array.isArray(result) ? result : (result as { projects: Record<string, unknown>[] }).projects ?? [];
+  return raw.map((p) => ({
+    id: p['id'] as string,
+    sessionId: (p['sessionId'] ?? '') as string,
+    name: p['name'] as string,
+    status: (p['status'] === 'completed' ? 'completed' : p['status'] === 'failed' ? 'failed' : 'generating') as GeneratedProject['status'],
+    prompts: [p['prompt'] as string],
+    totalTokens: (p['tokensUsed'] ?? 0) as number,
+    totalCostUsd: (p['costUsd'] ?? 0) as number,
+    durationMs: 0,
+    createdAt: p['createdAt'] as string,
+  }));
 }
 
 export async function getProjectFiles(projectId: string): Promise<ProjectFileEntry[]> {
@@ -48,8 +65,8 @@ export async function getProjectFiles(projectId: string): Promise<ProjectFileEnt
 }
 
 export async function getProjectFile(projectId: string, filePath: string): Promise<ProjectFileContent> {
-  const encoded = filePath.split('/').map(encodeURIComponent).join('/');
-  return request<ProjectFileContent>(`/api/projects/${projectId}/files/${encoded}`);
+  const encodedPath = encodeURIComponent(filePath);
+  return request<ProjectFileContent>(`/api/projects/${projectId}/file?path=${encodedPath}`);
 }
 
 export async function getSessionProgress(sessionId: string): Promise<SessionProgress> {
@@ -63,20 +80,25 @@ export function openSessionSocket(
   onError: (message: string) => void,
 ): WebSocket {
   const base = API_BASE.replace('http://', 'ws://').replace('https://', 'wss://');
-  const socket = new WebSocket(`${base}/ws/sessions/${sessionId}/progress`);
+  const socket = new WebSocket(`${base}/ws/session/${sessionId}`);
 
   socket.onmessage = (event) => {
     try {
       const payload = JSON.parse(event.data as string) as {
-        type: 'progress' | 'done' | 'error';
-        data?: SessionProgress;
+        type: string;
+        data?: SessionProgress & { status?: string };
         message?: string;
       };
 
       if (payload.type === 'progress' && payload.data) {
         onProgress(payload.data);
-      } else if (payload.type === 'done' && payload.data) {
-        onDone((payload.data as unknown as { status: string }).status);
+      } else if (payload.type === 'session.snapshot' && payload.data) {
+        // Map pipeline snapshot to a SessionProgress-like shape for display
+        onProgress(payload.data);
+      } else if ((payload.type === 'done' || payload.type === 'session.completed') && payload.data) {
+        onDone(payload.data.status ?? 'completed');
+      } else if (payload.type === 'session.failed') {
+        onDone('failed');
       } else if (payload.type === 'error') {
         onError(payload.message ?? 'WebSocket error');
       }

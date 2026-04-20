@@ -206,12 +206,14 @@ export class LLMRouter {
     const system = request.messages.find((m) => m.role === 'system')?.content;
     const messages = request.messages.filter((m) => m.role !== 'system');
 
-    const response = await client.messages.create({
+    const createParams = {
       model: model.id,
       max_tokens: request.maxTokens ?? 8192,
-      system,
       messages: messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-    });
+      ...(system !== undefined ? { system } : {}),
+    } as const;
+
+    const response = await client.messages.create(createParams);
 
     const block = response.content[0];
     if (!block || block.type !== 'text') {

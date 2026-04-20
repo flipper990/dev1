@@ -1,139 +1,71 @@
-'use client';
+﻿'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { AgentActivityPanel } from '../components/AgentActivityPanel';
-import { ChatInput } from '../components/ChatInput';
-import { FileViewer } from '../components/FileViewer';
-import { LogsView } from '../components/LogsView';
-import { ProjectList } from '../components/ProjectList';
-import {
-  generateProject,
-  getProjectFile,
-  getProjectFiles,
-  listProjects,
-  openSessionSocket,
-} from '../lib/api';
-import type {
-  DashboardLog,
-  GeneratedProject,
-  ProjectFileContent,
-  ProjectFileEntry,
-  SessionProgress,
-} from '../types/dashboard';
-
-function createLog(source: string, message: string, level: DashboardLog['level'] = 'info'): DashboardLog {
-  return {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    ts: new Date().toLocaleTimeString(),
-    source,
-    message,
-    level,
-  };
-}
+import { useCallback, useEffect, useRef } from 'react';
+import { AppHeader }   from '../components/AppHeader';
+import { Sidebar }     from '../components/Sidebar';
+import { PromptPanel } from '../components/PromptPanel';
+import { RightPanel }  from '../components/RightPanel';
+import { LogsPanel }   from '../components/LogsPanel';
+import { LivePreview } from '../components/LivePreview';
+import { ToastStack }  from '../components/ToastStack';
+import { useStore }    from '../lib/store';
+import { generateProject, listProjects, openSessionSocket } from '../lib/api';
 
 export default function DashboardPage() {
-  const [projects, setProjects] = useState<GeneratedProject[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [files, setFiles] = useState<ProjectFileEntry[]>([]);
-  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
-  const [fileContent, setFileContent] = useState<ProjectFileContent | null>(null);
-  const [logs, setLogs] = useState<DashboardLog[]>([]);
-  const [progress, setProgress] = useState<SessionProgress | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-
+  const store = useStore();
   const socketRef = useRef<WebSocket | null>(null);
 
-  const selectedProject = useMemo(
-    () => (Array.isArray(projects) ? projects.find((project) => project.id === selectedProjectId) ?? null : null),
-    [projects, selectedProjectId],
-  );
-
-  const pushLog = (source: string, message: string, level: DashboardLog['level'] = 'info') => {
-    setLogs((prev) => [createLog(source, message, level), ...prev].slice(0, 250));
-  };
-
+  // ── Load projects ──────────────────────────────────────────────────────────
   useEffect(() => {
-    const loadProjects = async () => {
-      try {
-        const data = await listProjects();
-        setProjects(data);
-        if (!selectedProjectId && data.length > 0) {
-          setSelectedProjectId(data[0].id);
-        }
-      } catch (error) {
-        pushLog('projects', (error as Error).message, 'error');
-      }
-    };
+    const load = () =>
+      listProjects()
+        .then((data) => {
+          store.setProjects(data);
+          if (!store.selectedProjectId && data.length > 0) {
+            store.setSelectedProjectId(data[0].id);
+          }
+        })
+        .catch((e) => store.pushLog('projects', (e as Error).message, 'error'));
 
-    loadProjects();
-    const interval = setInterval(loadProjects, 5000);
+    load();
+    const id = setInterval(load, 8000);
+    return () => clearInterval(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    return () => clearInterval(interval);
-  }, [selectedProjectId]);
-
-  useEffect(() => {
-    if (!selectedProjectId) {
-      setFiles([]);
-      setSelectedFilePath(null);
-      setFileContent(null);
-      return;
-    }
-
-    const loadFiles = async () => {
-      try {
-        const projectFiles = await getProjectFiles(selectedProjectId);
-        setFiles(projectFiles);
-
-        if (projectFiles.length > 0) {
-          const defaultPath = projectFiles[0].path;
-          setSelectedFilePath(defaultPath);
-        } else {
-          setSelectedFilePath(null);
-          setFileContent(null);
-        }
-      } catch (error) {
-        pushLog('files', (error as Error).message, 'error');
-      }
-    };
-
-    loadFiles();
-  }, [selectedProjectId]);
-
-  useEffect(() => {
-    if (!selectedProjectId || !selectedFilePath) {
-      setFileContent(null);
-      return;
-    }
-
-    const loadFile = async () => {
-      try {
-        const content = await getProjectFile(selectedProjectId, selectedFilePath);
-        setFileContent(content);
-      } catch (error) {
-        pushLog('file-viewer', (error as Error).message, 'error');
-      }
-    };
-
-    loadFile();
-  }, [selectedProjectId, selectedFilePath]);
-
+  // ── Cleanup socket on unmount ──────────────────────────────────────────────
   useEffect(() => {
     return () => {
-      if (socketRef.current && socketRef.current.readyState < 2) {
-        socketRef.current.close();
-      }
+      socketRef.current?.close();
     };
   }, []);
 
-  const handleGenerate = async (prompt: string) => {
-    setIsGenerating(true);
-    pushLog('pipeline', 'Submitting generation request...');
+  // ── Keyboard shortcuts ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        store.setLogsOpen(!store.logsOpen);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [store.logsOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Generate handler ───────────────────────────────────────────────────────
+  const handleGenerate = useCallback(async (prompt: string) => {
+    store.setIsGenerating(true);
+    store.setProgress(null);
+    store.pushLog('pipeline', 'Submitting generation request…');
 
     try {
       const result = await generateProject(prompt);
-      setSelectedProjectId(result.projectId);
-      pushLog('pipeline', `Project queued: ${result.project.name}`);
+      store.setSelectedProjectId(result.projectId);
+      store.setRightPanelTab('agents');
+      store.pushLog('pipeline', `Project queued: ${result.project.name}`);
+      store.addToast({ type: 'info', title: 'Building project', message: result.project.name });
 
+      // Close any existing socket
       if (socketRef.current && socketRef.current.readyState < 2) {
         socketRef.current.close();
       }
@@ -141,81 +73,61 @@ export default function DashboardPage() {
       const socket = openSessionSocket(
         result.sessionId,
         (nextProgress) => {
-          setProgress(nextProgress);
+          store.setProgress(nextProgress);
+          store.setWsConnected(true);
           if (nextProgress.currentStep) {
-            pushLog(
-              'agents',
-              `${nextProgress.currentStep.name} (${nextProgress.currentStep.agent}) attempt ${nextProgress.currentStep.attempt}`,
+            store.pushLog(
+              nextProgress.currentStep.agent,
+              `${nextProgress.currentStep.name} — ${nextProgress.currentStep.description ?? 'running'}`,
             );
           }
         },
         (status) => {
-          pushLog('pipeline', `Session finished with status: ${status}`);
-          setIsGenerating(false);
+          store.pushLog('pipeline', `Session ended: ${status}`);
+          store.setIsGenerating(false);
+          store.setWsConnected(false);
 
-          // Refresh projects once done
+          if (status === 'completed') {
+            store.addToast({ type: 'success', title: 'Project generated!', message: result.project.name });
+          } else {
+            store.addToast({ type: 'error', title: 'Generation failed', message: `Status: ${status}` });
+          }
+
           listProjects()
-            .then((items) => setProjects(Array.isArray(items) ? items : []))
-            .catch((error) => pushLog('projects', (error as Error).message, 'error'));
+            .then((items) => store.setProjects(items))
+            .catch(() => {});
         },
         (message) => {
-          pushLog('ws', message, 'warn');
+          store.pushLog('ws', message, 'warn');
+          store.setWsConnected(false);
         },
       );
 
       socketRef.current = socket;
-
-    } catch (error) {
-      pushLog('pipeline', (error as Error).message, 'error');
-      setIsGenerating(false);
+    } catch (e) {
+      store.pushLog('pipeline', (e as Error).message, 'error');
+      store.setIsGenerating(false);
+      store.addToast({ type: 'error', title: 'Generation failed', message: (e as Error).message });
     }
-  };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <main className="dashboard">
-      <header className="dashboard__header">
-        <div>
-          <p className="eyebrow">DEVteam Platform</p>
-          <h1>Control Center</h1>
-        </div>
-        <div className="header-stats">
-          <div className="stat-box">
-            <span className="stat-box__label">Projects</span>
-            <span className="stat-box__value">{projects.length}</span>
-          </div>
-          <div className="stat-box">
-            <span className="stat-box__label">Selected</span>
-            <span className="stat-box__value mono">{selectedProject ? selectedProject.name : '-'}</span>
-          </div>
-          <div className="stat-box">
-            <span className="stat-box__label">Generation</span>
-            <span className="stat-box__value">{isGenerating ? 'Running' : 'Idle'}</span>
-          </div>
-        </div>
-      </header>
+    <div className="app-root">
+      <AppHeader />
 
-      <section className="dashboard__top-grid">
-        <ChatInput loading={isGenerating} onSubmit={handleGenerate} />
-        <AgentActivityPanel progress={progress} />
-      </section>
+      <div className="app-body">
+        <Sidebar />
 
-      <section className="dashboard__mid-grid">
-        <ProjectList
-          onSelect={setSelectedProjectId}
-          projects={projects}
-          selectedProjectId={selectedProjectId}
-        />
-        <FileViewer
-          files={files}
-          selectedFilePath={selectedFilePath}
-          fileContent={fileContent}
-          onSelectFile={setSelectedFilePath}
-        />
-      </section>
+        <main className="main-workspace">
+          <PromptPanel onSubmit={handleGenerate} />
+          <LivePreview />
+        </main>
 
-      <section className="dashboard__bottom-grid">
-        <LogsView logs={logs} />
-      </section>
-    </main>
+        <RightPanel />
+      </div>
+
+      <LogsPanel />
+      <ToastStack />
+    </div>
   );
 }

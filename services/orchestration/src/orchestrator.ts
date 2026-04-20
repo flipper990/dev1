@@ -40,10 +40,39 @@ export class Orchestrator {
 
   constructor(private readonly deps: OrchestratorDeps) {}
 
-  async run(request: CreateProjectRequest): Promise<{ project: Project; pipeline: PipelineState }> {
+  // ── startAsync: returns immediately, runs pipeline in background ────────────
+  startAsync(request: CreateProjectRequest): { projectId: string; sessionId: string; project: Project } {
     const projectId = generateId('proj');
     const session = sessionManager.create(projectId);
     const sessionId = session.id;
+
+    const project: Project = {
+      id: projectId,
+      name: 'Generating…',
+      prompt: request.prompt,
+      preferences: request.preferences,
+      artifacts: { files: [] },
+      status: 'running',
+      sessionId,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+
+    // Fire and forget — defer to next tick so HTTP response is sent before events start
+    setImmediate(() => {
+      this.run(request, projectId, sessionId, project).catch(() => { /* logged inside run() */ });
+    });
+
+    return { projectId, sessionId, project };
+  }
+
+  async run(request: CreateProjectRequest, projectId?: string, sessionId?: string, existingProject?: Project): Promise<{ project: Project; pipeline: PipelineState }> {
+    if (!projectId || !sessionId) {
+      // Called directly (e.g. from tests) — create session here
+      projectId = generateId('proj');
+      const session = sessionManager.create(projectId);
+      sessionId = session.id;
+    }
 
     const ctx: AgentContext = {
       sessionId,
@@ -59,7 +88,7 @@ export class Orchestrator {
     this.emit(sessionId, 'session.started', { sessionId, projectId });
     sessionManager.update(sessionId, { status: 'running', pipeline });
 
-    let project: Project = {
+    let project: Project = existingProject ?? {
       id: projectId,
       name: 'Untitled',
       prompt: request.prompt,

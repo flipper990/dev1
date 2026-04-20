@@ -23,6 +23,7 @@ export async function buildApp() {
   // ── Security ───────────────────────────────────────────────────────────
   await app.register(helmet, {
     contentSecurityPolicy: false, // Handled by the frontend
+    frameguard: false, // Allow iframes from same localhost (dev preview)
   });
 
   await app.register(cors, {

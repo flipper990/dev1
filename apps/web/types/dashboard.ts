@@ -1,0 +1,72 @@
+export type StepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+
+export interface DashboardLog {
+  id: string;
+  ts: string;
+  level: 'info' | 'warn' | 'error';
+  source: string;
+  message: string;
+}
+
+export interface PipelineStep {
+  stepId: string;
+  name: string;
+  agent: string;
+  status: StepStatus;
+  durationMs: number;
+  error?: string;
+}
+
+export interface SessionProgress {
+  sessionId: string;
+  status: 'active' | 'completed' | 'failed' | 'cancelled';
+  progress: number;
+  currentStep: {
+    stepId: string;
+    name: string;
+    agent: string;
+    description: string;
+    attempt: number;
+  } | null;
+  steps: PipelineStep[];
+  completedAgents: string[];
+  failedAgents: string[];
+  durationMs: number;
+}
+
+export interface GeneratedProject {
+  id: string;
+  sessionId: string;
+  name: string;
+  status: 'generating' | 'completed' | 'failed';
+  prompts: string[];
+  totalTokens: number;
+  totalCostUsd: number;
+  durationMs: number;
+  createdAt: string;
+  completedAt?: string;
+}
+
+export interface ProjectFileEntry {
+  path: string;
+  size: number;
+}
+
+export interface ProjectFileContent {
+  path: string;
+  content: string;
+}
+
+export interface GenerateResponse {
+  projectId: string;
+  sessionId: string;
+  project: {
+    id: string;
+    name: string;
+    status: string;
+    fileCount: number;
+    totalTokens: number;
+    totalCostUsd: number;
+    durationMs: number;
+  };
+}

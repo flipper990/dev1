@@ -1,0 +1,35 @@
+version: '3.9'
+
+# Local development: mounts source, uses tsx for hot-reload
+services:
+  backend:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev --workspace=@devteam/backend"
+    ports:
+      - '3001:3001'
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      STORAGE_PATH: /app/data
+    env_file: .env
+    volumes:
+      - .:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev --workspace=@devteam/frontend"
+    ports:
+      - '3000:3000'
+    environment:
+      NEXT_PUBLIC_API_BASE: http://localhost:3001
+      NEXT_PUBLIC_WS_BASE: ws://localhost:3001
+    env_file: .env
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      - backend

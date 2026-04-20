@@ -1,0 +1,23 @@
+{
+  "name": "@devteam/tests",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "test:unit": "node --experimental-vm-modules node_modules/.bin/jest unit",
+    "test:integration": "node --experimental-vm-modules node_modules/.bin/jest integration",
+    "test:watch": "node --experimental-vm-modules node_modules/.bin/jest --watch"
+  },
+  "dependencies": {
+    "@devteam/core": "*",
+    "@devteam/agents": "*",
+    "@devteam/orchestration": "*",
+    "@devteam/memory": "*"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.14",
+    "ts-jest": "^29.2.5"
+  }
+}

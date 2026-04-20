@@ -1,0 +1,61 @@
+# ─── Build stage ─────────────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Install dependencies
+COPY package*.json turbo.json ./
+COPY core/package.json core/
+COPY services/agents/package.json services/agents/
+COPY services/orchestration/package.json services/orchestration/
+COPY services/memory/package.json services/memory/
+COPY services/api-routing/package.json services/api-routing/
+COPY apps/backend/package.json apps/backend/
+
+RUN npm ci --workspace=apps/backend --include-workspace-root
+
+# Copy source and build
+COPY core/ core/
+COPY services/ services/
+COPY apps/backend/ apps/backend/
+COPY tsconfig.base.json ./
+
+RUN npm run build --workspace=@devteam/core \
+ && npm run build --workspace=@devteam/agents \
+ && npm run build --workspace=@devteam/memory \
+ && npm run build --workspace=@devteam/api-routing \
+ && npm run build --workspace=@devteam/orchestration \
+ && npm run build --workspace=@devteam/backend
+
+# ─── Production stage ─────────────────────────────────────────────────────────
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Security: non-root user
+RUN addgroup -S devteam && adduser -S devteam -G devteam
+
+# Copy built artifacts
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/core/dist ./core/dist
+COPY --from=builder /app/services/agents/dist ./services/agents/dist
+COPY --from=builder /app/services/orchestration/dist ./services/orchestration/dist
+COPY --from=builder /app/services/memory/dist ./services/memory/dist
+COPY --from=builder /app/services/api-routing/dist ./services/api-routing/dist
+COPY --from=builder /app/apps/backend/dist ./apps/backend/dist
+
+# Copy package.json files for module resolution
+COPY --from=builder /app/core/package.json ./core/
+COPY --from=builder /app/services/agents/package.json ./services/agents/
+COPY --from=builder /app/services/orchestration/package.json ./services/orchestration/
+COPY --from=builder /app/services/memory/package.json ./services/memory/
+COPY --from=builder /app/services/api-routing/package.json ./services/api-routing/
+COPY --from=builder /app/apps/backend/package.json ./apps/backend/
+
+RUN mkdir -p /app/data && chown -R devteam:devteam /app/data
+USER devteam
+
+EXPOSE 3001
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:3001/health || exit 1
+
+CMD ["node", "apps/backend/dist/server.js"]

@@ -349,7 +349,13 @@ export class ProjectGenerator {
       this.applyPatches(fileMap, reviewerOutput.patches, 'reviewer');
     }
 
-    // 6. Ensure deployment-ready baseline artifacts always exist.
+    // 6. Apply optimizer patches (performance/quality improvements applied after bug fixes)
+    const optimizerOutput = artifacts.get('optimizer') as { patches?: Patch[] } | undefined;
+    if (optimizerOutput?.patches) {
+      this.applyPatches(fileMap, optimizerOutput.patches, 'optimizer');
+    }
+
+    // 7. Ensure deployment-ready baseline artifacts always exist.
     this.ensureDeploymentReadiness(fileMap, artifacts);
 
     return Array.from(fileMap.values());

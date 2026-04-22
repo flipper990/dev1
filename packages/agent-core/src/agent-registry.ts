@@ -158,7 +158,7 @@ export const AGENT_DEFINITIONS: Record<AgentRole, AgentDefinition> = {
     maxConcurrency: 1,
     timeoutMs: 60_000,
     retryPolicy: { maxAttempts: 2, baseDelayMs: 3000, maxDelayMs: 15000, backoffMultiplier: 2, retryableErrors: ['RATE_LIMITED', 'TIMEOUT', 'PROVIDER_ERROR'] },
-    dependencies: ['developer'],
+    dependencies: ['developer', 'architect'],
   },
 
   // ────────────────────────────────────────────────
@@ -176,6 +176,7 @@ export const AGENT_DEFINITIONS: Record<AgentRole, AgentDefinition> = {
         files:        { type: 'array',  description: 'Source files to test', required: true },
         apiContracts: { type: 'array',  description: 'API contracts for integration tests', required: true },
         spec:         { type: 'object', description: 'Project spec for context', required: true },
+        reviewIssues: { type: 'array',  description: 'Known issues from reviewer to target with tests', required: false },
       },
     },
     output: {
@@ -207,6 +208,7 @@ export const AGENT_DEFINITIONS: Record<AgentRole, AgentDefinition> = {
       schema: {
         issues:       { type: 'array',  description: 'Issues to fix', required: true },
         affectedFiles:{ type: 'array',  description: 'Files containing issues', required: true },
+        testResults:  { type: 'object', description: 'Tester coverage and test-file count for context', required: false },
         spec:         { type: 'object', description: 'Spec for context', required: false },
       },
     },
@@ -237,8 +239,9 @@ export const AGENT_DEFINITIONS: Record<AgentRole, AgentDefinition> = {
     input: {
       description: 'Tech stack and project spec',
       schema: {
-        spec:      { type: 'object', description: 'Project spec (stack, env vars, services)', required: true },
-        fileTree:  { type: 'array',  description: 'Complete file tree for context', required: true },
+        spec:           { type: 'object', description: 'Project spec (stack, env vars, services)', required: true },
+        fileTree:       { type: 'array',  description: 'Complete file tree from architect', required: true },
+        generatedFiles: { type: 'array',  description: 'Generated file paths after all patches applied', required: false },
       },
     },
     output: {
@@ -267,9 +270,10 @@ export const AGENT_DEFINITIONS: Record<AgentRole, AgentDefinition> = {
     input: {
       description: 'Final codebase after all patches applied',
       schema: {
-        files:     { type: 'array',  description: 'All project files', required: true },
-        spec:      { type: 'object', description: 'Project spec', required: true },
-        qaReport:  { type: 'object', description: 'QA/review report', required: false },
+        files:            { type: 'array',  description: 'All project files (post-debugger patches applied)', required: true },
+        spec:             { type: 'object', description: 'Project spec', required: true },
+        qaReport:         { type: 'object', description: 'QA/review report from reviewer', required: false },
+        unresolvedIssues: { type: 'array',  description: 'Issues debugger could not auto-fix', required: false },
       },
     },
     output: {
@@ -285,7 +289,7 @@ export const AGENT_DEFINITIONS: Record<AgentRole, AgentDefinition> = {
     maxConcurrency: 1,
     timeoutMs: 30_000,
     retryPolicy: { maxAttempts: 2, baseDelayMs: 2000, maxDelayMs: 10000, backoffMultiplier: 2, retryableErrors: ['RATE_LIMITED', 'TIMEOUT', 'PROVIDER_ERROR'] },
-    dependencies: ['debugger'],
+    dependencies: ['developer'],
   },
 };
 

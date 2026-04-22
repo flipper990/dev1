@@ -39,15 +39,16 @@ export interface PipelineStep {
   description: string;
 }
 
-/** The canonical 7-step fullstack generation pipeline. */
+/** The canonical 8-step fullstack generation pipeline. */
 export const PIPELINE_STEPS: PipelineStep[] = [
-  { id: 'plan',    name: 'Planning',      agent: 'planner',   critical: true,  description: 'Analyzing prompts and defining project scope' },
-  { id: 'design',  name: 'Architecture',  agent: 'architect', critical: true,  description: 'Designing system architecture and tech stack' },
-  { id: 'code',    name: 'Development',   agent: 'developer', critical: true,  description: 'Writing source code for all components' },
-  { id: 'review',  name: 'Code Review',   agent: 'reviewer',  critical: false, description: 'Reviewing code quality and finding issues' },
-  { id: 'test',    name: 'Testing',       agent: 'tester',    critical: false, description: 'Generating test suites' },
-  { id: 'fix',     name: 'Bug Fixing',    agent: 'debugger',  critical: false, description: 'Fixing identified issues' },
-  { id: 'deploy',  name: 'DevOps',        agent: 'devops',    critical: false, description: 'Preparing deployment configuration' },
+  { id: 'plan',     name: 'Planning',       agent: 'planner',   critical: true,  description: 'Analyzing prompts and defining project scope' },
+  { id: 'design',   name: 'Architecture',   agent: 'architect', critical: true,  description: 'Designing system architecture and tech stack' },
+  { id: 'code',     name: 'Development',    agent: 'developer', critical: true,  description: 'Writing source code for all components' },
+  { id: 'review',   name: 'Code Review',    agent: 'reviewer',  critical: false, description: 'Reviewing code quality and finding issues' },
+  { id: 'test',     name: 'Testing',        agent: 'tester',    critical: false, description: 'Generating test suites' },
+  { id: 'fix',      name: 'Bug Fixing',     agent: 'debugger',  critical: false, description: 'Fixing identified issues' },
+  { id: 'optimize', name: 'Optimization',   agent: 'optimizer', critical: false, description: 'Applying performance and code quality optimizations' },
+  { id: 'deploy',   name: 'DevOps',         agent: 'devops',    critical: false, description: 'Preparing deployment configuration' },
 ];
 
 // ── Pipeline State ──────────────────────────────────────────
@@ -530,25 +531,56 @@ export class PipelineOrchestrator {
         input.files = (artifacts.get('developer') as any)?.files ?? [];
         input.apiContracts = (artifacts.get('architect') as any)?.apiContracts ?? [];
         input.spec = artifacts.get('architect') ?? {};
-        break;
-
-      case 'debugger':
-        input.issues = (artifacts.get('reviewer') as any)?.issues ?? [];
-        input.affectedFiles = (artifacts.get('developer') as any)?.files ?? [];
-        input.spec = artifacts.get('architect') ?? {};
-        break;
-
-      case 'devops':
-        input.spec = artifacts.get('architect') ?? {};
-        input.files = (artifacts.get('developer') as any)?.files ?? [];
-        input.plan = artifacts.get('planner') ?? {};
-        break;
-
-      case 'optimizer':
-        input.files = (artifacts.get('developer') as any)?.files ?? [];
-        input.spec = artifacts.get('architect') ?? {};
+        // Provide reviewer findings so tests can target already-known problem areas
         input.reviewIssues = (artifacts.get('reviewer') as any)?.issues ?? [];
         break;
+
+      case 'debugger': {
+        const reviewerArtifact = artifacts.get('reviewer') as
+          { issues?: Array<{ file?: string }> } | undefined;
+        const reviewerIssues: Array<{ file?: string }> = reviewerArtifact?.issues ?? [];
+        // Only send files that are referenced in issues; fall back to full set when
+        // reviewer produced no file-location data (so debugger always has context).
+        const issuedPaths = new Set(
+          reviewerIssues.map(i => i.file).filter((f): f is string => typeof f === 'string'),
+        );
+        const allDevFiles = (artifacts.get('developer') as
+          { files?: Array<{ path: string; content: string }> } | undefined)?.files ?? [];
+        input.issues = reviewerIssues;
+        input.affectedFiles = issuedPaths.size > 0
+          ? allDevFiles.filter(f => issuedPaths.has(f.path))
+          : allDevFiles;
+        // Pass tester output so the debugger can also address coverage gaps
+        const testerArtifact = artifacts.get('tester') as
+          { testFiles?: unknown[]; coverage?: unknown } | undefined;
+        input.testResults = testerArtifact
+          ? { coverage: testerArtifact.coverage ?? {}, testFileCount: testerArtifact.testFiles?.length ?? 0 }
+          : null;
+        input.spec = artifacts.get('architect') ?? {};
+        break;
+      }
+
+      case 'optimizer':
+        // Always work from the post-debugger merged state so we don't re-introduce
+        // fixed bugs and don't optimize code that is about to be patched.
+        input.files = this.getMergedFiles(artifacts);
+        input.spec = artifacts.get('architect') ?? {};
+        input.qaReport = artifacts.get('reviewer') ?? {};
+        // Surface unresolved debugger issues so the optimizer avoids touching those areas
+        input.unresolvedIssues = (artifacts.get('debugger') as any)?.unresolved ?? [];
+        break;
+
+      case 'devops': {
+        const archSpec = artifacts.get('architect') as { fileTree?: string[] } | undefined;
+        input.spec = archSpec ?? {};
+        // Top-level fileTree matches the registry input schema
+        input.fileTree = archSpec?.fileTree ?? [];
+        // Pass generated file paths (not full content) so devops can tailor configs to
+        // the actual build outputs produced, including any debugger/optimizer patches.
+        input.generatedFiles = this.getMergedFiles(artifacts, true)
+          .map(f => ({ path: f.path, language: f.language }));
+        break;
+      }
     }
 
     return input;
@@ -574,13 +606,6 @@ export class PipelineOrchestrator {
     role: AgentRole,
     artifacts: Map<AgentRole, Record<string, unknown>>,
   ): string | null {
-    if (role === 'debugger') {
-      const issues = (artifacts.get('reviewer') as { issues?: unknown[] } | undefined)?.issues ?? [];
-      if (Array.isArray(issues) && issues.length === 0) {
-        return 'No review issues found; skipping debugger';
-      }
-    }
-
     if (role === 'tester') {
       const files = (artifacts.get('developer') as { files?: unknown[] } | undefined)?.files ?? [];
       if (!Array.isArray(files) || files.length === 0) {
@@ -588,13 +613,30 @@ export class PipelineOrchestrator {
       }
     }
 
+    if (role === 'debugger') {
+      const issues = (artifacts.get('reviewer') as { issues?: unknown[] } | undefined)?.issues ?? [];
+      // Only skip when reviewer explicitly passed the code — prevents skipping when
+      // reviewer was itself skipped (artifact absent) or found zero issues AND marked passable.
+      const passable = (artifacts.get('reviewer') as { passable?: boolean } | undefined)?.passable ?? false;
+      if (Array.isArray(issues) && issues.length === 0 && passable) {
+        return 'Reviewer found no issues and marked code passable; skipping debugger';
+      }
+    }
+
+    if (role === 'optimizer') {
+      const files = (artifacts.get('developer') as { files?: unknown[] } | undefined)?.files ?? [];
+      if (!Array.isArray(files) || files.length === 0) {
+        return 'No generated files to optimize; skipping optimizer';
+      }
+    }
+
     if (role === 'devops') {
-      const files = (artifacts.get('developer') as { files?: { path?: string }[] } | undefined)?.files ?? [];
-      if (Array.isArray(files) && files.length > 0) {
-        const paths = new Set(files.map(f => f.path).filter((p): p is string => typeof p === 'string'));
-        if (paths.has('Dockerfile') && paths.has('docker-compose.yml') && paths.has('.env.example')) {
-          return 'Deployment artifacts already generated; skipping devops';
-        }
+      // Merge developer + debugger + optimizer files to check for pre-existing deployment artifacts
+      const mergedPaths = new Set(
+        this.getMergedFiles(artifacts, true).map(f => f.path),
+      );
+      if (mergedPaths.has('Dockerfile') && mergedPaths.has('docker-compose.yml') && mergedPaths.has('.env.example')) {
+        return 'Deployment artifacts already generated; skipping devops';
       }
     }
 
@@ -607,26 +649,71 @@ export class PipelineOrchestrator {
   }
 
   private readStepCache(key: string): Record<string, unknown> | null {
-    const item = PipelineOrchestrator.stepCache.get(key);
+    const item = this.stepCache.get(key);
     if (!item) return null;
-    if (Date.now() - item.cachedAt > PipelineOrchestrator.STEP_CACHE_TTL_MS) {
-      PipelineOrchestrator.stepCache.delete(key);
+    if (Date.now() - item.cachedAt > this.STEP_CACHE_TTL_MS) {
+      this.stepCache.delete(key);
       return null;
     }
     return item.output;
   }
 
   private writeStepCache(key: string, output: Record<string, unknown>): void {
-    PipelineOrchestrator.stepCache.set(key, { output, cachedAt: Date.now() });
+    this.stepCache.set(key, { output, cachedAt: Date.now() });
   }
 
   // ══════════════════════════════════════════════════════════
   // Helpers
   // ══════════════════════════════════════════════════════════
 
+  // ── Merged-file helper ──────────────────────────────────
+
+  /**
+   * Returns the developer-generated file set with patches applied in order:
+   *   1. debugger patches (bug fixes)
+   *   2. optimizer patches (perf/quality improvements) — only when applyOptimizer=true
+   *
+   * Downstream agents (optimizer, devops) call this so they always work from the
+   * latest code state rather than the raw developer output.
+   */
+  private getMergedFiles(
+    artifacts: Map<AgentRole, Record<string, unknown>>,
+    applyOptimizer = false,
+  ): Array<{ path: string; content: string; language?: string }> {
+    const devFiles = (artifacts.get('developer') as
+      { files?: Array<{ path: string; content: string; language?: string }> } | undefined
+    )?.files ?? [];
+
+    const fileMap = new Map(devFiles.map(f => [f.path, { ...f }]));
+
+    const applyPatches = (patches: Array<{ file: string; oldContent: string; newContent: string }>) => {
+      for (const patch of patches) {
+        const file = fileMap.get(patch.file);
+        // Only apply when the source still matches to avoid double-application on retry
+        if (file && file.content === patch.oldContent) {
+          file.content = patch.newContent;
+        }
+      }
+    };
+
+    const debugPatches = (artifacts.get('debugger') as
+      { patches?: Array<{ file: string; oldContent: string; newContent: string }> } | undefined
+    )?.patches ?? [];
+    applyPatches(debugPatches);
+
+    if (applyOptimizer) {
+      const optPatches = (artifacts.get('optimizer') as
+        { patches?: Array<{ file: string; oldContent: string; newContent: string }> } | undefined
+      )?.patches ?? [];
+      applyPatches(optPatches);
+    }
+
+    return Array.from(fileMap.values());
+  }
+
   private getStepPriority(stepId: string): number {
     const priorities: Record<string, number> = {
-      plan: 1, design: 2, code: 3, review: 4, test: 5, fix: 6, deploy: 7,
+      plan: 1, design: 2, code: 3, review: 4, test: 5, fix: 6, optimize: 7, deploy: 8,
     };
     return priorities[stepId] ?? 5;
   }

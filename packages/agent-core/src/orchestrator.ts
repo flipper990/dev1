@@ -145,10 +145,22 @@ export class PipelineOrchestrator {
   }
 
   // ══════════════════════════════════════════════════════════
-  // Main Execution — 7 sequential steps
+  // Main Execution — 8 sequential steps
   // ══════════════════════════════════════════════════════════
 
-  async execute(session: Session): Promise<PipelineState> {
+  /**
+   * Execute the pipeline for a session.
+   *
+   * @param seedArtifacts  Pre-populated agent outputs. When provided, those
+   *                       steps are considered already-complete and the cache
+   *                       is seeded so downstream agents receive the existing
+   *                       outputs as their inputs. Useful for update mode where
+   *                       the planner/architect outputs from a prior run are reused.
+   */
+  async execute(
+    session: Session,
+    seedArtifacts?: Map<AgentRole, Record<string, unknown>>,
+  ): Promise<PipelineState> {
     const steps = PIPELINE_STEPS;
     const totalSteps = steps.length;
     const pipelineStart = Date.now();
@@ -180,6 +192,25 @@ export class PipelineOrchestrator {
       },
     };
 
+    // If the caller provided seed artifacts (update mode), pre-populate state and
+    // mark those steps completed so downstream agents receive the existing outputs.
+    if (seedArtifacts) {
+      for (const [role, output] of seedArtifacts) {
+        state.artifacts.set(role, output);
+        // Mark the corresponding step as completed so the pipeline skips re-running it.
+        const stepIdx = steps.findIndex(s => s.agent === role);
+        if (stepIdx >= 0) {
+          state.steps[stepIdx].status = 'completed';
+          state.steps[stepIdx].durationMs = 0;
+          state.optimization.skippedSteps++;
+          state.optimization.estimatedApiCallsSaved++;
+        }
+        // Warm the step cache so the same input won't trigger a fresh LLM call on retry.
+        const cacheKey = this.getStepCacheKey(role, output);
+        this.writeStepCache(cacheKey, output);
+      }
+    }
+
     this.emit({ type: 'pipeline:started', sessionId: session.id, totalSteps });
     this.logger.info(`Pipeline starting for session ${session.id}`, { totalSteps });
 
@@ -195,6 +226,13 @@ export class PipelineOrchestrator {
         const step = steps[i];
         const stepState = state.steps[i];
         state.currentStepIndex = i;
+
+        // ── Skip seeded steps (pre-populated by update mode) ──
+        if (stepState.status === 'completed') {
+          state.progress = (i + 1) / totalSteps;
+          this.emit({ type: 'step:skipped', sessionId: session.id, stepId: step.id, agent: step.agent, reason: 'Seeded from existing project state' });
+          continue;
+        }
 
         // ── Check if upstream dependencies have artifacts ──
         const missingDep = this.checkDependencies(step.agent, state.artifacts);

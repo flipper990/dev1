@@ -23,8 +23,9 @@ import {
 } from '../../../packages/agent-core/src/orchestrator.js';
 import { InMemoryMessageBus } from '../../../packages/agent-core/src/message-bus.js';
 import { SessionManager } from './session-manager.js';
-import { ProjectStore, type ProjectRecord, type TaskSummary } from '../storage/project-store.js';
+import { ProjectStore, type ProjectRecord, type TaskSummary, type FileDiff, type VersionMeta, type ProjectSnapshot } from '../storage/project-store.js';
 import { FileMemoryStore } from '../storage/memory-store.js';
+import { computeFileDiffs } from './diff-utils.js';
 
 // ── Public API Types ────────────────────────────────────────
 
@@ -32,6 +33,24 @@ export interface GenerateRequest {
   prompts: string[];
   userId?: string;
   preferences?: Record<string, unknown>;
+}
+
+export interface UpdateRequest {
+  /** Existing project to update. */
+  projectId: string;
+  /** New prompts describing the desired changes. */
+  prompts: string[];
+  userId?: string;
+  preferences?: Record<string, unknown>;
+  /**
+   * Scope hint for how much of the pipeline to re-run.
+   * - 'code'   — Only code/test/review/debug/optimize steps (reuse planner + architect).
+   * - 'design' — Re-run from architect onward (reuse planner only).
+   * - 'full'   — Re-run the complete pipeline (same as a fresh generate).
+   *
+   * When omitted, defaults to 'code' (most common case: add a feature or fix a bug).
+   */
+  scope?: 'code' | 'design' | 'full';
 }
 
 export interface GenerateResult {
@@ -49,6 +68,19 @@ export interface GenerateResult {
     skippedSteps: number;
     estimatedApiCallsSaved: number;
   };
+  error?: string;
+}
+
+export interface UpdateResult {
+  projectId: string;
+  sessionId: string;
+  success: boolean;
+  project?: ProjectRecord;
+  /** New version number after the update. */
+  version?: number;
+  /** File-level diff between previous and new version. */
+  diffs?: FileDiff[];
+  steps?: StepSummary[];
   error?: string;
 }
 
@@ -691,16 +723,190 @@ export class ProjectGenerator {
   }
 
   private async readResultCache(cacheKey: string): Promise<ProjectRecord | null> {
-    const item = ProjectGenerator.resultCache.get(cacheKey);
+    const item = this.resultCache.get(cacheKey);
     if (!item) return null;
-    if (Date.now() - item.cachedAt > ProjectGenerator.RESULT_CACHE_TTL_MS) {
-      ProjectGenerator.resultCache.delete(cacheKey);
+    if (Date.now() - item.cachedAt > this.RESULT_CACHE_TTL_MS) {
+      this.resultCache.delete(cacheKey);
       return null;
     }
     return this.projectStore.get(item.projectId);
   }
 
   private writeResultCache(cacheKey: string, projectId: string): void {
-    ProjectGenerator.resultCache.set(cacheKey, { projectId, cachedAt: Date.now() });
+    this.resultCache.set(cacheKey, { projectId, cachedAt: Date.now() });
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // Update — Re-run pipeline on an existing project
+  // ══════════════════════════════════════════════════════════
+
+  async update(request: UpdateRequest): Promise<UpdateResult> {
+    const { projectId, prompts, userId, preferences, scope = 'code' } = request;
+    const sessionId = nanoid(16);
+
+    // ── 1. Load & validate existing project ─────────────
+    const existing = await this.projectStore.get(projectId);
+    if (!existing) {
+      return { projectId, sessionId, success: false, error: `Project ${projectId} not found` };
+    }
+    if (existing.status === 'generating') {
+      return { projectId, sessionId, success: false, error: 'Project is still generating; wait for it to complete before updating' };
+    }
+
+    // ── 2. Create session with merged prompts ────────────
+    // Include original prompts so agents understand the full product context.
+    const allPrompts = [...(existing.prompts ?? []), ...prompts];
+    const session = this.sessionManager.createSession(allPrompts, userId ?? 'system');
+    if (preferences) {
+      session.artifacts.set('userPreferences', preferences);
+    }
+
+    // ── 3. Seed global memory hints ──────────────────────
+    const reusable = await this.memoryStore.getGlobal({
+      queryText: allPrompts.join('\n'),
+      limit: 5,
+      includeGlobal: true,
+    });
+    if (reusable.length > 0) {
+      session.artifacts.set('globalMemoryHints', reusable.map(m => m.content));
+    }
+
+    // ── 4. Build seedArtifacts based on scope ────────────
+    //
+    // 'code'   → planner + architect outputs reused; developer/reviewer/etc re-run
+    // 'design' → planner output reused; architect + downstream re-run
+    // 'full'   → nothing seeded; full pipeline re-runs
+    const seedArtifacts = new Map<AgentRole, Record<string, unknown>>();
+
+    if (scope !== 'full') {
+      if (existing.plan) {
+        seedArtifacts.set('planner', existing.plan as Record<string, unknown>);
+      }
+    }
+    if (scope === 'code') {
+      if (existing.spec) {
+        seedArtifacts.set('architect', existing.spec as Record<string, unknown>);
+      }
+    }
+
+    // Always expose existing files to the developer agent as context so it
+    // can perform surgical updates rather than generating from scratch.
+    if (existing.files && existing.files.length > 0) {
+      session.artifacts.set('existingFiles', existing.files);
+    }
+
+    // ── 5. Mark project as updating ─────────────────────
+    existing.status = 'generating';
+    await this.projectStore.save(existing);
+
+    // ── 6. Run orchestrator ──────────────────────────────
+    const bus = new InMemoryMessageBus();
+    const orchestrator = new PipelineOrchestrator(this.agents, bus, this.logger);
+    orchestrator.onEvent((event: PipelineEvent) => {
+      this.sessionManager.handleEvent(event);
+    });
+
+    this.logger.info(`Starting update for project ${projectId}`, {
+      sessionId,
+      scope,
+      newPrompts: prompts.length,
+      seededRoles: [...seedArtifacts.keys()],
+    });
+
+    this.activeGenerations++;
+    try {
+      const pipelineState = await orchestrator.execute(session, seedArtifacts);
+
+      // ── 7. Assemble new files ────────────────────────
+      const newFiles = this.assembleProject(pipelineState.artifacts);
+
+      // ── 8. Compute diffs ─────────────────────────────
+      const diffs = computeFileDiffs(existing.files ?? [], newFiles);
+
+      // ── 9. Save previous version snapshot ───────────
+      const previousVersion = existing.version ?? 1;
+      const snapshot: ProjectSnapshot = {
+        version: previousVersion,
+        projectId,
+        savedAt: new Date().toISOString(),
+        files: existing.files ?? [],
+        spec: existing.spec as Record<string, unknown> | undefined,
+        plan: existing.plan as Record<string, unknown> | undefined,
+        diffs,
+        prompts: existing.prompts ?? [],
+        stats: {
+          totalTokens: existing.totalTokens ?? 0,
+          totalCostUsd: existing.totalCostUsd ?? 0,
+          durationMs: existing.durationMs ?? 0,
+          filesCount: (existing.files ?? []).length,
+        },
+      };
+      await this.projectStore.saveSnapshot(projectId, snapshot);
+
+      // ── 10. Build updated version metadata ───────────
+      const newVersion = previousVersion + 1;
+      const taskSummaries = this.buildTaskSummaries(pipelineState);
+      const stepSummaries = this.buildStepSummaries(pipelineState);
+      const planOutput = pipelineState.artifacts.get('planner') as { projectName?: string } | undefined;
+
+      const versionMeta: VersionMeta = {
+        version: newVersion,
+        savedAt: new Date().toISOString(),
+        prompts,
+        diffs,
+        stats: {
+          totalTokens: taskSummaries.reduce((s, t) => s + t.tokensUsed, 0),
+          totalCostUsd: taskSummaries.reduce((s, t) => s + t.costUsd, 0),
+          durationMs: pipelineState.durationMs,
+          filesCount: newFiles.length,
+        },
+      };
+
+      // ── 11. Update and save the project record ───────
+      existing.name = planOutput?.projectName ?? existing.name;
+      existing.status = pipelineState.status === 'completed' ? 'completed' : 'failed';
+      existing.prompts = allPrompts;
+      existing.files = newFiles;
+      existing.spec = pipelineState.artifacts.get('architect') as Record<string, unknown> | undefined ?? existing.spec;
+      existing.plan = pipelineState.artifacts.get('planner') as Record<string, unknown> | undefined ?? existing.plan;
+      existing.qaReport = pipelineState.artifacts.get('reviewer') as Record<string, unknown> | undefined;
+      existing.tasks = taskSummaries;
+      existing.totalTokens = (existing.totalTokens ?? 0) + versionMeta.stats.totalTokens;
+      existing.totalCostUsd = (existing.totalCostUsd ?? 0) + versionMeta.stats.totalCostUsd;
+      existing.durationMs = (existing.durationMs ?? 0) + pipelineState.durationMs;
+      existing.version = newVersion;
+      existing.versionHistory = [...(existing.versionHistory ?? []), versionMeta];
+      existing.updatedAt = new Date().toISOString();
+      await this.projectStore.save(existing);
+
+      this.logger.info(`Project ${projectId} updated to v${newVersion}`, {
+        files: newFiles.length,
+        filesAdded: diffs.filter(d => d.op === 'added').length,
+        filesModified: diffs.filter(d => d.op === 'modified').length,
+        filesDeleted: diffs.filter(d => d.op === 'deleted').length,
+        durationMs: pipelineState.durationMs,
+      });
+
+      return {
+        projectId,
+        sessionId,
+        success: pipelineState.status === 'completed',
+        project: existing,
+        version: newVersion,
+        diffs,
+        steps: stepSummaries,
+        error: pipelineState.error,
+      };
+
+    } catch (err) {
+      const error = (err as Error).message;
+      existing.status = 'failed';
+      existing.updatedAt = new Date().toISOString();
+      await this.projectStore.save(existing);
+      this.logger.error(`Project ${projectId} update crashed`, { error });
+      return { projectId, sessionId, success: false, error };
+    } finally {
+      this.activeGenerations--;
+    }
   }
 }

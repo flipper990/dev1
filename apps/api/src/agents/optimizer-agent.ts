@@ -31,13 +31,7 @@ export class OptimizerAgent extends BaseAgent {
       prompt += `## QA Report\n\n\`\`\`json\n${JSON.stringify(qaReport)}\n\`\`\`\n\n`;
     }
 
-    if (memories.length > 0) {
-      prompt += `## Optimization Patterns from Memory\n\n`;
-      for (const mem of memories) {
-        prompt += `- [${mem.type}] ${mem.content}\n`;
-      }
-      prompt += '\n';
-    }
+    prompt += this.formatMemoriesForPrompt(memories);
 
     prompt += `Perform optimization analysis and produce patches as defined in your system prompt.`;
     return prompt;

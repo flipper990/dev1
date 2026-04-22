@@ -34,13 +34,7 @@ export class TesterAgent extends BaseAgent {
       prompt += `## API Contracts\n\n\`\`\`json\n${JSON.stringify(apiContracts)}\n\`\`\`\n\n`;
     }
 
-    if (memories.length > 0) {
-      prompt += `## Testing Patterns from Memory\n\n`;
-      for (const mem of memories) {
-        prompt += `- [${mem.type}] ${mem.content}\n`;
-      }
-      prompt += '\n';
-    }
+    prompt += this.formatMemoriesForPrompt(memories);
 
     prompt += `Generate test files as defined in your system prompt.`;
     return prompt;

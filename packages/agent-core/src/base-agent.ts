@@ -15,6 +15,7 @@ import type {
   ExecutionContext,
   MemoryEntry,
   MemoryQuery,
+  MemoryType,
   ModelConfig,
   PromptConfig,
   Task,
@@ -90,6 +91,11 @@ export interface AgentConfig {
 // ─────────────────────────────────────────────────────────────
 
 export abstract class BaseAgent {
+  /** Long-term memory types worth semantic retrieval (excludes raw 'context' dumps). */
+  private static readonly RETRIEVABLE_TYPES: MemoryType[] = [
+    'pattern', 'failure', 'error_fix', 'decision', 'preference', 'prompt',
+  ];
+
   protected definition: AgentDefinition;
   protected llm: LLMClient;
   protected memory: MemoryStore;
@@ -442,9 +448,9 @@ export abstract class BaseAgent {
 
   private async loadMemories(task: Task): Promise<MemoryEntry[]> {
     const config = this.definition.memoryConfig;
-    const memories: MemoryEntry[] = [];
+    const all: MemoryEntry[] = [];
 
-    // 1. Short-term session memory
+    // 1. Short-term session memory — same-session context, already agent-scoped
     if (config.shortTerm) {
       try {
         const shortTerm = await this.memory.getShortTerm(
@@ -452,7 +458,7 @@ export abstract class BaseAgent {
           this.definition.role,
           config.maxShortTermEntries,
         );
-        memories.push(...shortTerm);
+        all.push(...shortTerm);
       } catch (err) {
         this.logger.warn(`[${this.definition.role}] Failed to load short-term memory`, {
           error: (err as Error).message,
@@ -460,17 +466,20 @@ export abstract class BaseAgent {
       }
     }
 
-    // 2. Long-term agent-specific memory (via embedding similarity)
+    // 2. Long-term agent-specific knowledge.
+    //    Uses memory.query() for type filtering + semantic search.
+    //    Excludes raw 'context' dumps — only durable knowledge types.
     if (config.longTerm) {
       try {
-        const taskDescription = JSON.stringify(task.input).slice(0, 1000);
-        const embedding = await this.memory.embed(taskDescription);
-        const longTerm = await this.memory.queryLongTerm(
-          this.definition.role,
-          embedding,
-          config.maxLongTermRetrievals,
-        );
-        memories.push(...longTerm);
+        const taskDescription = JSON.stringify(task.input).slice(0, 800);
+        const longTerm = await this.memory.query({
+          roles: [this.definition.role],
+          types: BaseAgent.RETRIEVABLE_TYPES,
+          minRelevance: 0.2,
+          limit: config.maxLongTermRetrievals,
+          queryText: taskDescription,
+        });
+        all.push(...longTerm);
       } catch (err) {
         this.logger.warn(`[${this.definition.role}] Failed to load long-term memory`, {
           error: (err as Error).message,
@@ -478,7 +487,7 @@ export abstract class BaseAgent {
       }
     }
 
-    // 3. Global shared memory (cross-agent knowledge)
+    // 3. Global shared knowledge — cross-agent best practices and proven fixes
     if (config.longTerm) {
       try {
         const globalMemories = await this.memory.getGlobal({
@@ -486,9 +495,9 @@ export abstract class BaseAgent {
           minRelevance: 0.3,
           minEffectiveness: 0.5,
           limit: 3,
-          queryText: JSON.stringify(task.input).slice(0, 500),
+          queryText: JSON.stringify(task.input).slice(0, 400),
         });
-        memories.push(...globalMemories);
+        all.push(...globalMemories);
       } catch (err) {
         this.logger.warn(`[${this.definition.role}] Failed to load global memory`, {
           error: (err as Error).message,
@@ -496,7 +505,38 @@ export abstract class BaseAgent {
       }
     }
 
-    return memories;
+    return this.applyMemoryBudget(all);
+  }
+
+  /**
+   * Sort by composite score (relevance × effectiveness × recency), trim
+   * entry content, and cap total chars injected into prompts.
+   */
+  private applyMemoryBudget(memories: MemoryEntry[]): MemoryEntry[] {
+    const ENTRY_CAP    = 400;   // max chars per entry before truncation
+    const TOTAL_BUDGET = 2500;  // max total chars across all entries
+
+    const compositeScore = (e: MemoryEntry): number => {
+      const eff = isNaN(e.effectiveness) ? 0.5 : Math.max(e.effectiveness, 0.1);
+      const daysSince = (Date.now() - new Date(e.lastAccessed).getTime()) / 86_400_000;
+      const recency = 1 / (1 + daysSince / 30); // halves every 30 days
+      return e.relevanceScore * eff * recency;
+    };
+
+    const sorted = [...memories].sort((a, b) => compositeScore(b) - compositeScore(a));
+    const result: MemoryEntry[] = [];
+    let used = 0;
+
+    for (const entry of sorted) {
+      const trimmed = entry.content.length > ENTRY_CAP
+        ? entry.content.slice(0, ENTRY_CAP - 1) + '\u2026'
+        : entry.content;
+      if (used + trimmed.length > TOTAL_BUDGET) break;
+      result.push({ ...entry, content: trimmed });
+      used += trimmed.length;
+    }
+
+    return result;
   }
 
   private async saveMemories(task: Task, output: Record<string, unknown>): Promise<void> {
@@ -508,7 +548,7 @@ export abstract class BaseAgent {
         await this.memory.setShortTerm(task.sessionId, {
           agentRole: this.definition.role,
           type: 'context',
-          content: JSON.stringify({ input: task.input, output }).slice(0, 4000),
+          content: this.summariseForShortTerm(task, output),
           relevanceScore: 1.0,
           sessionId: task.sessionId,
           tags: [],
@@ -532,7 +572,7 @@ export abstract class BaseAgent {
           // Promote high-effectiveness patterns to global memory
           if (
             (learning.type === 'pattern' || learning.type === 'error_fix') &&
-            learning.relevanceScore >= 1.0
+            learning.relevanceScore > 1.3
           ) {
             await this.memory.saveGlobal({
               ...learning,
@@ -553,6 +593,75 @@ export abstract class BaseAgent {
         });
       }
     }
+  }
+
+  // ── Memory Utilities ────────────────────────────────────
+
+  /**
+   * Format retrieved memories into a concise, grouped prompt block.
+   * Entries proven effective (>70%) are marked with ★.
+   * Returns an empty string when there are no memories.
+   */
+  protected formatMemoriesForPrompt(memories: MemoryEntry[]): string {
+    if (memories.length === 0) return '';
+
+    const TYPE_LABELS: Record<string, string> = {
+      pattern:    'Proven Patterns',
+      error_fix:  'Known Fixes',
+      decision:   'Prior Decisions',
+      failure:    'Past Failures',
+      preference: 'Preferences',
+      prompt:     'Prompt Strategies',
+      context:    'Session Context',
+      global:     'Shared Knowledge',
+    };
+
+    const grouped = new Map<string, MemoryEntry[]>();
+    for (const m of memories) {
+      const bucket = grouped.get(m.type) ?? [];
+      bucket.push(m);
+      grouped.set(m.type, bucket);
+    }
+
+    const lines: string[] = [`## Relevant Memory (${memories.length})\n`];
+    for (const [type, entries] of grouped) {
+      lines.push(`**${TYPE_LABELS[type] ?? type}:**`);
+      for (const e of entries) {
+        const star = !isNaN(e.effectiveness) && e.effectiveness > 0.7 ? ' \u2605' : '';
+        lines.push(`- ${e.content}${star}`);
+      }
+    }
+
+    return lines.join('\n') + '\n\n';
+  }
+
+  /**
+   * Produce a compact, signal-rich summary of task output for short-term
+   * storage. Avoids persisting raw code blobs or full object dumps.
+   */
+  private summariseForShortTerm(task: Task, output: Record<string, unknown>): string {
+    const parts: string[] = [`${this.definition.role} completed.`];
+
+    for (const [key, val] of Object.entries(output)) {
+      if (Array.isArray(val)) {
+        if (val.length === 0) continue;
+        const items = val.slice(0, 4).map(v => {
+          if (typeof v === 'string') return v.slice(0, 60);
+          if (typeof v === 'object' && v !== null) {
+            const o = v as Record<string, unknown>;
+            return String(o.path ?? o.name ?? o.id ?? JSON.stringify(v).slice(0, 50));
+          }
+          return String(v);
+        });
+        parts.push(`${key}(${val.length}): [${items.join(', ')}${val.length > 4 ? ', \u2026' : ''}]`);
+      } else if (typeof val === 'string' && val.length > 0) {
+        parts.push(`${key}: ${val.slice(0, 120)}`);
+      } else if (typeof val === 'object' && val !== null) {
+        parts.push(`${key}: {${Object.keys(val as object).slice(0, 5).join(', ')}}`);
+      }
+    }
+
+    return parts.join(' | ').slice(0, 500);
   }
 
   // ── Private: Error Classification ──────────────────────

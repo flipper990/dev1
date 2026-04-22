@@ -34,13 +34,7 @@ export class DevOpsAgent extends BaseAgent {
       prompt += `${generatedFiles.length} files: ${Object.entries(byLang).map(([l, c]) => `${c} ${l}`).join(', ')}\n\n`;
     }
 
-    if (memories.length > 0) {
-      prompt += `## Infrastructure Patterns from Memory\n\n`;
-      for (const mem of memories) {
-        prompt += `- [${mem.type}] ${mem.content}\n`;
-      }
-      prompt += '\n';
-    }
+    prompt += this.formatMemoriesForPrompt(memories);
 
     prompt += `Generate infrastructure and deployment files as defined in your system prompt.`;
     return prompt;

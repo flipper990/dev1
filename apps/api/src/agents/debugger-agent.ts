@@ -27,13 +27,7 @@ export class DebuggerAgent extends BaseAgent {
       prompt += `## Tech Stack (for fix style reference)\n\n\`\`\`json\n${JSON.stringify((spec as any).techStack)}\n\`\`\`\n\n`;
     }
 
-    if (memories.length > 0) {
-      prompt += `## Known Fix Patterns\n\n`;
-      for (const mem of memories) {
-        prompt += `- [${mem.type}] ${mem.content}\n`;
-      }
-      prompt += '\n';
-    }
+    prompt += this.formatMemoriesForPrompt(memories);
 
     prompt += `Produce patches for the issues as defined in your system prompt. Fix critical and high severity first.`;
     return prompt;

@@ -58,13 +58,7 @@ export class DeveloperAgent extends BaseAgent {
       prompt += `## Already Generated Files (for import resolution)\n\n\`\`\`json\n${JSON.stringify(context)}\n\`\`\`\n\n`;
     }
 
-    if (memories.length > 0) {
-      prompt += `## Code Patterns from Memory\n\n`;
-      for (const mem of memories) {
-        prompt += `- [${mem.type}] ${mem.content}\n`;
-      }
-      prompt += '\n';
-    }
+    prompt += this.formatMemoriesForPrompt(memories);
 
     prompt += `Generate all listed files with complete, production-quality code as defined in your system prompt.`;
     return prompt;
@@ -97,20 +91,25 @@ export class DeveloperAgent extends BaseAgent {
     }
   }
 
-  protected async extractLearnings(_task: Task, output: Record<string, unknown>): Promise<MemoryEntry[]> {
+  protected async extractLearnings(task: Task, output: Record<string, unknown>): Promise<MemoryEntry[]> {
     const files = (output.files as { path: string; language?: string }[]) ?? [];
-    const learnings: MemoryEntry[] = [];
+    if (files.length === 0) return [];
 
+    const spec = (task.input as { spec?: { techStack?: Record<string, string> } }).spec;
     const languages = [...new Set(files.map(f => f.language).filter(Boolean))];
-    learnings.push({
+    const hasFrontend = files.some(f => /\.(tsx|jsx)$/.test(f.path));
+    const hasAPI = files.some(f => /\/(api|routes|controllers)\//.test(f.path));
+    const hasTests = files.some(f => /\.(test|spec)\.[jt]sx?$/.test(f.path));
+    const ts = spec?.techStack ?? {};
+    const stackParts = [ts.frontend, ts.backend, ts.styling].filter(Boolean);
+
+    return [{
       agentRole: 'developer',
       type: 'pattern',
-      content: `Generated ${files.length} files (${languages.join(', ')}): ${files.map(f => f.path).slice(0, 8).join(', ')}${files.length > 8 ? '...' : ''}`,
+      content: `Generated ${files.length} ${languages.join('+')} files${hasFrontend ? ' (UI)' : ''}${hasAPI ? ' (API)' : ''}${hasTests ? ' +tests' : ''}${stackParts.length ? ` — ${stackParts.join('+')}` : ''}. Paths: ${files.map(f => f.path).slice(0, 5).join(', ')}${files.length > 5 ? ' …' : ''}`,
       relevanceScore: 1.0,
-      tags: ['code-style', 'tech-stack'],
-      metadata: { fileCount: files.length, languages },
-    } as MemoryEntry);
-
-    return learnings;
+      tags: ['code-style', 'tech-stack', ...(hasFrontend ? ['ui-ux'] as const : [])],
+      metadata: { fileCount: files.length, languages, hasFrontend, hasAPI, hasTests },
+    } as MemoryEntry];
   }
 }

@@ -27,13 +27,7 @@ export class ReviewerAgent extends BaseAgent {
       prompt += `### ${file.path}\n\`\`\`\n${file.content}\n\`\`\`\n\n`;
     }
 
-    if (memories.length > 0) {
-      prompt += `## Known Bug Patterns\n\n`;
-      for (const mem of memories) {
-        prompt += `- [${mem.type}] ${mem.content}\n`;
-      }
-      prompt += '\n';
-    }
+    prompt += this.formatMemoriesForPrompt(memories);
 
     prompt += `Review the codebase and produce a report as defined in your system prompt.`;
     return prompt;

@@ -26,21 +26,7 @@ export class PlannerAgent extends BaseAgent {
       sections.push(`## User Preferences\n\n\`\`\`json\n${JSON.stringify(userPreferences)}\n\`\`\``);
     }
 
-    if (memories.length > 0) {
-      sections.push('## Relevant Past Experience\n');
-      const grouped = new Map<string, MemoryEntry[]>();
-      for (const mem of memories) {
-        const group = grouped.get(mem.type) ?? [];
-        group.push(mem);
-        grouped.set(mem.type, group);
-      }
-      for (const [type, entries] of grouped) {
-        sections.push(`### ${type}`);
-        for (const e of entries) {
-          sections.push(`- ${e.content}`);
-        }
-      }
-    }
+    sections.push(this.formatMemoriesForPrompt(memories));
 
     sections.push('Analyze these prompts and produce the execution plan as specified in your system prompt.');
     return sections.join('\n\n');

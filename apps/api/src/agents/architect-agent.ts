@@ -19,13 +19,7 @@ export class ArchitectAgent extends BaseAgent {
       prompt += `## User Preferences\n\n\`\`\`json\n${JSON.stringify(userPreferences)}\n\`\`\`\n\n`;
     }
 
-    if (memories.length > 0) {
-      prompt += `## Architectural Patterns from Memory\n\n`;
-      for (const mem of memories) {
-        prompt += `- [${mem.type}] ${mem.content}\n`;
-      }
-      prompt += '\n';
-    }
+    prompt += this.formatMemoriesForPrompt(memories);
 
     prompt += `Convert this plan into a complete technical specification as defined in your system prompt.`;
     return prompt;
@@ -70,30 +64,50 @@ export class ArchitectAgent extends BaseAgent {
 
   protected async extractLearnings(_task: Task, output: Record<string, unknown>): Promise<MemoryEntry[]> {
     const spec = output as {
-      techStack: Record<string, unknown>;
+      techStack: Record<string, string>;
       fileTree: string[];
       apiContracts?: { method: string; path: string }[];
       dbSchema?: { tables?: { name: string }[] };
     };
     const learnings: MemoryEntry[] = [];
+    const ts = spec.techStack ?? {};
 
-    learnings.push({
-      agentRole: 'architect',
-      type: 'pattern',
-      content: `Spec: ${spec.fileTree.length} files, ${spec.apiContracts?.length ?? 0} endpoints, stack=${JSON.stringify(spec.techStack)}`,
-      relevanceScore: 1.0,
-      tags: ['architecture', 'tech-stack'],
-      metadata: { techStack: spec.techStack, fileCount: spec.fileTree.length },
-    } as MemoryEntry);
-
-    if (spec.dbSchema?.tables && spec.dbSchema.tables.length > 0) {
+    // Tech stack decision — most reusable knowledge for future projects
+    const stackParts = [ts.frontend, ts.backend, ts.database, ts.auth, ts.styling].filter(Boolean);
+    if (stackParts.length > 0) {
       learnings.push({
         agentRole: 'architect',
         type: 'decision',
-        content: `DB schema: ${spec.dbSchema.tables.map(t => t.name).join(', ')}`,
+        content: `Stack: ${stackParts.join(' + ')} — ${spec.fileTree.length} files, ${spec.apiContracts?.length ?? 0} endpoints`,
+        relevanceScore: 1.1,
+        tags: ['architecture', 'tech-stack'],
+        metadata: { techStack: ts, fileCount: spec.fileTree.length },
+      } as MemoryEntry);
+    }
+
+    // DB schema pattern
+    const tables = spec.dbSchema?.tables ?? [];
+    if (tables.length >= 2) {
+      learnings.push({
+        agentRole: 'architect',
+        type: 'pattern',
+        content: `DB tables (${ts.database ?? 'SQL'}): ${tables.map(t => t.name).join(', ')}`,
         relevanceScore: 0.9,
         tags: ['database', 'architecture'],
-        metadata: { tableCount: spec.dbSchema.tables.length },
+        metadata: { tableNames: tables.map(t => t.name) },
+      } as MemoryEntry);
+    }
+
+    // API shape pattern
+    if (spec.apiContracts && spec.apiContracts.length > 3) {
+      const sample = spec.apiContracts.slice(0, 5).map(c => `${c.method} ${c.path}`).join(', ');
+      learnings.push({
+        agentRole: 'architect',
+        type: 'pattern',
+        content: `REST API (${spec.apiContracts.length} endpoints): ${sample}${spec.apiContracts.length > 5 ? ', …' : ''}`,
+        relevanceScore: 0.8,
+        tags: ['api-design', 'architecture'],
+        metadata: { endpointCount: spec.apiContracts.length },
       } as MemoryEntry);
     }
 

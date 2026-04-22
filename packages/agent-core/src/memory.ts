@@ -103,6 +103,7 @@ export class MemoryManager implements MemoryStore {
                 last_accessed as "lastAccessed", access_count as "accessCount", metadata
          FROM agent_memory
          WHERE agent_role = $1
+           AND memory_type != 'context'
            AND relevance_score > 0.1
          ORDER BY embedding <=> $2::vector
          LIMIT $3`,
@@ -403,9 +404,15 @@ export class InMemoryMemoryStore implements MemoryStore {
   }
 
   async queryLongTerm(agentRole: AgentRole, _embedding: number[], limit: number): Promise<MemoryEntry[]> {
+    // Composite score: relevance × effectiveness × recency (halves every 30 days)
+    const score = (e: MemoryEntry): number => {
+      const eff = isNaN(e.effectiveness) ? 0.5 : Math.max(e.effectiveness, 0.1);
+      const daysSince = (Date.now() - new Date(e.lastAccessed).getTime()) / 86_400_000;
+      return e.relevanceScore * eff * (1 / (1 + daysSince / 30));
+    };
     return this.longTerm
-      .filter(e => e.agentRole === agentRole)
-      .sort((a, b) => b.relevanceScore - a.relevanceScore)
+      .filter(e => e.agentRole === agentRole && e.type !== 'context')
+      .sort((a, b) => score(b) - score(a))
       .slice(0, limit);
   }
 

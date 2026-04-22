@@ -1,6 +1,6 @@
-import type { AgentRole } from '../../../packages/agent-core/src/types.js';
-import type { Logger } from '../../../packages/agent-core/src/base-agent.js';
-import type { PipelineState } from '../../../packages/agent-core/src/orchestrator.js';
+import type { AgentRole } from '../../../../packages/agent-core/src/types.js';
+import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
+import type { PipelineState } from '../../../../packages/agent-core/src/orchestrator.js';
 import type { TaskSummary } from '../storage/project-store.js';
 import type { ProjectFile, Patch, StepSummary } from './generator-types.js';
 import { ensureDeploymentReadiness } from './deployment-templates.js';

@@ -1,9 +1,9 @@
-// ─────────────────────────────────────────────────────────────
-// Architect Agent — Converts plan into technical specification
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Architect Agent â€” Converts plan into technical specification
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-import { BaseAgent } from '../../../packages/agent-core/src/base-agent.js';
-import type { Task, MemoryEntry } from '../../../packages/agent-core/src/types.js';
+import { BaseAgent } from '../../../../packages/agent-core/src/base-agent.js';
+import type { Task, MemoryEntry } from '../../../../packages/agent-core/src/types.js';
 import { extractJSON } from './utils.js';
 
 export class ArchitectAgent extends BaseAgent {
@@ -72,13 +72,13 @@ export class ArchitectAgent extends BaseAgent {
     const learnings: MemoryEntry[] = [];
     const ts = spec.techStack ?? {};
 
-    // Tech stack decision — most reusable knowledge for future projects
+    // Tech stack decision â€” most reusable knowledge for future projects
     const stackParts = [ts.frontend, ts.backend, ts.database, ts.auth, ts.styling].filter(Boolean);
     if (stackParts.length > 0) {
       learnings.push({
         agentRole: 'architect',
         type: 'decision',
-        content: `Stack: ${stackParts.join(' + ')} — ${spec.fileTree.length} files, ${spec.apiContracts?.length ?? 0} endpoints`,
+        content: `Stack: ${stackParts.join(' + ')} â€” ${spec.fileTree.length} files, ${spec.apiContracts?.length ?? 0} endpoints`,
         relevanceScore: 1.1,
         tags: ['architecture', 'tech-stack'],
         metadata: { techStack: ts, fileCount: spec.fileTree.length },
@@ -104,7 +104,7 @@ export class ArchitectAgent extends BaseAgent {
       learnings.push({
         agentRole: 'architect',
         type: 'pattern',
-        content: `REST API (${spec.apiContracts.length} endpoints): ${sample}${spec.apiContracts.length > 5 ? ', …' : ''}`,
+        content: `REST API (${spec.apiContracts.length} endpoints): ${sample}${spec.apiContracts.length > 5 ? ', â€¦' : ''}`,
         relevanceScore: 0.8,
         tags: ['api-design', 'architecture'],
         metadata: { endpointCount: spec.apiContracts.length },

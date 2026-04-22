@@ -1,11 +1,11 @@
 import { nanoid } from 'nanoid';
-import type { AgentRole } from '../../../packages/agent-core/src/types.js';
-import type { BaseAgent, Logger } from '../../../packages/agent-core/src/base-agent.js';
+import type { AgentRole } from '../../../../packages/agent-core/src/types.js';
+import type { BaseAgent, Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import {
   PipelineOrchestrator,
   type PipelineEvent,
-} from '../../../packages/agent-core/src/orchestrator.js';
-import { InMemoryMessageBus } from '../../../packages/agent-core/src/message-bus.js';
+} from '../../../../packages/agent-core/src/orchestrator.js';
+import { InMemoryMessageBus } from '../../../../packages/agent-core/src/message-bus.js';
 import { SessionManager } from './session-manager.js';
 import { ProjectStore, type ProjectSnapshot, type VersionMeta } from '../storage/project-store.js';
 import { FileMemoryStore } from '../storage/memory-store.js';
@@ -80,19 +80,15 @@ export class ProjectUpdater {
       const previousVersion = existing.version ?? 1;
       const snapshot: ProjectSnapshot = {
         version: previousVersion,
-        projectId,
-        savedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
         files: existing.files ?? [],
         spec: existing.spec as Record<string, unknown> | undefined,
         plan: existing.plan as Record<string, unknown> | undefined,
         diffs,
         prompts: existing.prompts ?? [],
-        stats: {
-          totalTokens: existing.totalTokens ?? 0,
-          totalCostUsd: existing.totalCostUsd ?? 0,
-          durationMs: existing.durationMs ?? 0,
-          filesCount: (existing.files ?? []).length,
-        },
+        totalTokens: existing.totalTokens ?? 0,
+        totalCostUsd: existing.totalCostUsd ?? 0,
+        durationMs: existing.durationMs ?? 0,
       };
       await this.projectStore.saveSnapshot(projectId, snapshot);
 
@@ -103,15 +99,12 @@ export class ProjectUpdater {
 
       const versionMeta: VersionMeta = {
         version: newVersion,
-        savedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
         prompts,
         diffs,
-        stats: {
-          totalTokens: taskSummaries.reduce((s, t) => s + t.tokensUsed, 0),
-          totalCostUsd: taskSummaries.reduce((s, t) => s + t.costUsd, 0),
-          durationMs: pipelineState.durationMs,
-          filesCount: newFiles.length,
-        },
+        totalTokens: taskSummaries.reduce((s, t) => s + t.tokensUsed, 0),
+        totalCostUsd: taskSummaries.reduce((s, t) => s + t.costUsd, 0),
+        durationMs: pipelineState.durationMs,
       };
 
       existing.name = planOutput?.projectName ?? existing.name;
@@ -122,8 +115,8 @@ export class ProjectUpdater {
       existing.plan = pipelineState.artifacts.get('planner') as Record<string, unknown> | undefined ?? existing.plan;
       existing.qaReport = pipelineState.artifacts.get('reviewer') as Record<string, unknown> | undefined;
       existing.tasks = taskSummaries;
-      existing.totalTokens = (existing.totalTokens ?? 0) + versionMeta.stats.totalTokens;
-      existing.totalCostUsd = (existing.totalCostUsd ?? 0) + versionMeta.stats.totalCostUsd;
+      existing.totalTokens = (existing.totalTokens ?? 0) + versionMeta.totalTokens;
+      existing.totalCostUsd = (existing.totalCostUsd ?? 0) + versionMeta.totalCostUsd;
       existing.durationMs = (existing.durationMs ?? 0) + pipelineState.durationMs;
       existing.version = newVersion;
       existing.versionHistory = [...(existing.versionHistory ?? []), versionMeta];

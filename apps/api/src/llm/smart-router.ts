@@ -1,12 +1,12 @@
-﻿// Smart LLM Router — task-aware routing with fallback, retry, circuit breaker,
+// Smart LLM Router — task-aware routing with fallback, retry, circuit breaker,
 // cost tracking, and dynamic model switching.
 // Config / presets / helpers -> ./router-config.ts
 
 import { randomUUID } from 'node:crypto';
-import type { AgentRole, LLMProvider, ModelConfig } from '../../../packages/agent-core/src/types.js';
-import type { LLMClient, Logger } from '../../../packages/agent-core/src/base-agent.js';
-import { CircuitBreaker } from '../../../packages/agent-core/src/resilience.js';
-import type { CircuitBreakerConfig } from '../../../packages/agent-core/src/resilience.js';
+import type { AgentRole, LLMProvider, ModelConfig } from '../../../../packages/agent-core/src/types.js';
+import type { LLMClient, Logger } from '../../../../packages/agent-core/src/base-agent.js';
+import { CircuitBreaker } from '../../../../packages/agent-core/src/resilience.js';
+import type { CircuitBreakerConfig } from '../../../../packages/agent-core/src/resilience.js';
 import { ProviderRegistry } from './provider-registry.js';
 import { CostTracker } from './cost-tracker.js';
 import type { ChatMessage, CostSummary, LLMProviderClient, ModelOverride, RoutedLLMResponse, RouterConfig, TaskCategory } from './types.js';

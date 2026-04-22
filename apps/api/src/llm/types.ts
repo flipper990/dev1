@@ -1,10 +1,10 @@
-// ─────────────────────────────────────────────────────────────
-// LLM Routing System — Shared types
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// LLM Routing System â€” Shared types
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-import type { LLMProvider, ModelConfig, AgentRole } from '../../../packages/agent-core/src/types.js';
+import type { LLMProvider, ModelConfig, AgentRole } from '../../../../packages/agent-core/src/types.js';
 
-// ── Provider Interface ──────────────────────────────────────
+// â”€â”€ Provider Interface â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Every LLM provider must implement this interface. */
 export interface LLMProviderClient {
@@ -18,7 +18,7 @@ export interface LLMProviderClient {
   healthCheck?(): Promise<boolean>;
 }
 
-// ── Request / Response ──────────────────────────────────────
+// â”€â”€ Request / Response â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface LLMRequestParams {
   model: ModelConfig;
@@ -37,7 +37,7 @@ export interface LLMResponse {
   tokensOut: number;
 }
 
-// ── Enriched Response (from router) ─────────────────────────
+// â”€â”€ Enriched Response (from router) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface RoutedLLMResponse extends LLMResponse {
   /** Which model actually handled the request */
@@ -54,16 +54,16 @@ export interface RoutedLLMResponse extends LLMResponse {
   requestId: string;
 }
 
-// ── Task Classification ─────────────────────────────────────
+// â”€â”€ Task Classification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Broad task categories that influence model selection. */
 export type TaskCategory =
-  | 'planning'       // decomposition, strategy — Claude excels
-  | 'reasoning'      // analysis, review, debugging — Claude excels
-  | 'code-generation'// writing code — either, but OpenAI often preferred
-  | 'code-review'    // reviewing code — Claude excels
-  | 'testing'        // generating tests — either
-  | 'infrastructure' // devops, config — lightweight model
+  | 'planning'       // decomposition, strategy â€” Claude excels
+  | 'reasoning'      // analysis, review, debugging â€” Claude excels
+  | 'code-generation'// writing code â€” either, but OpenAI often preferred
+  | 'code-review'    // reviewing code â€” Claude excels
+  | 'testing'        // generating tests â€” either
+  | 'infrastructure' // devops, config â€” lightweight model
   | 'general';       // fallback category
 
 /** Maps agent roles to task categories for routing. */
@@ -78,18 +78,18 @@ export const ROLE_TO_CATEGORY: Record<AgentRole, TaskCategory> = {
   optimizer: 'code-review',
 };
 
-// ── Routing Rule ────────────────────────────────────────────
+// â”€â”€ Routing Rule â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** A routing rule maps a task category to a preferred model chain. */
 export interface RoutingRule {
   category: TaskCategory;
   /** Primary model to use. */
   primary: ModelConfig;
-  /** Ordered fallback chain — tried in sequence if primary fails. */
+  /** Ordered fallback chain â€” tried in sequence if primary fails. */
   fallbacks: ModelConfig[];
 }
 
-// ── Router Configuration ────────────────────────────────────
+// â”€â”€ Router Configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface RouterConfig {
   /** Per-category routing rules. If a category has no rule, uses defaultModel. */
@@ -108,7 +108,7 @@ export interface RouterConfig {
   retryBaseDelayMs?: number;
 }
 
-// ── Cost Tracking ───────────────────────────────────────────
+// â”€â”€ Cost Tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface CostRecord {
   requestId: string;
@@ -139,15 +139,15 @@ export interface CostSummary {
   errorRate: number;
 }
 
-// ── Model Override ──────────────────────────────────────────
+// â”€â”€ Model Override â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Runtime override for a specific agent or category. */
 export interface ModelOverride {
-  /** Target — either a role or category. */
+  /** Target â€” either a role or category. */
   target: AgentRole | TaskCategory;
   targetType: 'role' | 'category';
   /** Override model. */
   model: ModelConfig;
-  /** Optional expiry — after this, override is removed. */
+  /** Optional expiry â€” after this, override is removed. */
   expiresAt?: Date;
 }

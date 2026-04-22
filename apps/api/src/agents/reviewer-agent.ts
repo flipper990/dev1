@@ -1,9 +1,9 @@
-// ─────────────────────────────────────────────────────────────
-// Reviewer Agent — Reviews code for correctness and security
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Reviewer Agent â€” Reviews code for correctness and security
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-import { BaseAgent } from '../../../packages/agent-core/src/base-agent.js';
-import type { Task, MemoryEntry } from '../../../packages/agent-core/src/types.js';
+import { BaseAgent } from '../../../../packages/agent-core/src/base-agent.js';
+import type { Task, MemoryEntry } from '../../../../packages/agent-core/src/types.js';
 import { extractJSON } from './utils.js';
 
 export class ReviewerAgent extends BaseAgent {
@@ -13,7 +13,7 @@ export class ReviewerAgent extends BaseAgent {
       files: { path: string; content: string }[];
     };
 
-    // Send only the contract-verification surface — the full spec (fileTree, dbSchema,
+    // Send only the contract-verification surface â€” the full spec (fileTree, dbSchema,
     // components) is already encoded in the code and doubles the token count needlessly.
     const verificationRef = {
       apiContracts: (spec as any).apiContracts ?? [],
@@ -51,7 +51,7 @@ export class ReviewerAgent extends BaseAgent {
       }
     }
     if (typeof output.score !== 'number' || output.score < 0 || output.score > 100) {
-      throw new Error('Validation: score must be 0–100');
+      throw new Error('Validation: score must be 0â€“100');
     }
     if (typeof output.passable !== 'boolean') {
       throw new Error('Validation: passable must be boolean');

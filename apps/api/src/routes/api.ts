@@ -1,4 +1,4 @@
-﻿// API Routes — REST endpoints for project generation.
+// API Routes — REST endpoints for project generation.
 // LLM routes live in ./llm-routes.ts; versioning routes in ./version-routes.ts.
 
 import type { FastifyInstance } from 'fastify';
@@ -7,7 +7,7 @@ import type { ProjectGenerator } from '../pipeline/project-generator.js';
 import type { ProjectStore } from '../storage/project-store.js';
 import type { SessionManager } from '../pipeline/session-manager.js';
 import type { FileMemoryStore } from '../storage/memory-store.js';
-import type { Logger } from '../../../packages/agent-core/src/base-agent.js';
+import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import type { SmartLLMRouter } from '../llm/smart-router.js';
 import { registerLLMRoutes } from './llm-routes.js';
 import { registerVersionRoutes } from './version-routes.js';

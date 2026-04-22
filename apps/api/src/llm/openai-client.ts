@@ -1,10 +1,10 @@
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // OpenAI provider client
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import OpenAI from 'openai';
-import type { LLMProvider } from '../../../packages/agent-core/src/types.js';
-import type { Logger } from '../../../packages/agent-core/src/base-agent.js';
+import type { LLMProvider } from '../../../../packages/agent-core/src/types.js';
+import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import type { LLMProviderClient, LLMRequestParams, LLMResponse } from './types.js';
 
 export class OpenAIClient implements LLMProviderClient {

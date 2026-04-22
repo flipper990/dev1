@@ -1,9 +1,9 @@
-// ─────────────────────────────────────────────────────────────
-// Planner Agent — Decomposes prompts into execution plan
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Planner Agent â€” Decomposes prompts into execution plan
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-import { BaseAgent } from '../../../packages/agent-core/src/base-agent.js';
-import type { Task, MemoryEntry } from '../../../packages/agent-core/src/types.js';
+import { BaseAgent } from '../../../../packages/agent-core/src/base-agent.js';
+import type { Task, MemoryEntry } from '../../../../packages/agent-core/src/types.js';
 import { extractJSON } from './utils.js';
 // Re-export for backward compatibility
 export { extractJSON } from './utils.js';
@@ -76,7 +76,7 @@ export class PlannerAgent extends BaseAgent {
     learnings.push({
       agentRole: 'planner',
       type: 'pattern',
-      content: `Planned "${plan.projectName}" with stack ${JSON.stringify(plan.stackHints)} — ${plan.tasks.length} tasks`,
+      content: `Planned "${plan.projectName}" with stack ${JSON.stringify(plan.stackHints)} â€” ${plan.tasks.length} tasks`,
       relevanceScore: 1.0,
       tags: ['architecture', 'tech-stack'],
       metadata: { stackHints: plan.stackHints, taskCount: plan.tasks.length },

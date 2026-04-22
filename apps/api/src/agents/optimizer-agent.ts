@@ -1,9 +1,9 @@
-// ─────────────────────────────────────────────────────────────
-// Optimizer Agent — Final-pass performance optimization
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Optimizer Agent â€” Final-pass performance optimization
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-import { BaseAgent } from '../../../packages/agent-core/src/base-agent.js';
-import type { Task, MemoryEntry } from '../../../packages/agent-core/src/types.js';
+import { BaseAgent } from '../../../../packages/agent-core/src/base-agent.js';
+import type { Task, MemoryEntry } from '../../../../packages/agent-core/src/types.js';
 import { extractJSON } from './utils.js';
 
 export class OptimizerAgent extends BaseAgent {
@@ -14,7 +14,7 @@ export class OptimizerAgent extends BaseAgent {
       qaReport?: Record<string, unknown>;
     };
 
-    // Filter to optimizable source files — test files and config files yield no
+    // Filter to optimizable source files â€” test files and config files yield no
     // optimization benefit and can easily double the prompt token count.
     const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rb|php|java|cs|rs|swift|kt)$/;
     const TEST_PAT  = /\.(test|spec)\.[^/]+$|[\\/]__tests__[\\/]/;

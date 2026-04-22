@@ -1,10 +1,10 @@
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Anthropic Claude provider client
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { LLMProvider } from '../../../packages/agent-core/src/types.js';
-import type { Logger } from '../../../packages/agent-core/src/base-agent.js';
+import type { LLMProvider } from '../../../../packages/agent-core/src/types.js';
+import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import type { LLMProviderClient, LLMRequestParams, LLMResponse } from './types.js';
 
 export class AnthropicClient implements LLMProviderClient {

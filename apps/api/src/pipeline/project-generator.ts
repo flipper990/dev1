@@ -1,15 +1,15 @@
-﻿// Project Generator — orchestrates the 7-step pipeline and assembles the final project.
+// Project Generator — orchestrates the 7-step pipeline and assembles the final project.
 // The update flow lives in ProjectUpdater; this class handles generate() only.
 
 import { nanoid } from 'nanoid';
 import { createHash } from 'node:crypto';
-import type { AgentRole } from '../../../packages/agent-core/src/types.js';
-import type { BaseAgent, Logger } from '../../../packages/agent-core/src/base-agent.js';
+import type { AgentRole } from '../../../../packages/agent-core/src/types.js';
+import type { BaseAgent, Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import {
   PipelineOrchestrator,
   type PipelineEvent,
-} from '../../../packages/agent-core/src/orchestrator.js';
-import { InMemoryMessageBus } from '../../../packages/agent-core/src/message-bus.js';
+} from '../../../../packages/agent-core/src/orchestrator.js';
+import { InMemoryMessageBus } from '../../../../packages/agent-core/src/message-bus.js';
 import { SessionManager } from './session-manager.js';
 import { ProjectStore, type ProjectRecord } from '../storage/project-store.js';
 import { FileMemoryStore } from '../storage/memory-store.js';

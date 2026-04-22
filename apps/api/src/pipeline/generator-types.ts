@@ -1,6 +1,6 @@
-import type { AgentRole } from '../../../packages/agent-core/src/types.js';
+import type { AgentRole } from '../../../../packages/agent-core/src/types.js';
 
-// ── Public API Types ────────────────────────────────────────
+// â”€â”€ Public API Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface GenerateRequest {
   prompts: string[];
@@ -17,9 +17,9 @@ export interface UpdateRequest {
   preferences?: Record<string, unknown>;
   /**
    * Scope hint for how much of the pipeline to re-run.
-   * - 'code'   — Only code/test/review/debug/optimize steps (reuse planner + architect).
-   * - 'design' — Re-run from architect onward (reuse planner only).
-   * - 'full'   — Re-run the complete pipeline (same as a fresh generate).
+   * - 'code'   â€” Only code/test/review/debug/optimize steps (reuse planner + architect).
+   * - 'design' â€” Re-run from architect onward (reuse planner only).
+   * - 'full'   â€” Re-run the complete pipeline (same as a fresh generate).
    */
   scope?: 'code' | 'design' | 'full';
 }
@@ -61,7 +61,7 @@ export interface StepSummary {
   error?: string;
 }
 
-// ── Internal File Types ─────────────────────────────────────
+// â”€â”€ Internal File Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface ProjectFile {
   path: string;

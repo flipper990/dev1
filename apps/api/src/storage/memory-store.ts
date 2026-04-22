@@ -1,4 +1,4 @@
-﻿// File-based MemoryStore — dev/staging backend, mirrors MemoryManager interface 1:1.
+// File-based MemoryStore — dev/staging backend, mirrors MemoryManager interface 1:1.
 // To upgrade to vector DB: swap for MemoryManager from agent-core/memory.ts.
 
 import type {
@@ -6,12 +6,12 @@ import type {
   MemoryEntry,
   MemoryQuery,
   MemoryType,
-} from '../../../packages/agent-core/src/types.js';
+} from '../../../../packages/agent-core/src/types.js';
 import type {
   MemoryStore,
   MemoryEntryInput,
   Logger,
-} from '../../../packages/agent-core/src/base-agent.js';
+} from '../../../../packages/agent-core/src/base-agent.js';
 import { jaccardSimilarity, tokenize, textMatchScore } from './memory-text-utils.js';
 import { hydrateEntry, touchEntry, rankEntry } from './memory-entry-helpers.js';
 import {

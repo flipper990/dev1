@@ -1,10 +1,10 @@
-// ─────────────────────────────────────────────────────────────
-// Task Queue — BullMQ-based job queue for agent tasks
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Task Queue â€” BullMQ-based job queue for agent tasks
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import { Queue, Worker, type Job } from 'bullmq';
-import type { AgentRole, Task } from '../../../packages/agent-core/src/types.js';
-import type { Logger } from '../../../packages/agent-core/src/base-agent.js';
+import type { AgentRole, Task } from '../../../../packages/agent-core/src/types.js';
+import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 
 export interface QueueConfig {
   redisUrl: string;

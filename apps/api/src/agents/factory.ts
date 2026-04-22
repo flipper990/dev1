@@ -1,11 +1,11 @@
-// ─────────────────────────────────────────────────────────────
-// Agent Factory — Instantiates all agents from registry
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Agent Factory â€” Instantiates all agents from registry
 // Supports middleware, hooks, and prompt overrides.
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-import type { AgentRole, AgentMiddleware, AgentHooks, PromptConfig } from '../../../packages/agent-core/src/types.js';
-import { BaseAgent, type AgentConfig, type LLMClient, type MemoryStore, type MessageBus, type Logger } from '../../../packages/agent-core/src/base-agent.js';
-import { AGENT_DEFINITIONS } from '../../../packages/agent-core/src/agent-registry.js';
+import type { AgentRole, AgentMiddleware, AgentHooks, PromptConfig } from '../../../../packages/agent-core/src/types.js';
+import { BaseAgent, type AgentConfig, type LLMClient, type MemoryStore, type MessageBus, type Logger } from '../../../../packages/agent-core/src/base-agent.js';
+import { AGENT_DEFINITIONS } from '../../../../packages/agent-core/src/agent-registry.js';
 
 import { PlannerAgent } from './planner-agent.js';
 import { ArchitectAgent } from './architect-agent.js';

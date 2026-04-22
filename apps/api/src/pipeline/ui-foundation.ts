@@ -1,8 +1,8 @@
-// UI Foundation injection — extracted from ProjectGenerator.
+// UI Foundation injection â€” extracted from ProjectGenerator.
 // Guarantees essential primitive files exist so generated frontends always compile.
 // Called by assembleProject() only when frontend files are detected.
 
-import type { AgentRole } from '../../../packages/agent-core/src/types.js';
+import type { AgentRole } from '../../../../packages/agent-core/src/types.js';
 import type { ProjectFile } from './generator-types.js';
 
 export function injectUIFoundation(

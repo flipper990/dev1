@@ -1,9 +1,9 @@
-// ─────────────────────────────────────────────────────────────
-// Debugger Agent — Produces patches from review issues
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Debugger Agent â€” Produces patches from review issues
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-import { BaseAgent } from '../../../packages/agent-core/src/base-agent.js';
-import type { Task, MemoryEntry } from '../../../packages/agent-core/src/types.js';
+import { BaseAgent } from '../../../../packages/agent-core/src/base-agent.js';
+import type { Task, MemoryEntry } from '../../../../packages/agent-core/src/types.js';
 import { extractJSON } from './utils.js';
 
 export class DebuggerAgent extends BaseAgent {
@@ -21,7 +21,7 @@ export class DebuggerAgent extends BaseAgent {
       prompt += `### ${file.path}\n\`\`\`\n${file.content}\n\`\`\`\n\n`;
     }
 
-    // Only include tech stack — fixes should match the project's language/framework style.
+    // Only include tech stack â€” fixes should match the project's language/framework style.
     // All other spec fields are already encoded in the file content above.
     if (spec && (spec as any).techStack) {
       prompt += `## Tech Stack (for fix style reference)\n\n\`\`\`json\n${JSON.stringify((spec as any).techStack)}\n\`\`\`\n\n`;
@@ -49,7 +49,7 @@ export class DebuggerAgent extends BaseAgent {
         throw new Error(`Validation: patch for ${patch.file} missing oldContent or newContent`);
       }
       if (patch.oldContent === patch.newContent) {
-        this.logger.warn(`[debugger] Patch for ${patch.file} has identical old/new content — no-op`);
+        this.logger.warn(`[debugger] Patch for ${patch.file} has identical old/new content â€” no-op`);
       }
     }
     if (!output.unresolved || !Array.isArray(output.unresolved)) {

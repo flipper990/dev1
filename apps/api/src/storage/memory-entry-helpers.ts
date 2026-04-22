@@ -1,5 +1,5 @@
-import type { MemoryEntry } from '../../../packages/agent-core/src/types.js';
-import type { MemoryEntryInput } from '../../../packages/agent-core/src/base-agent.js';
+import type { MemoryEntry } from '../../../../packages/agent-core/src/types.js';
+import type { MemoryEntryInput } from '../../../../packages/agent-core/src/base-agent.js';
 
 /** Hydrate a partial entry input into a full MemoryEntry. */
 export function hydrateEntry(entry: MemoryEntryInput): MemoryEntry {

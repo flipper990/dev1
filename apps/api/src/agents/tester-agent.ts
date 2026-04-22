@@ -1,9 +1,9 @@
-// ─────────────────────────────────────────────────────────────
-// Tester Agent — Generates test suites
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Tester Agent â€” Generates test suites
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-import { BaseAgent } from '../../../packages/agent-core/src/base-agent.js';
-import type { Task, MemoryEntry } from '../../../packages/agent-core/src/types.js';
+import { BaseAgent } from '../../../../packages/agent-core/src/base-agent.js';
+import type { Task, MemoryEntry } from '../../../../packages/agent-core/src/types.js';
 import { extractJSON } from './utils.js';
 
 export class TesterAgent extends BaseAgent {
@@ -14,13 +14,13 @@ export class TesterAgent extends BaseAgent {
       spec: Record<string, unknown>;
     };
 
-    // Filter to source files only — test files, configs, and static assets
+    // Filter to source files only â€” test files, configs, and static assets
     // don't need to be tested and only inflate the token count.
     const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rb|php|java|cs|rs|swift|kt)$/;
     const TEST_PAT  = /\.(test|spec)\.[^/]+$|[\\/]__tests__[\\/]/;
     const sourceFiles = files.filter(f => SOURCE_EXT.test(f.path) && !TEST_PAT.test(f.path));
 
-    // Tech stack is the only spec field needed — it determines the test framework to use.
+    // Tech stack is the only spec field needed â€” it determines the test framework to use.
     const techStack = (spec as any).techStack ?? {};
 
     let prompt = `## Tech Stack\n\n\`\`\`json\n${JSON.stringify(techStack)}\n\`\`\`\n\n`;

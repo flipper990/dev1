@@ -1,5 +1,5 @@
-// ─────────────────────────────────────────────────────────────
-// Learning Engine — Observes outcomes and improves memory over time
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Learning Engine â€” Observes outcomes and improves memory over time
 //
 // Responsibilities:
 //   1. Record which memories were used for a task
@@ -8,7 +8,7 @@
 //   4. Promote high-performing patterns to global memory
 //   5. Track prompt effectiveness (which prompts led to best outcomes)
 //   6. Periodic consolidation of related memories
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import type {
   AgentRole,
@@ -16,15 +16,15 @@ import type {
   MemoryType,
   MemoryTag,
   Task,
-} from '../../../packages/agent-core/src/types.js';
+} from '../../../../packages/agent-core/src/types.js';
 import type {
   MemoryStore,
   MemoryEntryInput,
   Logger,
-} from '../../../packages/agent-core/src/base-agent.js';
+} from '../../../../packages/agent-core/src/base-agent.js';
 import { consolidate, handleTaskFailure, checkMemoryPromotions } from './learning-consolidator.js';
 
-// ── Session Observation Tracking ────────────────────────────
+// â”€â”€ Session Observation Tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface TaskObservation {
   taskId: string;
@@ -49,19 +49,19 @@ interface PromptRecord {
   lastUsedAt: Date;
 }
 
-// ── Learning Engine ─────────────────────────────────────────
+// â”€â”€ Learning Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export class LearningEngine {
   private memory: MemoryStore;
   private logger: Logger;
 
-  // Active observations (taskId → observation)
+  // Active observations (taskId â†’ observation)
   private observations = new Map<string, TaskObservation>();
 
   // Prompt effectiveness tracking
   private promptRecords = new Map<string, PromptRecord>();
 
-  // Failure pattern accumulator (agentRole:errorCode → count)
+  // Failure pattern accumulator (agentRole:errorCode â†’ count)
   private failureAccumulator = new Map<string, { count: number; lastError: string; lastTaskId: string }>();
 
   // Thresholds
@@ -74,7 +74,7 @@ export class LearningEngine {
     this.logger = logger;
   }
 
-  // ── Observation Lifecycle ─────────────────────────────
+  // â”€â”€ Observation Lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /**
    * Call when an agent starts executing a task.
@@ -130,19 +130,19 @@ export class LearningEngine {
     });
   }
 
-  // ── Failure Detection ─────────────────────────────────
+  // â”€â”€ Failure Detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private async handleFailure(task: Task, observation: TaskObservation): Promise<void> {
     await handleTaskFailure(task, observation.agentRole, this.failureAccumulator, this.FAILURE_PATTERN_THRESHOLD, this.memory, this.logger);
   }
 
-  // ── Promotion to Global ───────────────────────────────
+  // â”€â”€ Promotion to Global â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private async checkForPromotions(observation: TaskObservation): Promise<void> {
     await checkMemoryPromotions(observation.agentRole, this.PROMOTION_THRESHOLD, this.memory, this.logger);
   }
 
-  // ── Prompt Effectiveness ──────────────────────────────
+  // â”€â”€ Prompt Effectiveness â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private recordPromptOutcome(
     agentRole: AgentRole,
@@ -235,14 +235,14 @@ export class LearningEngine {
     return saved;
   }
 
-  // ── Consolidation ─────────────────────────────────────
+  // â”€â”€ Consolidation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /** Merge related memories to reduce noise and strengthen patterns. Call periodically (e.g., daily). */
   async consolidate(agentRole: AgentRole): Promise<{ merged: number; pruned: number }> {
     return consolidate(agentRole, this.memory, this.logger);
   }
 
-  // ── Stats ─────────────────────────────────────────────
+  // â”€â”€ Stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   getObservationCount(): number {
     return this.observations.size;

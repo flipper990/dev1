@@ -1,9 +1,9 @@
 // Model constants, default routing rules, and shared helpers for SmartLLMRouter.
 
-import type { ModelConfig } from '../../../packages/agent-core/src/types.js';
+import type { ModelConfig } from '../../../../packages/agent-core/src/types.js';
 import type { RoutingRule } from './types.js';
 
-// ── Model Presets ───────────────────────────────────────────────
+// â”€â”€ Model Presets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const CLAUDE_OPUS: ModelConfig = {
   provider: 'anthropic',
@@ -33,28 +33,28 @@ export const GPT_4O_MINI: ModelConfig = {
   temperature: 0.3,
 };
 
-// ── Default Routing Rules ───────────────────────────────────────
+// â”€â”€ Default Routing Rules â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const DEFAULT_ROUTING_RULES: RoutingRule[] = [
-  // Planning & reasoning → Claude (best at nuanced analysis)
+  // Planning & reasoning â†’ Claude (best at nuanced analysis)
   { category: 'planning',        primary: CLAUDE_OPUS,    fallbacks: [GPT_4O, CLAUDE_SONNET] },
   { category: 'reasoning',       primary: CLAUDE_OPUS,    fallbacks: [GPT_4O, CLAUDE_SONNET] },
   { category: 'code-review',     primary: CLAUDE_OPUS,    fallbacks: [GPT_4O] },
 
-  // Code generation → OpenAI (strong at structured code output)
+  // Code generation â†’ OpenAI (strong at structured code output)
   { category: 'code-generation', primary: GPT_4O,         fallbacks: [CLAUDE_SONNET, GPT_4O_MINI] },
 
-  // Testing → Sonnet (good balance)
+  // Testing â†’ Sonnet (good balance)
   { category: 'testing',         primary: CLAUDE_SONNET,  fallbacks: [GPT_4O_MINI] },
 
-  // Infrastructure → lightweight model (cost-efficient)
+  // Infrastructure â†’ lightweight model (cost-efficient)
   { category: 'infrastructure',  primary: GPT_4O_MINI,    fallbacks: [CLAUDE_SONNET] },
 
   // General fallback
   { category: 'general',         primary: CLAUDE_SONNET,  fallbacks: [GPT_4O] },
 ];
 
-// ── Error Classification & Retry Helpers ───────────────────────
+// â”€â”€ Error Classification & Retry Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function classifyRouterError(error: Error): string {
   const msg = error.message.toLowerCase();

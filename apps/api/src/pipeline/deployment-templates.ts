@@ -1,7 +1,7 @@
-// Standalone deployment template generation — extracted from ProjectGenerator.
+// Standalone deployment template generation â€” extracted from ProjectGenerator.
 // Called by assembleProject() to ensure baseline deployment artifacts always exist.
 
-import type { AgentRole } from '../../../packages/agent-core/src/types.js';
+import type { AgentRole } from '../../../../packages/agent-core/src/types.js';
 import type { ProjectFile, EnvVarSpec } from './generator-types.js';
 
 export function ensureDeploymentReadiness(

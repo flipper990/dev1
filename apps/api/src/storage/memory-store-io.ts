@@ -1,8 +1,8 @@
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import type { AgentRole, MemoryEntry } from '../../../packages/agent-core/src/types.js';
-import type { Logger } from '../../../packages/agent-core/src/base-agent.js';
+import type { AgentRole, MemoryEntry } from '../../../../packages/agent-core/src/types.js';
+import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 
 export type StoreKey = AgentRole | 'global';
 

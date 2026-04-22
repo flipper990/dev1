@@ -80,7 +80,7 @@ export async function buildApp() {
   // ── Build Fastify app ───────────────────────────────
 
   const app = Fastify({
-    logger: pinoLogger,
+    loggerInstance: pinoLogger,
     bodyLimit: 1_048_576, // 1 MB
     trustProxy: true,
     genReqId: () => crypto.randomUUID(),

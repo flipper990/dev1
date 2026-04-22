@@ -1,7 +1,7 @@
 // Consolidation logic extracted from LearningEngine for clarity.
 
-import type { AgentRole, MemoryEntry, MemoryTag, Task } from '../../../packages/agent-core/src/types.js';
-import type { MemoryStore, MemoryEntryInput, Logger } from '../../../packages/agent-core/src/base-agent.js';
+import type { AgentRole, MemoryEntry, MemoryTag, Task } from '../../../../packages/agent-core/src/types.js';
+import type { MemoryStore, MemoryEntryInput, Logger } from '../../../../packages/agent-core/src/base-agent.js';
 
 export type FailureEntry = { count: number; lastError: string; lastTaskId: string };
 
@@ -27,7 +27,7 @@ export async function handleTaskFailure(
     const failureEntry: MemoryEntryInput = {
       agentRole,
       type: 'failure',
-      content: `Repeated failure (${acc.count}x): ${errorCode} — ${acc.lastError}`,
+      content: `Repeated failure (${acc.count}x): ${errorCode} â€” ${acc.lastError}`,
       relevanceScore: 1.2,
       tags: ['error-handling', errorCode.toLowerCase() as MemoryTag],
       metadata: { errorCode, occurrences: acc.count, lastTaskId: acc.lastTaskId },

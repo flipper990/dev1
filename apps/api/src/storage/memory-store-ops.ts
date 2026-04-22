@@ -1,5 +1,5 @@
-import type { MemoryEntry } from '../../../packages/agent-core/src/types.js';
-import type { Logger } from '../../../packages/agent-core/src/base-agent.js';
+import type { MemoryEntry } from '../../../../packages/agent-core/src/types.js';
+import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import type { StoreKey } from './memory-store-io.js';
 
 export interface MemoryStats {

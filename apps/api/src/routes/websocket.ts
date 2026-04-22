@@ -1,10 +1,10 @@
-// ─────────────────────────────────────────────────────────────
-// WebSocket route — Real-time step-by-step progress streaming
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// WebSocket route â€” Real-time step-by-step progress streaming
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import type { FastifyInstance } from 'fastify';
 import type { SessionManager, SessionProgress } from '../pipeline/session-manager.js';
-import type { Logger } from '../../../packages/agent-core/src/base-agent.js';
+import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 
 /** Serialise progress for the wire. */
 function serializeProgress(p: SessionProgress) {
@@ -82,7 +82,7 @@ export function registerWebSocket(
       }
     });
 
-    // Clients should not send messages — reject to prevent abuse
+    // Clients should not send messages â€” reject to prevent abuse
     socket.on('message', () => {
       socket.close(1003, 'Unsupported data');
     });

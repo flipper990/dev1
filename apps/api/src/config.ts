@@ -9,7 +9,7 @@ export const config = {
   isDev: (process.env.NODE_ENV ?? 'development') === 'development',
 
   server: {
-    port: parseInt(process.env.PORT ?? '3001', 10),
+    port: parseInt(process.env.API_PORT ?? process.env.PORT ?? '3003', 10),
     host: process.env.HOST ?? '0.0.0.0',
   },
 

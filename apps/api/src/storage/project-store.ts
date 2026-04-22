@@ -1,15 +1,15 @@
-// ─────────────────────────────────────────────────────────────
-// File-based storage — JSON persistence for projects + sessions
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// File-based storage â€” JSON persistence for projects + sessions
 // Works standalone, no DB required to start
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import { mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { existsSync } from 'node:fs';
-import type { Logger } from '../../../packages/agent-core/src/base-agent.js';
-import type { Session, Task, AgentRole } from '../../../packages/agent-core/src/types.js';
+import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
+import type { Session, Task, AgentRole } from '../../../../packages/agent-core/src/types.js';
 
-// ── Version / Diff Types ────────────────────────────────────
+// â”€â”€ Version / Diff Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type FileDiffOp = 'added' | 'modified' | 'deleted' | 'unchanged';
 

@@ -1,14 +1,14 @@
-// ─────────────────────────────────────────────────────────────
-// Session Manager — Tracks active generation sessions with
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Session Manager â€” Tracks active generation sessions with
 // per-step progress, duration, and real-time subscriber updates.
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-import type { Session, AgentRole } from '../../../packages/agent-core/src/types.js';
-import type { Logger } from '../../../packages/agent-core/src/base-agent.js';
-import type { PipelineEvent, StepStatus } from '../../../packages/agent-core/src/orchestrator.js';
-import { PIPELINE_STEPS } from '../../../packages/agent-core/src/orchestrator.js';
+import type { Session, AgentRole } from '../../../../packages/agent-core/src/types.js';
+import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
+import type { PipelineEvent, StepStatus } from '../../../../packages/agent-core/src/orchestrator.js';
+import { PIPELINE_STEPS } from '../../../../packages/agent-core/src/orchestrator.js';
 
-// ── Progress Types ──────────────────────────────────────────
+// â”€â”€ Progress Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface StepProgress {
   stepId: string;
@@ -24,7 +24,7 @@ export interface StepProgress {
 export interface SessionProgress {
   sessionId: string;
   status: Session['status'];
-  /** 0–1 fraction of pipeline completion. */
+  /** 0â€“1 fraction of pipeline completion. */
   progress: number;
   currentStep?: StepProgress;
   steps: StepProgress[];
@@ -37,7 +37,7 @@ export interface SessionProgress {
 
 export type ProgressCallback = (progress: SessionProgress) => void;
 
-// ── Session Manager ─────────────────────────────────────────
+// â”€â”€ Session Manager â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export class SessionManager {
   private sessions: Map<string, Session> = new Map();
@@ -119,7 +119,7 @@ export class SessionManager {
     };
   }
 
-  /** Handle pipeline events — updates step progress and notifies subscribers */
+  /** Handle pipeline events â€” updates step progress and notifies subscribers */
   handleEvent(event: PipelineEvent): void {
     const sessionId = event.sessionId;
     const progress = this.progress.get(sessionId);

@@ -1,9 +1,9 @@
-// ─────────────────────────────────────────────────────────────
-// Developer Agent — Generates source code files from spec
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Developer Agent â€” Generates source code files from spec
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-import { BaseAgent } from '../../../packages/agent-core/src/base-agent.js';
-import type { Task, MemoryEntry } from '../../../packages/agent-core/src/types.js';
+import { BaseAgent } from '../../../../packages/agent-core/src/base-agent.js';
+import type { Task, MemoryEntry } from '../../../../packages/agent-core/src/types.js';
 import { extractJSON } from './utils.js';
 
 export class DeveloperAgent extends BaseAgent {
@@ -106,7 +106,7 @@ export class DeveloperAgent extends BaseAgent {
     return [{
       agentRole: 'developer',
       type: 'pattern',
-      content: `Generated ${files.length} ${languages.join('+')} files${hasFrontend ? ' (UI)' : ''}${hasAPI ? ' (API)' : ''}${hasTests ? ' +tests' : ''}${stackParts.length ? ` — ${stackParts.join('+')}` : ''}. Paths: ${files.map(f => f.path).slice(0, 5).join(', ')}${files.length > 5 ? ' …' : ''}`,
+      content: `Generated ${files.length} ${languages.join('+')} files${hasFrontend ? ' (UI)' : ''}${hasAPI ? ' (API)' : ''}${hasTests ? ' +tests' : ''}${stackParts.length ? ` â€” ${stackParts.join('+')}` : ''}. Paths: ${files.map(f => f.path).slice(0, 5).join(', ')}${files.length > 5 ? ' â€¦' : ''}`,
       relevanceScore: 1.0,
       tags: ['code-style', 'tech-stack', ...(hasFrontend ? ['ui-ux'] as const : [])],
       metadata: { fileCount: files.length, languages, hasFrontend, hasAPI, hasTests },

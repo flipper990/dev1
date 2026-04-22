@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { SmartLLMRouter } from '../llm/smart-router.js';
-import type { AgentRole, LLMProvider } from '../../../packages/agent-core/src/types.js';
+import type { AgentRole, LLMProvider } from '../../../../packages/agent-core/src/types.js';
 import type { TaskCategory } from '../llm/types.js';
 
 const OverrideSchema = z.object({

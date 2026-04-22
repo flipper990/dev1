@@ -1,31 +1,13 @@
-// ─────────────────────────────────────────────────────────────
-// Core type definitions for the multi-agent system
-// ─────────────────────────────────────────────────────────────
+﻿// Core type definitions for the multi-agent system.
+// Primitives -> ./base-types.ts | Memory types -> ./memory-types.ts
 
-export type AgentRole =
-  | 'planner'
-  | 'architect'
-  | 'developer'
-  | 'reviewer'
-  | 'tester'
-  | 'debugger'
-  | 'devops'
-  | 'optimizer';
+import type { AgentRole, LLMProvider, TaskStatus } from './base-types';
 
-export type AgentStatus = 'idle' | 'busy' | 'error' | 'terminated';
+// Re-export all primitives so existing imports from types.ts continue to work.
+export type { AgentRole, AgentStatus, TaskStatus, LLMProvider } from './base-types';
+export type { MemoryType, MemoryTag, MemoryEntry, MemoryQuery } from './memory-types';
 
-export type TaskStatus =
-  | 'pending'
-  | 'queued'
-  | 'in-progress'
-  | 'completed'
-  | 'failed'
-  | 'retrying'
-  | 'cancelled';
-
-export type LLMProvider = 'anthropic' | 'openai' | 'google' | 'local';
-
-// ── Agent Definition ────────────────────────────────────────
+// ── Agent Definition ────────────────────────────────────────────
 
 export interface AgentDefinition {
   role: AgentRole;
@@ -40,7 +22,7 @@ export interface AgentDefinition {
   maxConcurrency: number;
   timeoutMs: number;
   retryPolicy: RetryPolicy;
-  dependencies: AgentRole[];  // agents whose output this agent needs
+  dependencies: AgentRole[];
 }
 
 export interface ModelConfig {
@@ -63,94 +45,22 @@ export interface FieldDef {
   required: boolean;
 }
 
-// ── Memory ──────────────────────────────────────────────────
-
 export interface AgentMemoryConfig {
-  shortTerm: boolean;           // redis-backed session memory
-  longTerm: boolean;            // pgvector-backed persistent memory
+  shortTerm: boolean;
+  longTerm: boolean;
   maxShortTermEntries: number;
   maxLongTermRetrievals: number;
   embeddingModel: string;
 }
 
-/** Broad category of what a memory entry represents. */
-export type MemoryType =
-  | 'context'        // raw task input/output snapshot (short-term)
-  | 'pattern'        // successful technique / approach
-  | 'failure'        // what went wrong and why
-  | 'error_fix'      // problem → solution pair
-  | 'decision'       // architectural / design decision
-  | 'preference'     // user or system preference
-  | 'prompt'         // effective prompt template / strategy
-  | 'global';        // cross-agent shared knowledge
-
-/** Tags for fine-grained retrieval filtering. */
-export type MemoryTag =
-  | 'tech-stack'
-  | 'architecture'
-  | 'code-style'
-  | 'performance'
-  | 'security'
-  | 'testing'
-  | 'deployment'
-  | 'api-design'
-  | 'database'
-  | 'ui-ux'
-  | 'error-handling'
-  | 'best-practice'
-  | 'anti-pattern'
-  | 'prompt-engineering'
-  | string;  // extensible
-
-export interface MemoryEntry {
-  id: string;
-  agentRole: AgentRole | 'global';
-  type: MemoryType;
-  content: string;
-  embedding?: number[];
-  relevanceScore: number;
-  sessionId?: string;
-  tags: MemoryTag[];
-  createdAt: Date;
-  lastAccessed: Date;
-  accessCount: number;
-  /** How many times this knowledge led to a successful outcome. */
-  successCount: number;
-  /** How many times this knowledge was present but outcome failed. */
-  failureCount: number;
-  /** Derived effectiveness = successCount / (successCount + failureCount). NaN if never evaluated. */
-  effectiveness: number;
-  metadata: Record<string, unknown>;
-}
-
-/** Filter criteria for memory retrieval. */
-export interface MemoryQuery {
-  /** Restrict to specific agent role(s). Omit for all. */
-  roles?: (AgentRole | 'global')[];
-  /** Restrict to specific memory types. */
-  types?: MemoryType[];
-  /** Require all of these tags. */
-  tags?: MemoryTag[];
-  /** Minimum relevance score. */
-  minRelevance?: number;
-  /** Minimum effectiveness (0–1). */
-  minEffectiveness?: number;
-  /** Maximum number of results. */
-  limit?: number;
-  /** Text to embed for semantic search (when vector DB available). */
-  queryText?: string;
-  /** Include global memories alongside agent-specific ones. */
-  includeGlobal?: boolean;
-}
-
-// ── Task & Message ──────────────────────────────────────────
+// ── Task & Message ──────────────────────────────────────────────
 
 export interface Task {
   id: string;
   sessionId: string;
   agentRole: AgentRole;
   status: TaskStatus;
-  priority: number;             // 1 (highest) → 10 (lowest)
+  priority: number;
   input: Record<string, unknown>;
   output?: Record<string, unknown>;
   error?: TaskError;
@@ -189,17 +99,17 @@ export interface AgentMessage {
   type: 'task_assign' | 'task_result' | 'task_error' | 'status' | 'signal';
   payload: Record<string, unknown>;
   timestamp: Date;
-  correlationId: string;        // ties messages to a pipeline run
+  correlationId: string;
 }
 
-// ── Retry & Circuit Breaker ────────────────────────────────
+// ── Retry & Circuit Breaker ────────────────────────────────────
 
 export interface RetryPolicy {
   maxAttempts: number;
   baseDelayMs: number;
   maxDelayMs: number;
   backoffMultiplier: number;
-  retryableErrors: string[];    // error codes that trigger retry
+  retryableErrors: string[];
 }
 
 export interface CircuitBreakerState {
@@ -211,7 +121,7 @@ export interface CircuitBreakerState {
   successCount: number;
 }
 
-// ── Pipeline ───────────────────────────────────────────────
+// ── Pipeline ────────────────────────────────────────────────────
 
 export interface PipelineDefinition {
   id: string;
@@ -223,18 +133,18 @@ export interface PipelineDefinition {
 export interface PipelineStage {
   id: string;
   name: string;
-  agents: AgentRole[];          // agents to execute (parallel within stage)
-  dependsOn: string[];          // stage IDs that must complete first
-  optional: boolean;            // if true, pipeline continues on failure
+  agents: AgentRole[];
+  dependsOn: string[];
+  optional: boolean;
   timeout: number;
 }
 
-// ── Session ────────────────────────────────────────────────
+// ── Session & Execution Context ────────────────────────────────
 
 export interface Session {
   id: string;
   userId: string;
-  prompts: string[];            // 1–3 user prompts
+  prompts: string[];
   status: 'active' | 'completed' | 'failed' | 'cancelled';
   pipelineId: string;
   currentStageId: string;
@@ -243,21 +153,19 @@ export interface Session {
   updatedAt: Date;
 }
 
-// ── Execution Context ──────────────────────────────────────
-
 export interface ExecutionContext {
-  traceId: string;              // unique ID for the entire run
-  spanId: string;               // unique ID for this specific agent execution
+  traceId: string;
+  spanId: string;
   sessionId: string;
-  parentSpanId?: string;        // when chained, points to upstream agent
+  parentSpanId?: string;
   agentRole: AgentRole;
   attempt: number;
   startedAt: Date;
   promptOverrides?: Partial<PromptConfig>;
-  variables: Record<string, unknown>;  // custom vars passed through the chain
+  variables: Record<string, unknown>;
 }
 
-// ── Prompt Configuration ───────────────────────────────────
+// ── Prompt Configuration ────────────────────────────────────────
 
 export interface PromptConfig {
   systemPrompt: string;
@@ -274,18 +182,16 @@ export interface PromptExample {
   description?: string;
 }
 
-// ── Agent Hooks ────────────────────────────────────────────
+// ── Hooks & Middleware ──────────────────────────────────────────
 
 export interface AgentHooks {
   beforeExecute?: (ctx: ExecutionContext, task: Task) => Promise<Task>;
-  afterExecute?: (ctx: ExecutionContext, task: Task) => Promise<Task>;
-  onError?: (ctx: ExecutionContext, task: Task, error: Error) => Promise<void>;
-  onRetry?: (ctx: ExecutionContext, task: Task, attempt: number) => Promise<boolean>;  // return false to abort
-  beforePrompt?: (ctx: ExecutionContext, prompt: string) => Promise<string>;
-  afterParse?: (ctx: ExecutionContext, output: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  afterExecute?:  (ctx: ExecutionContext, task: Task) => Promise<Task>;
+  onError?:       (ctx: ExecutionContext, task: Task, error: Error) => Promise<void>;
+  onRetry?:       (ctx: ExecutionContext, task: Task, attempt: number) => Promise<boolean>;
+  beforePrompt?:  (ctx: ExecutionContext, prompt: string) => Promise<string>;
+  afterParse?:    (ctx: ExecutionContext, output: Record<string, unknown>) => Promise<Record<string, unknown>>;
 }
-
-// ── Middleware ──────────────────────────────────────────────
 
 export type AgentMiddlewareFn = (
   ctx: ExecutionContext,
@@ -295,11 +201,11 @@ export type AgentMiddlewareFn = (
 
 export interface AgentMiddleware {
   name: string;
-  order: number;                // lower = runs first (outer), higher = runs last (inner)
+  order: number;
   fn: AgentMiddlewareFn;
 }
 
-// ── Agent Metrics ──────────────────────────────────────────
+// ── Metrics ─────────────────────────────────────────────────────
 
 export interface AgentMetricsSnapshot {
   agentRole: AgentRole;
@@ -317,13 +223,13 @@ export interface AgentMetricsSnapshot {
   errorsByCode: Record<string, number>;
 }
 
-// ── Chain Types ────────────────────────────────────────────
+// ── Chain Types ─────────────────────────────────────────────────
 
 export interface ChainStep {
   agentRole: AgentRole;
-  inputTransform?: (input: Record<string, unknown>, previousOutputs: Map<AgentRole, Record<string, unknown>>) => Record<string, unknown>;
+  inputTransform?:  (input: Record<string, unknown>, prev: Map<AgentRole, Record<string, unknown>>) => Record<string, unknown>;
   outputTransform?: (output: Record<string, unknown>) => Record<string, unknown>;
-  condition?: (previousOutputs: Map<AgentRole, Record<string, unknown>>) => boolean;
+  condition?:       (prev: Map<AgentRole, Record<string, unknown>>) => boolean;
   onError?: 'skip' | 'abort' | 'continue';
 }
 

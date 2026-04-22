@@ -35,6 +35,9 @@ function serializeProgress(p: SessionProgress) {
   };
 }
 
+// Only allow alphanumeric chars, underscores, and hyphens
+const SESSION_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
+
 export function registerWebSocket(
   app: FastifyInstance,
   deps: { sessionManager: SessionManager; logger: Logger },
@@ -44,6 +47,12 @@ export function registerWebSocket(
   app.get('/ws/sessions/:id/progress', { websocket: true }, (socket, request) => {
     const { id } = request.params as { id: string };
 
+    if (!SESSION_ID_RE.test(id)) {
+      socket.send(JSON.stringify({ type: 'error', message: 'Invalid session ID' }));
+      socket.close(1008, 'Invalid session ID');
+      return;
+    }
+
     logger.info(`WebSocket connected for session ${id}`);
 
     // Send current progress immediately
@@ -52,6 +61,8 @@ export function registerWebSocket(
       socket.send(JSON.stringify({ type: 'progress', data: serializeProgress(current) }));
     } else {
       socket.send(JSON.stringify({ type: 'error', message: 'Session not found' }));
+      socket.close(1008, 'Session not found');
+      return;
     }
 
     // Subscribe to future updates
@@ -69,6 +80,11 @@ export function registerWebSocket(
       } catch {
         // Socket may have closed
       }
+    });
+
+    // Clients should not send messages — reject to prevent abuse
+    socket.on('message', () => {
+      socket.close(1003, 'Unsupported data');
     });
 
     socket.on('close', () => {

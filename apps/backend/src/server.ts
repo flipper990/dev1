@@ -3,6 +3,17 @@ import { buildApp } from './app.js';
 
 const logger = new Logger('server');
 
+// Catch programming errors that escape async boundaries
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught exception — shutting down', { message: err.message, stack: err.stack });
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled promise rejection — shutting down', { reason: String(reason) });
+  process.exit(1);
+});
+
 const app = await buildApp();
 
 try {

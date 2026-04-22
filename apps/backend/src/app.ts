@@ -18,12 +18,25 @@ export async function buildApp() {
   const app = Fastify({
     logger: config.env !== 'test',
     trustProxy: true,
+    bodyLimit: 1_048_576, // 1 MB
+    genReqId: () => crypto.randomUUID(),
   });
 
   // ── Security ───────────────────────────────────────────────────────────
   await app.register(helmet, {
-    contentSecurityPolicy: false, // Handled by the frontend
-    frameguard: false, // Allow iframes from same localhost (dev preview)
+    contentSecurityPolicy: config.env === 'production' ? {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:'],
+        connectSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+      },
+    } : false,
+    frameguard: config.env === 'production' ? { action: 'deny' } : false,
+    crossOriginEmbedderPolicy: false,
   });
 
   await app.register(cors, {
@@ -35,8 +48,9 @@ export async function buildApp() {
   });
 
   await app.register(rateLimit, {
-    max: 100,
+    max: 120,
     timeWindow: '1 minute',
+    keyGenerator: (req) => req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() ?? req.ip,
     errorResponseBuilder: () => ({
       error: 'Too many requests',
       code: 'RATE_LIMIT',
@@ -48,27 +62,46 @@ export async function buildApp() {
   await app.register(websocket);
   registerWebSocket(app);
 
+  // ── Request / response logging ─────────────────────────────────────────
+  app.addHook('onRequest', (req, _reply, done) => {
+    logger.info('incoming request', { method: req.method, url: req.url, reqId: req.id });
+    done();
+  });
+
+  app.addHook('onResponse', (req, reply, done) => {
+    logger.info('request completed', { method: req.method, url: req.url, statusCode: reply.statusCode, reqId: req.id });
+    done();
+  });
+
   // ── Routes ─────────────────────────────────────────────────────────────
   await app.register(healthRoutes, { prefix: '/health' });
   await app.register(projectRoutes, { prefix: '/api/projects' });
   await app.register(agentRoutes, { prefix: '/api/agents' });
 
   // ── Error handler ──────────────────────────────────────────────────────
-  app.setErrorHandler((error, _req, reply) => {
+  app.setErrorHandler((error, req, reply) => {
+    const reqId = req.id;
     if (isAppError(error)) {
+      if (error.statusCode >= 500) {
+        logger.error('Application error', { reqId, code: error.code, message: error.message, stack: error.stack });
+      } else {
+        logger.warn('Client error', { reqId, code: error.code, message: error.message });
+      }
       return reply.status(error.statusCode).send({
         error: error.message,
         code: error.code,
         statusCode: error.statusCode,
+        reqId,
         details: error.details,
       });
     }
 
-    logger.error('Unhandled error', { message: error.message, stack: error.stack });
+    logger.error('Unhandled error', { reqId, message: error.message, stack: error.stack });
     return reply.status(500).send({
       error: 'Internal server error',
       code: 'INTERNAL_ERROR',
       statusCode: 500,
+      reqId,
     });
   });
 

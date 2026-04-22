@@ -5,7 +5,9 @@
 import Fastify from 'fastify';
 import fastifyWebSocket from '@fastify/websocket';
 import fastifyCors from '@fastify/cors';
+import fastifyHelmet from '@fastify/helmet';
 import fastifyRateLimit from '@fastify/rate-limit';
+import { ZodError } from 'zod';
 
 import { config } from './config.js';
 import { createLogger, pinoLogger } from './logger.js';
@@ -79,29 +81,102 @@ export async function buildApp() {
 
   const app = Fastify({
     logger: pinoLogger,
-    bodyLimit: 1_048_576, // 1MB
+    bodyLimit: 1_048_576, // 1 MB
+    trustProxy: true,
+    genReqId: () => crypto.randomUUID(),
+  });
+
+  // ── Security headers ───────────────────────────────────
+  await app.register(fastifyHelmet, {
+    contentSecurityPolicy: config.isDev ? false : {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:'],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
   });
 
   // Plugins
+  const allowedOrigins = config.cors.allowedOrigins;
   await app.register(fastifyCors, {
-    origin: config.isDev ? true : ['http://localhost:3000'],
+    origin: config.isDev ? true : allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: false,
   });
 
   await app.register(fastifyRateLimit, {
     max: config.rateLimit.max,
     timeWindow: config.rateLimit.windowMs,
+    keyGenerator: (req) => req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() ?? req.ip,
+    errorResponseBuilder: (_req, context) => ({
+      error: 'Too Many Requests',
+      code: 'RATE_LIMIT',
+      statusCode: 429,
+      retryAfter: context.after,
+    }),
   });
 
   await app.register(fastifyWebSocket);
 
+  // ── Request / response logging ──────────────────────────
+  app.addHook('onRequest', (request, _reply, done) => {
+    request.log.info({ method: request.method, url: request.url, reqId: request.id }, 'incoming request');
+    done();
+  });
+
+  app.addHook('onResponse', (request, reply, done) => {
+    request.log.info(
+      { method: request.method, url: request.url, statusCode: reply.statusCode, responseTime: reply.elapsedTime, reqId: request.id },
+      'request completed',
+    );
+    done();
+  });
+
   // ── Global error handler ────────────────────────────
 
-  app.setErrorHandler((error, _request, reply) => {
-    logger.error('Unhandled error', { error: error.message, stack: error.stack });
-    reply.status(error.statusCode ?? 500).send({
+  app.setErrorHandler((error, request, reply) => {
+    const reqId = request.id;
+
+    // Zod validation errors
+    if (error instanceof ZodError) {
+      return reply.status(400).send({
+        error: 'Validation Error',
+        code: 'VALIDATION_ERROR',
+        statusCode: 400,
+        reqId,
+        details: error.issues.map(i => ({ path: i.path.join('.'), message: i.message })),
+      });
+    }
+
+    const statusCode = error.statusCode ?? 500;
+
+    // Client errors (4xx) — log at warn level, no stack
+    if (statusCode >= 400 && statusCode < 500) {
+      logger.warn('Client error', { reqId, statusCode, message: error.message, url: request.url, method: request.method });
+      return reply.status(statusCode).send({
+        error: error.message,
+        code: (error as { code?: string }).code ?? 'CLIENT_ERROR',
+        statusCode,
+        reqId,
+      });
+    }
+
+    // Server errors (5xx) — log full context
+    logger.error('Unhandled server error', { reqId, statusCode, message: error.message, stack: error.stack, url: request.url, method: request.method });
+    return reply.status(statusCode).send({
       error: 'Internal Server Error',
-      message: config.isDev ? error.message : 'Something went wrong',
+      code: 'INTERNAL_ERROR',
+      statusCode,
+      reqId,
+      ...(config.isDev && { detail: error.message }),
     });
   });
 

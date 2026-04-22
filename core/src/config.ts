@@ -98,3 +98,16 @@ export const config = {
 } as const;
 
 export type Config = typeof config;
+
+// Warn loudly if insecure defaults are used in production
+if (config.env === 'production') {
+  if (config.auth.jwtSecret === 'dev_secret_change_in_prod') {
+    process.stderr.write('[SECURITY] JWT_SECRET is using the insecure default value. Set a strong secret in production.\n');
+  }
+  if (config.auth.apiKeySalt === 'dev_salt_change_in_prod') {
+    process.stderr.write('[SECURITY] API_KEY_SALT is using the insecure default value. Set a strong salt in production.\n');
+  }
+  if (!config.llm.openaiApiKey && !config.llm.anthropicApiKey) {
+    process.stderr.write('[WARN] No LLM API key is configured (OPENAI_API_KEY / ANTHROPIC_API_KEY).\n');
+  }
+}

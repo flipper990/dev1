@@ -2,10 +2,25 @@
 // Server entry point
 // ─────────────────────────────────────────────────────────────
 
-import { config } from './config.js';
+import { config, validateProductionConfig } from './config.js';
 import { buildApp } from './app.js';
+import { pinoLogger } from './logger.js';
+
+// Catch programming errors that escape async boundaries
+process.on('uncaughtException', (err) => {
+  pinoLogger.error({ err }, 'Uncaught exception — shutting down');
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  pinoLogger.error({ reason }, 'Unhandled promise rejection — shutting down');
+  process.exit(1);
+});
 
 async function main() {
+  // Fail fast if required prod config is absent
+  validateProductionConfig();
+
   const app = await buildApp();
 
   try {

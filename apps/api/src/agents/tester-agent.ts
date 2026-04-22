@@ -4,7 +4,7 @@
 
 import { BaseAgent } from '../../../packages/agent-core/src/base-agent.js';
 import type { Task, MemoryEntry } from '../../../packages/agent-core/src/types.js';
-import { extractJSON } from './planner-agent.js';
+import { extractJSON } from './utils.js';
 
 export class TesterAgent extends BaseAgent {
   protected async buildPrompt(task: Task, memories: MemoryEntry[]): Promise<string> {

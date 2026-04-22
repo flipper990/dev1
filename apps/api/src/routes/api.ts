@@ -59,8 +59,9 @@ export function registerRoutes(
     const result = await generator.generate(parsed.data);
 
     if (!result.success) {
-      return reply.status(500).send({
-        error: 'Generation failed',
+      const isCapacity = result.error?.includes('capacity');
+      return reply.status(isCapacity ? 503 : 500).send({
+        error: isCapacity ? 'Service Unavailable' : 'Generation failed',
         message: result.error,
         projectId: result.projectId,
         sessionId: result.sessionId,

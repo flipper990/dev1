@@ -38,6 +38,9 @@ export class FileMemoryStore implements MemoryStore {
 
   // In-memory short-term storage (session-scoped, lost on restart)
   private shortTermStore = new Map<string, MemoryEntry[]>();
+  // TTL tracking for short-term entries (key → expiry timestamp)
+  private shortTermExpiry = new Map<string, number>();
+  private readonly SHORT_TERM_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
   // In-memory cache of long-term memories (persisted to disk)
   private longTermCache = new Map<StoreKey, MemoryEntry[]>();
@@ -64,6 +67,11 @@ export class FileMemoryStore implements MemoryStore {
 
   async getShortTerm(sessionId: string, agentRole: AgentRole, limit: number): Promise<MemoryEntry[]> {
     const key = `${sessionId}:${agentRole}`;
+    if (this.isShortTermExpired(key)) {
+      this.shortTermStore.delete(key);
+      this.shortTermExpiry.delete(key);
+      return [];
+    }
     return (this.shortTermStore.get(key) ?? []).slice(0, limit);
   }
 
@@ -75,6 +83,26 @@ export class FileMemoryStore implements MemoryStore {
 
     if (list.length > 50) list.length = 50;
     this.shortTermStore.set(key, list);
+    this.shortTermExpiry.set(key, Date.now() + this.SHORT_TERM_TTL_MS);
+  }
+
+  /** Evict expired short-term entries. Called by runDecay(). */
+  private evictExpiredShortTerm(): number {
+    let evicted = 0;
+    const now = Date.now();
+    for (const [key, expiry] of this.shortTermExpiry) {
+      if (now > expiry) {
+        this.shortTermStore.delete(key);
+        this.shortTermExpiry.delete(key);
+        evicted++;
+      }
+    }
+    return evicted;
+  }
+
+  private isShortTermExpired(key: string): boolean {
+    const expiry = this.shortTermExpiry.get(key);
+    return expiry !== undefined && Date.now() > expiry;
   }
 
   // ══════════════════════════════════════════════════════════
@@ -251,6 +279,13 @@ export class FileMemoryStore implements MemoryStore {
     }
 
     this.logger.info('Memory decay complete', { decayed, archived });
+
+    // Also evict expired short-term entries
+    const shortTermEvicted = this.evictExpiredShortTerm();
+    if (shortTermEvicted > 0) {
+      this.logger.info(`Evicted ${shortTermEvicted} expired short-term memory slots`);
+    }
+
     return { decayed, archived };
   }
 
@@ -258,6 +293,7 @@ export class FileMemoryStore implements MemoryStore {
     for (const key of this.shortTermStore.keys()) {
       if (key.startsWith(`${sessionId}:`)) {
         this.shortTermStore.delete(key);
+        this.shortTermExpiry.delete(key);
       }
     }
   }

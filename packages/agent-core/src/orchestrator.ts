@@ -115,8 +115,8 @@ export class PipelineOrchestrator {
   private logger: Logger;
   private eventHandlers: PipelineEventHandler[] = [];
   private cancelled = false;
-  private static stepCache = new Map<string, CachedStepResult>();
-  private static readonly STEP_CACHE_TTL_MS = 30 * 60 * 1000;
+  private stepCache = new Map<string, CachedStepResult>();
+  private readonly STEP_CACHE_TTL_MS = 30 * 60 * 1000;
 
   constructor(
     agents: Map<AgentRole, BaseAgent>,
@@ -502,11 +502,24 @@ export class PipelineOrchestrator {
         input.globalMemoryHints = session.artifacts.get('globalMemoryHints') ?? [];
         break;
 
-      case 'developer':
+      case 'developer': {
+        const archArtifact = artifacts.get('architect') as { fileTree?: string[] } | undefined;
+        const fileTree: string[] = Array.isArray(archArtifact?.fileTree) ? archArtifact.fileTree : [];
+        const devConcurrency = AGENT_DEFINITIONS['developer'].maxConcurrency ?? 1;
+        // Partition file tree into chunks for parallel execution awareness.
+        // The pipeline runs one task, but we pass all files; partitioning
+        // is surfaced so the agent prompt can self-batch large trees.
+        const chunkSize = Math.max(1, Math.ceil(fileTree.length / devConcurrency));
         input.spec = artifacts.get('architect') ?? {};
-        input.fileAssignment = (artifacts.get('architect') as any)?.fileTree ?? [];
-        input.context = {};
+        input.fileAssignment = fileTree;
+        input.fileChunkSize = chunkSize;
+        // Populate context with any previously generated files (retry case)
+        const priorDev = artifacts.get('developer') as { files?: Array<{ path: string; content: string }> } | undefined;
+        input.context = priorDev?.files
+          ? Object.fromEntries(priorDev.files.map(f => [f.path, f.content]))
+          : {};
         break;
+      }
 
       case 'reviewer':
         input.spec = artifacts.get('architect') ?? {};

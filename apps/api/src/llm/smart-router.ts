@@ -133,9 +133,31 @@ export class SmartLLMRouter implements LLMClient {
     messages: { role: 'user' | 'assistant'; content: string }[];
     stream?: boolean;
   }): AsyncGenerator<string, void, unknown> {
-    // Streaming goes directly to the provider — no retry wrapper
-    const client = this.getProviderClient(params.model.provider);
-    yield* client.chatStream(params);
+    // Check circuit breaker before streaming — fall back to non-streaming on open circuit
+    if (!this.circuitBreaker.canUse(params.model.provider)) {
+      // Find first available fallback provider
+      const fallback = this.defaultFallback;
+      if (fallback && fallback.model !== params.model.model && this.circuitBreaker.canUse(fallback.provider) && this.registry.has(fallback.provider)) {
+        this.logger.warn(`Streaming circuit open for ${params.model.provider}, falling back to ${fallback.provider}/${fallback.model}`);
+        const client = this.getProviderClient(fallback.provider);
+        yield* client.chatStream({ ...params, model: fallback });
+        return;
+      }
+      throw new Error(`Circuit open for provider ${params.model.provider} and no streaming fallback available`);
+    }
+
+    if (!this.registry.has(params.model.provider)) {
+      throw new Error(`Provider ${params.model.provider} not registered`);
+    }
+
+    try {
+      const client = this.getProviderClient(params.model.provider);
+      yield* client.chatStream(params);
+      this.circuitBreaker.recordSuccess(params.model.provider);
+    } catch (err) {
+      this.circuitBreaker.recordFailure(params.model.provider);
+      throw err;
+    }
   }
 
   // ── Task-aware routing ────────────────────────────────────

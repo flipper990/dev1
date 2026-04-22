@@ -72,6 +72,7 @@ export async function buildApp() {
     memoryStore,
     sessionManager,
     createLogger('generator'),
+    config.pipeline.maxConcurrentSessions,
   );
 
   // ── Build Fastify app ───────────────────────────────
@@ -118,8 +119,22 @@ export async function buildApp() {
     }
   }, 60_000);
 
+  // ── Memory decay interval (every 6 hours) ───────────
+
+  const decayInterval = setInterval(async () => {
+    try {
+      const result = await memoryStore.runDecay();
+      if (result.decayed > 0 || result.archived > 0) {
+        logger.info(`Memory decay: decayed=${result.decayed} archived=${result.archived}`);
+      }
+    } catch (err) {
+      logger.error('Scheduled memory decay failed', { error: (err as Error).message });
+    }
+  }, 6 * 60 * 60 * 1000);
+
   app.addHook('onClose', () => {
     clearInterval(cleanupInterval);
+    clearInterval(decayInterval);
   });
 
   return app;

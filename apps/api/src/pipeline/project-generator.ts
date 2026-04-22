@@ -90,8 +90,10 @@ export class ProjectGenerator {
   private memoryStore: FileMemoryStore;
   private sessionManager: SessionManager;
   private logger: Logger;
-  private static resultCache = new Map<string, { projectId: string; cachedAt: number }>();
-  private static readonly RESULT_CACHE_TTL_MS = 30 * 60 * 1000;
+  private resultCache = new Map<string, { projectId: string; cachedAt: number }>();
+  private readonly RESULT_CACHE_TTL_MS = 30 * 60 * 1000;
+  private activeGenerations = 0;
+  private readonly maxConcurrentSessions: number;
 
   constructor(
     agents: Map<AgentRole, BaseAgent>,
@@ -99,12 +101,14 @@ export class ProjectGenerator {
     memoryStore: FileMemoryStore,
     sessionManager: SessionManager,
     logger: Logger,
+    maxConcurrentSessions = 10,
   ) {
     this.agents = agents;
     this.projectStore = projectStore;
     this.memoryStore = memoryStore;
     this.sessionManager = sessionManager;
     this.logger = logger;
+    this.maxConcurrentSessions = maxConcurrentSessions;
   }
 
   // ══════════════════════════════════════════════════════════
@@ -120,6 +124,16 @@ export class ProjectGenerator {
     const validationError = this.validateRequest(request);
     if (validationError) {
       return { projectId, sessionId, success: false, error: validationError };
+    }
+
+    // ── Concurrency gate ─────────────────────────────────
+    if (this.activeGenerations >= this.maxConcurrentSessions) {
+      return {
+        projectId,
+        sessionId,
+        success: false,
+        error: `Server is at capacity (${this.maxConcurrentSessions} concurrent generations). Try again shortly.`,
+      };
     }
 
     const cached = await this.readResultCache(cacheKey);
@@ -195,6 +209,7 @@ export class ProjectGenerator {
       promptCount: request.prompts.length,
     });
 
+    this.activeGenerations++;
     try {
       // ── 5. Execute 7-step pipeline ──────────────────
       const pipelineState = await orchestrator.execute(session);
@@ -283,6 +298,8 @@ export class ProjectGenerator {
       this.logger.error(`Project ${projectId} crashed`, { error });
 
       return { projectId, sessionId, success: false, error };
+    } finally {
+      this.activeGenerations--;
     }
   }
 

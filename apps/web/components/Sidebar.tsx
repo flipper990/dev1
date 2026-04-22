@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Search, MoreVertical, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Search, MoreVertical, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { cn } from '../lib/cn';
 import type { GeneratedProject } from '../types/dashboard';
@@ -9,12 +9,6 @@ const STATUS_DOT: Record<GeneratedProject['status'], string> = {
   generating: '#3B82F6',
   completed:  '#22C55E',
   failed:     '#EF4444',
-};
-
-const STATUS_LABEL: Record<GeneratedProject['status'], string> = {
-  generating: 'Building…',
-  completed:  'Done',
-  failed:     'Failed',
 };
 
 function fmt(ms: number): string {
@@ -26,13 +20,22 @@ function fmt(ms: number): string {
 export function Sidebar() {
   const {
     projects, selectedProjectId, sidebarCollapsed,
-    setSelectedProjectId, toggleSidebar,
+    setSelectedProjectId, setProjectMode, setFiles, setFileContent, setProgress,
+    toggleSidebar,
   } = useStore();
 
   const [search, setSearch] = useState('');
   const filtered = projects.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase())
   );
+
+  const handleNewProject = () => {
+    setSelectedProjectId(null);
+    setProjectMode('create');
+    setFiles([]);
+    setFileContent(null);
+    setProgress(null);
+  };
 
   if (sidebarCollapsed) {
     return (
@@ -61,13 +64,22 @@ export function Sidebar() {
       {/* Header */}
       <div className="flex items-center justify-between px-3 border-b border-white/[0.06] flex-shrink-0" style={{ height: 'var(--header-h)' }}>
         <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Projects</span>
-        <button
-          onClick={toggleSidebar}
-          title="Collapse sidebar"
-          className="flex items-center justify-center w-7 h-7 rounded text-[#64748B] hover:bg-white/[0.06] hover:text-[#F1F5F9] transition-colors"
-        >
-          <PanelLeftClose size={15} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handleNewProject}
+            title="New project"
+            className="flex items-center justify-center w-7 h-7 rounded text-[#64748B] hover:bg-[#3B82F6]/10 hover:text-[#60A5FA] transition-colors"
+          >
+            <Plus size={14} />
+          </button>
+          <button
+            onClick={toggleSidebar}
+            title="Collapse sidebar"
+            className="flex items-center justify-center w-7 h-7 rounded text-[#64748B] hover:bg-white/[0.06] hover:text-[#F1F5F9] transition-colors"
+          >
+            <PanelLeftClose size={15} />
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -97,7 +109,7 @@ export function Sidebar() {
             key={project.id}
             project={project}
             isActive={selectedProjectId === project.id}
-            onClick={() => setSelectedProjectId(project.id)}
+            onClick={() => { setSelectedProjectId(project.id); setProjectMode('edit'); }}
           />
         ))}
       </div>

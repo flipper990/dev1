@@ -4,6 +4,8 @@ import type {
   CreateProjectRequest,
   PipelineState,
   ProjectFile,
+  PromptHistoryEntry,
+  ProjectVersion,
 } from '@devteam/core';
 import {
   PlannerAgent,
@@ -40,7 +42,7 @@ export class Orchestrator {
 
   constructor(private readonly deps: OrchestratorDeps) {}
 
-  // ── startAsync: returns immediately, runs pipeline in background ────────────
+  // ── startAsync: returns immediately, runs full pipeline in background ───────
   startAsync(request: CreateProjectRequest): { projectId: string; sessionId: string; project: Project } {
     const projectId = generateId('proj');
     const session = sessionManager.create(projectId);
@@ -214,6 +216,155 @@ export class Orchestrator {
       const msg = error instanceof Error ? error.message : String(error);
       this.emit(sessionId, 'session.failed', { error: msg });
       this.logger.error('Pipeline failed', { sessionId, error: msg });
+      throw error;
+    }
+  }
+
+  // ── startUpdateAsync: iteratively update an existing project ────────────────
+  startUpdateAsync(existingProject: Project, newPrompt: string): { sessionId: string } {
+    const session = sessionManager.create(existingProject.id);
+    const sessionId = session.id;
+
+    setImmediate(() => {
+      this.runUpdate(existingProject, newPrompt, sessionId).catch(() => { /* logged inside */ });
+    });
+
+    return { sessionId };
+  }
+
+  async runUpdate(
+    existingProject: Project,
+    newPrompt: string,
+    sessionId: string,
+  ): Promise<{ project: Project; pipeline: PipelineState }> {
+    const projectId = existingProject.id;
+
+    const ctx: AgentContext = {
+      sessionId,
+      projectId,
+      memory: this.deps.memory,
+      llm: this.deps.llm,
+    };
+
+    const pipeline = buildInitialPipelineState(sessionId, projectId, [
+      'planner', 'coder', 'reviewer',
+    ]);
+
+    this.emit(sessionId, 'session.started', { sessionId, projectId });
+    sessionManager.update(sessionId, { status: 'running', pipeline });
+
+    // Build a combined prompt giving agents full context of existing project
+    const contextualPrompt = [
+      `EXISTING PROJECT: ${existingProject.name}`,
+      `CURRENT FILES: ${existingProject.artifacts.files.map((f) => f.path).join(', ')}`,
+      '',
+      `UPDATE REQUEST: ${newPrompt}`,
+    ].join('\n');
+
+    const project: Project = {
+      ...existingProject,
+      prompt: newPrompt,
+      status: 'running',
+      sessionId,
+      updatedAt: now(),
+    };
+
+    try {
+      // ── Step 1: Plan ────────────────────────────────────────────────────
+      this.startStep(pipeline, 'planner', sessionId);
+      const planResult = await runStep({
+        role: 'planner',
+        input: { prompt: contextualPrompt, preferences: existingProject.preferences },
+        ctx,
+        run: (input, c) => this.planner.run(input, c),
+      });
+      this.completeStep(pipeline, 'planner', planResult, sessionId);
+
+      const plan = planResult.output;
+
+      // ── Step 2: Code ────────────────────────────────────────────────────
+      this.startStep(pipeline, 'coder', sessionId);
+      const codeResult = await runStep({
+        role: 'coder',
+        input: { plan, existingFiles: existingProject.artifacts.files },
+        ctx,
+        run: (input, c) => this.coder.run(input, c),
+      });
+      this.completeStep(pipeline, 'coder', codeResult, sessionId);
+
+      const newFiles: ProjectFile[] = codeResult.output.files;
+
+      // Merge: new files overwrite matching paths; keep unmodified files
+      const newPaths = new Set(newFiles.map((f) => f.path));
+      const keptFiles = existingProject.artifacts.files.filter((f) => !newPaths.has(f.path));
+      const mergedFiles = [...keptFiles, ...newFiles];
+      const changedPaths = newFiles.map((f) => f.path);
+
+      // ── Step 3: Review ──────────────────────────────────────────────────
+      this.startStep(pipeline, 'reviewer', sessionId);
+      const reviewResult = await runStep({
+        role: 'reviewer',
+        input: { files: newFiles, plan: { summary: plan.summary, goals: plan.goals } },
+        ctx,
+        run: (input, c) => this.reviewer.run(input, c),
+      });
+      this.completeStep(pipeline, 'reviewer', reviewResult, sessionId);
+
+      // Save a version snapshot before applying changes
+      const versionId = generateId('ver');
+      const newVersion: ProjectVersion = {
+        id: versionId,
+        createdAt: now(),
+        promptText: newPrompt,
+        files: existingProject.artifacts.files,
+        summary: `Before: ${newPrompt}`,
+      };
+
+      // Record prompt in history
+      const promptEntry: PromptHistoryEntry = {
+        text: newPrompt,
+        createdAt: now(),
+        sessionId,
+        changedFiles: changedPaths,
+      };
+
+      // Finalize updated project
+      project.artifacts = {
+        ...existingProject.artifacts,
+        files: mergedFiles,
+        plan: plan.summary,
+        reviewNotes: reviewResult.output.summary,
+      };
+      project.prompts = [...(existingProject.prompts ?? [{ text: existingProject.prompt, createdAt: existingProject.createdAt }]), promptEntry];
+      project.versions = [...(existingProject.versions ?? []), newVersion];
+      project.status = 'completed';
+      project.updatedAt = now();
+      project.costUsd = (existingProject.costUsd ?? 0) + (pipeline.totalCostUsd ?? 0);
+      project.tokensUsed = (existingProject.tokensUsed ?? 0) + (pipeline.totalTokens ?? 0);
+
+      finalizeState(pipeline, 'completed');
+      sessionManager.update(sessionId, { status: 'completed', pipeline });
+      this.emit(sessionId, 'session.completed', { projectId });
+
+      if (this.deps.onProjectSave) {
+        await this.deps.onProjectSave(project);
+      }
+
+      this.logger.info('Update pipeline completed', {
+        projectId,
+        changedFiles: changedPaths.length,
+        costUsd: pipeline.totalCostUsd,
+      });
+
+      return { project, pipeline };
+    } catch (error) {
+      finalizeState(pipeline, 'failed');
+      project.status = 'failed';
+      project.updatedAt = now();
+      sessionManager.update(sessionId, { status: 'failed', pipeline });
+      const msg = error instanceof Error ? error.message : String(error);
+      this.emit(sessionId, 'session.failed', { error: msg });
+      this.logger.error('Update pipeline failed', { sessionId, error: msg });
       throw error;
     }
   }

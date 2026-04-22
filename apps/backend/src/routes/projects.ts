@@ -5,6 +5,7 @@ import { Orchestrator, sessionManager } from '@devteam/orchestration';
 import { globalMemoryStore } from '@devteam/memory';
 import { globalLLMRouter } from '@devteam/api-routing';
 import { projectStore } from '../storage/project-store.js';
+import { dockerService } from '../services/docker-service.js';
 
 function normalizeFilePath(path: string): string {
   return path.replace(/\\/g, '/').trim();
@@ -17,6 +18,16 @@ const orchestrator = new Orchestrator({
   llm: { complete: (req) => globalLLMRouter.complete(req) },
   onProjectSave: async (project) => {
     await projectStore.save(project);
+    // Launch / refresh Docker container when project has files (async — don't block save)
+    const files = project.artifacts?.files ?? [];
+    if (files.length > 0 && dockerService.isAvailable()) {
+      // We need the preview HTML but can't call the route directly — defer to a microtask
+      setImmediate(() => {
+        // Signal that the project is saved so container can be (re)built on next preview request
+        dockerService['_pendingLaunch'] = dockerService['_pendingLaunch'] ?? new Set();
+        (dockerService['_pendingLaunch'] as Set<string>).add(project.id);
+      });
+    }
   },
   onEvent: (sessionId, type, data) => {
     sessionManager.emit(sessionId, type, data);
@@ -148,6 +159,49 @@ export async function projectRoutes(app: FastifyInstance) {
         return true;
       });
 
+      // ── CDN library registry ──────────────────────────────────────────────
+      // Maps npm package names → CDN URL + UMD global name.
+      // Only packages detected in the generated code are injected as <script> tags.
+      // CDN URLs are verified working UMD builds. global = window property set by each script.
+      const CDN_LIBS: Array<{ pkg: string; cdn: string; global: string }> = [
+        // yup v1.x dropped the UMD build — pin to 0.32.x which has dist/yup.umd.js
+        { pkg: 'yup',                  cdn: 'https://cdn.jsdelivr.net/npm/yup@0.32.11/dist/yup.umd.js',                                          global: 'Yup'              },
+        { pkg: 'axios',                cdn: 'https://cdn.jsdelivr.net/npm/axios@1.7.2/dist/axios.min.js',                                         global: 'axios'            },
+        // react-hook-form UMD global is exported as ReactHookForm
+        { pkg: 'react-hook-form',      cdn: 'https://cdn.jsdelivr.net/npm/react-hook-form@7.51.5/dist/index.umd.min.js',                          global: 'ReactHookForm'    },
+        // zod UMD is in lib/umd, not lib root
+        { pkg: 'zod',                  cdn: 'https://cdn.jsdelivr.net/npm/zod@3.22.4/lib/umd.js',                                                global: 'Zod'              },
+        { pkg: 'lucide-react',         cdn: 'https://cdn.jsdelivr.net/npm/lucide-react@0.390.0/dist/umd/lucide-react.min.js',                     global: 'LucideReact'      },
+        { pkg: 'framer-motion',        cdn: 'https://cdn.jsdelivr.net/npm/framer-motion@10.18.0/dist/framer-motion.js',                           global: 'Motion'           },
+        { pkg: 'recharts',             cdn: 'https://cdn.jsdelivr.net/npm/recharts@2.12.7/umd/Recharts.js',                                       global: 'Recharts'         },
+        { pkg: 'date-fns',             cdn: 'https://cdn.jsdelivr.net/npm/date-fns@2.30.0/date_fns/index.js',                                     global: 'dateFns'          },
+        { pkg: 'chart.js',             cdn: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js',                                 global: 'Chart'            },
+        // react-chartjs-2 UMD expects Chart.js to be loaded first (above)
+        { pkg: 'react-chartjs-2',      cdn: 'https://cdn.jsdelivr.net/npm/react-chartjs-2@5.2.0/dist/index.umd.min.js',                          global: 'ReactChartJS2'    },
+        { pkg: 'clsx',                 cdn: 'https://cdn.jsdelivr.net/npm/clsx@2.1.1/dist/clsx.min.js',                                          global: 'clsx'             },
+        { pkg: 'classnames',           cdn: 'https://cdn.jsdelivr.net/npm/classnames@2.5.1/index.js',                                            global: 'classNames'       },
+        { pkg: 'lodash',               cdn: 'https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js',                                         global: '_'                },
+        { pkg: 'moment',               cdn: 'https://cdn.jsdelivr.net/npm/moment@2.30.1/moment.min.js',                                          global: 'moment'           },
+        { pkg: 'dayjs',                cdn: 'https://cdn.jsdelivr.net/npm/dayjs@1.11.12/dayjs.min.js',                                           global: 'dayjs'            },
+        { pkg: 'formik',               cdn: 'https://cdn.jsdelivr.net/npm/formik@2.4.6/dist/formik.umd.development.js',                          global: 'Formik'           },
+        { pkg: '@tanstack/react-query', cdn: 'https://cdn.jsdelivr.net/npm/@tanstack/react-query@4.36.1/build/umd/index.development.js',          global: 'ReactQuery'       },
+        { pkg: 'react-query',          cdn: 'https://cdn.jsdelivr.net/npm/react-query@3.39.3/reactQuery.development.js',                         global: 'ReactQuery'       },
+        { pkg: 'react-spring',         cdn: 'https://cdn.jsdelivr.net/npm/react-spring@9.7.3/dist/react-spring.umd.js',                          global: 'ReactSpring'      },
+        { pkg: 'uuid',                 cdn: 'https://cdn.jsdelivr.net/npm/uuid@9.0.1/dist/umd/uuid.min.js',                                      global: 'uuid'             },
+        { pkg: 'nanoid',               cdn: 'https://cdn.jsdelivr.net/npm/nanoid@5.0.7/index.browser.js',                                        global: 'nanoid'           },
+      ];
+
+      const allCode = componentFiles.map(f => f.content).join('\n');
+      const usedCdnLibs = CDN_LIBS.filter(lib => {
+        const esc = lib.pkg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`from\\s+['"]${esc}['"]`).test(allCode);
+      });
+      const usesIconLibs = /from\s+['"](?:react-icons\/|@heroicons\/|@radix-ui\/react-icons)/.test(allCode);
+      const usesHeadlessUI = /from\s+['"](?:@headlessui\/|@radix-ui\/)/.test(allCode);
+      const usesChakra = /from\s+['"]@chakra-ui\//.test(allCode);
+      const usesMUI = /from\s+['"]@mui\//.test(allCode);
+      const usesAntd = /from\s+['"]antd['"]/.test(allCode);
+
       // Helper: strip all import/export syntax so every file runs in shared Babel scope.
       // NOTE: generated code is often single-line, so NO line-boundary anchors (^/$).
       function processComponent(code: string): string {
@@ -170,13 +224,58 @@ export async function projectRoutes(app: FastifyInstance) {
         code = code.replace(/import\s+\{([^}]+)\}\s+from\s+['"]react-router-dom['"];?/g, (_, names) => `const { ${names.trim()} } = ReactRouterDOM;`);
         // import X from 'react-router-dom'  →  (drop)
         code = code.replace(/import\s+\w+\s+from\s+['"]react-router-dom['"];?/g, '');
+        // import styled from 'styled-components'  →  drop (styled global already set by CDN)
+        // import styled, { X } from 'styled-components'  →  only keep named imports
+        code = code.replace(/import\s+styled(?:\s*,\s*\{([^}]*)\})?\s+from\s+['"]styled-components['"];?/g, (_, named) =>
+          named ? `const { ${named.trim()} } = styled;` : ''
+        );
+        // import { X } from 'styled-components'  →  const { X } = styled;
+        code = code.replace(/import\s+\{([^}]+)\}\s+from\s+['"]styled-components['"];?/g, (_, names) => `const { ${names.trim()} } = styled;`);
+
+        // ── CDN-mapped third-party libraries ──────────────────────────────
+        for (const lib of usedCdnLibs) {
+          const esc = lib.pkg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const g = `window.${lib.global}`;
+          // import * as Name from 'pkg' or 'pkg/sub'
+          code = code.replace(new RegExp(`import\\s+\\*\\s+as\\s+(\\w+)\\s+from\\s+['"]${esc}(?:/[^'"]*)?['"]`, 'g'), (_, n) => `const ${n} = ${g};`);
+          // import Name, { A, B } from 'pkg'
+          code = code.replace(new RegExp(`import\\s+(\\w+)\\s*,\\s*\\{([^}]+)\\}\\s+from\\s+['"]${esc}(?:/[^'"]*)?['"]`, 'g'), (_, def, named) => `const ${def} = ${g};\nconst { ${named.trim()} } = ${g};`);
+          // import { A, B } from 'pkg'
+          code = code.replace(new RegExp(`import\\s+\\{([^}]+)\\}\\s+from\\s+['"]${esc}(?:/[^'"]*)?['"]`, 'g'), (_, names) => `const { ${names.trim()} } = ${g};`);
+          // import Name from 'pkg'
+          code = code.replace(new RegExp(`import\\s+(\\w+)\\s+from\\s+['"]${esc}(?:/[^'"]*)?['"]`, 'g'), (_, n) => `const ${n} = ${g};`);
+        }
+
+        // ── Icon library stubs (react-icons/*, @heroicons/*, @radix-ui/react-icons) ──
+        code = code.replace(/import\s+\{([^}]+)\}\s+from\s+['"](?:react-icons\/[^'"]+|@heroicons\/[^'"]+|@radix-ui\/react-icons)['"]/g,
+          (_, names) => `const { ${names.trim()} } = window.__iconStub || {};`);
+        code = code.replace(/import\s+(\w+)\s+from\s+['"](?:react-icons\/[^'"]+|@heroicons\/[^'"]+|@radix-ui\/react-icons)['"]/g,
+          (_, n) => `const ${n} = window.__iconStub || {};`);
+
+        // ── Headless UI / Radix UI stubs ──────────────────────────────────
+        code = code.replace(/import\s+\{([^}]+)\}\s+from\s+['"](?:@headlessui\/react|@radix-ui\/[^'"]+)['"]/g,
+          (_, names) => `const { ${names.trim()} } = window.__headlessui || {};`);
+        code = code.replace(/import\s+\*\s+as\s+(\w+)\s+from\s+['"](?:@headlessui\/react|@radix-ui\/[^'"]+)['"]/g,
+          (_, n) => `const ${n} = window.__headlessui || {};`);
 
         // All remaining local relative imports  →  (drop)
-        code = code.replace(/import\s+(?:\*\s+as\s+\w+|\w+(?:\s*,\s*\{[^}]*\})?|\{[^}]*\})\s+from\s+['"][./][^'"]*['"];?/g, '');
+        code = code.replace(/import\s+(?:\*\s+as\s+\w+|\w+(?:\s*,\s*\{[^}]*\})?|\{[^}]*\})\s+from\s+['"][./][^'"]*['"]/g, '');
         // Side-effect imports (e.g. import './index.css')  →  (drop)
-        code = code.replace(/import\s+['"][^'"]*['"];?/g, '');
-        // Any remaining external package imports not handled above  →  (drop)
-        code = code.replace(/import\s+(?:\w+(?:\s*,\s*\{[^}]*\})?|\{[^}]*\}|\*\s+as\s+\w+)\s+from\s+['"][^'"]+['"];?/g, '');
+        code = code.replace(/import\s+['"][^'"]*['"]/g, '');
+        // Remaining unknown external imports → null-safe proxy stub to prevent ReferenceError
+        code = code.replace(/import\s+\*\s+as\s+(\w+)\s+from\s+['"]([^'"./][^'"]*)['"]/g,
+          (_, n, pkg) => { const id = `window.__s_${pkg.replace(/\W/g,'_')}`; return `if(!${id})${id}=new Proxy({},{get(_,k){return()=>null;}});
+const ${n}=${id};`; });
+        code = code.replace(/import\s+(\w+)\s*,\s*\{([^}]+)\}\s+from\s+['"]([^'"./][^'"]*)['"]/g,
+          (_, def, named, pkg) => { const id = `window.__s_${pkg.replace(/\W/g,'_')}`; return `if(!${id})${id}=new Proxy({},{get(_,k){return()=>null;}});
+const ${def}=${id}.default||${id};
+const{${named.trim()}}=${id};`; });
+        code = code.replace(/import\s+\{([^}]+)\}\s+from\s+['"]([^'"./][^'"]*)['"]/g,
+          (_, names, pkg) => { const id = `window.__s_${pkg.replace(/\W/g,'_')}`; return `if(!${id})${id}=new Proxy({},{get(_,k){return()=>null;}});
+const{${names.trim()}}=${id};`; });
+        code = code.replace(/import\s+(\w+)\s+from\s+['"]([^'"./][^'"]*)['"]/g,
+          (_, n, pkg) => { const id = `window.__s_${pkg.replace(/\W/g,'_')}`; return `if(!${id})${id}=new Proxy({},{get(_,k){return()=>null;}});
+const ${n}=${id}.default||${id};`; });
 
         // export default function Foo / class Foo  →  function Foo / class Foo
         code = code.replace(/export\s+default\s+(function|class)\s+(\w+)/g, '$1 $2');
@@ -189,6 +288,13 @@ export async function projectRoutes(app: FastifyInstance) {
 
         // module.exports = {...}  →  (drop — config files)
         code = code.replace(/module\.exports\s*=\s*\{[\s\S]*?\}\s*;?/g, '');
+
+        // ── const → var for all generated import stubs ─────────────────────
+        // All files run in ONE shared Babel scope. If two files both import { Box }
+        // from the same package, we get duplicate `const Box` declarations → SyntaxError.
+        // Using `var` allows safe re-declaration across files.
+        code = code.replace(/\bconst([ \t]*(\{[^}\n]+\}|\w+)[ \t]*=[ \t]*(React|ReactDOM|ReactRouterDOM|styled|window\.))/g,
+          'var$1');
 
         return code;
       }
@@ -263,8 +369,157 @@ var ReactRouterDOM = (function() {
   <title>${project.name ?? 'Preview'}</title>
   <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.development.js"></script>
   <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.development.js"></script>
+  <script>
+  // Inline styled-components polyfill — avoids UMD/CommonJS detection issues with CDN builds
+  window.styled = (function() {
+    var _id = 0;
+    function uid() { return 'sc' + (++_id); }
+    function evalCss(strings, vals, props) {
+      return strings.reduce(function(acc, s, i) {
+        var v = vals[i];
+        if (typeof v === 'function') { try { v = v(props || {}); } catch(e) { v = ''; } }
+        return acc + s + (v == null ? '' : v);
+      }, '');
+    }
+    function injectStyle(id, css) {
+      var el = document.getElementById(id);
+      if (!el) { el = document.createElement('style'); el.id = id; document.head.appendChild(el); }
+      el.textContent = css;
+    }
+    function makeFactory(tag) {
+      function factory(strings) {
+        var vals = Array.prototype.slice.call(arguments, 1);
+        var cls = uid();
+        function Comp(props) {
+          var css = evalCss(strings, vals, props);
+          injectStyle('sc-' + cls, '.' + cls + '{' + css + '}');
+          var { children, className, ...rest } = props || {};
+          return React.createElement(tag, Object.assign({}, rest, { className: [cls, className].filter(Boolean).join(' ') }), children);
+        }
+        Comp.displayName = 'styled.' + (typeof tag === 'string' ? tag : 'Component');
+        Comp.attrs = function() { return factory; };
+        Comp.withConfig = function() { return Comp; };
+        return Comp;
+      }
+      factory.attrs = function() { return factory; };
+      factory.withConfig = function() { return factory; };
+      return factory;
+    }
+    var styled = function(tag) { return makeFactory(tag); };
+    'a abbr address article aside audio b blockquote body br button canvas caption cite code col colgroup data datalist dd del details dfn dialog div dl dt em embed fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 head header hr i iframe img input ins kbd label legend li main map mark menu nav noscript ol optgroup option output p picture pre progress q s section select small source span strong sub summary sup table tbody td textarea tfoot th thead tr u ul video'.split(' ').forEach(function(t) { styled[t] = makeFactory(t); });
+    styled.css = function(strings) { var v = Array.prototype.slice.call(arguments,1); return evalCss(strings,v,{}); };
+    styled.createGlobalStyle = function(strings) {
+      var vals = Array.prototype.slice.call(arguments,1); var id = uid();
+      return function(props) { injectStyle('gs-'+id, evalCss(strings,vals,props)); return null; };
+    };
+    styled.keyframes = function(strings) {
+      var vals = Array.prototype.slice.call(arguments,1); var name = 'kf'+uid();
+      injectStyle(name, '@keyframes '+name+'{'+evalCss(strings,vals,'')+'}'); return name;
+    };
+    styled.ThemeProvider = function(p) { return p.children || null; };
+    styled.withTheme = function(C) { return C; };
+    styled.useTheme = function() { return {}; };
+    styled.ServerStyleSheet = function() { this.collectStyles = function(c){return c;}; this.getStyleTags = function(){return '';}; };
+    return styled;
+  })();
+  </script>
   ${routerStubs}
-  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js"></script>
+  <script>
+  // Proxy stub factory — transparent React component pass-through, used when a package has no CDN build
+  window.__mkStub = function(name) {
+    // React component that renders children transparently (avoids blank renders)
+    function Comp(props) {
+      if (!props) return null;
+      if (props.children !== undefined) return props.children;
+      return null;
+    }
+    Comp.displayName = name;
+    // Also give it sub-component access (e.g. Dialog.Panel)
+    var p = typeof Proxy !== 'undefined' ? new Proxy(Comp, {
+      get: function(t, k) {
+        if (k === 'default') return p;
+        if (k === 'displayName' || k === 'name' || k in Function.prototype) return t[k];
+        if (!t[k]) t[k] = window.__mkStub(name + '.' + k);
+        return t[k];
+      },
+      construct: function() { return {}; }
+    }) : Comp;
+    return p;
+  };
+  </script>
+  ${usedCdnLibs.map(lib => `<script crossorigin src="${lib.cdn}" onerror="console.warn('CDN failed: ${lib.pkg}, using stub');window.${lib.global}=window.__mkStub('${lib.global}')"></script>`).join('\n  ')}
+  ${(usesIconLibs || usesHeadlessUI || usesChakra || usesMUI || usesAntd) ? `<script>
+  // ── Icon stub (react-icons / heroicons / radix-ui/react-icons) ──────────
+  window.__iconStub = typeof Proxy !== 'undefined' ? new Proxy({}, {
+    get: function(_, name) {
+      return function(props) {
+        var attrs = Object.assign({ xmlns:'http://www.w3.org/2000/svg', width: props && props.size || 16, height: props && props.size || 16, viewBox:'0 0 24 24', fill:'currentColor', 'aria-hidden':'true' }, props);
+        delete attrs.size; delete attrs.children;
+        return React.createElement('svg', attrs);
+      };
+    }
+  }) : {};
+
+  // ── Transparent children pass-through for UI libraries without CDN builds ──
+  function __passThrough(p) {
+    if (!p) return null;
+    var c = p.children;
+    return (typeof c === 'function') ? (c({ open:false, checked:false, selected:false, active:false, disabled:false, isOpen:false, value:'' }) || null) : (c !== undefined ? c : null);
+  }
+
+  // ── Headless UI / Radix UI stub ──────────────────────────────────────────
+  window.__headlessui = (function() {
+    var base = typeof Proxy !== 'undefined' ? new Proxy({}, { get: function(_, k) { return k === '__esModule' ? false : __passThrough; } }) : {};
+    ['Dialog','Transition','Menu','Popover','Disclosure','Listbox','Combobox','RadioGroup','Switch','Tab','Tabs'].forEach(function(name) {
+      var c = function(p) { return __passThrough(p); }; c.displayName = name;
+      ['Panel','Title','Description','Button','Items','Item','Options','Option','Label','Group','List','Tab','Panels','Overlay','Backdrop','Arrow'].forEach(function(s) { c[s] = function(p) { return __passThrough(p); }; });
+      base[name] = c;
+    });
+    return base;
+  })();
+
+  // ── Chakra UI stub (@chakra-ui/react, @chakra-ui/icons) ─────────────────
+  window.__chakra = (function() {
+    function el(tag) { return function(props) {
+      if (!props) return null;
+      var { children, as: As, colorScheme, variant, size, isDisabled, isLoading, leftIcon, rightIcon, ...rest } = props;
+      var t = As || tag;
+      return React.createElement(t, rest, leftIcon, children, rightIcon);
+    }; }
+    var s = window.__mkStub('Chakra');
+    ['Box','Flex','Grid','GridItem','Stack','HStack','VStack','Center','Container','Divider','Spacer'].forEach(function(n) { s[n] = el('div'); });
+    ['Text','Heading','Link','Code','Kbd','Mark','Highlight'].forEach(function(n) { s[n] = el('p'); });
+    ['Button','IconButton'].forEach(function(n) { s[n] = el('button'); });
+    ['Input','Textarea','Select','NumberInput','NumberInputField','PinInput','PinInputField','Editable','EditableInput','EditableTextarea','EditablePreview'].forEach(function(n) { s[n] = el('input'); });
+    ['Image','Avatar'].forEach(function(n) { s[n] = el('img'); });
+    ['Card','CardHeader','CardBody','CardFooter','SimpleGrid','Wrap','WrapItem'].forEach(function(n) { s[n] = el('div'); });
+    ['Modal','ModalOverlay','ModalContent','ModalHeader','ModalBody','ModalFooter','ModalCloseButton','Drawer','DrawerOverlay','DrawerContent','DrawerHeader','DrawerBody','DrawerFooter','DrawerCloseButton','Alert','AlertIcon','AlertTitle','AlertDescription','Toast','Popover','PopoverTrigger','PopoverContent','PopoverHeader','PopoverBody','PopoverFooter','Tooltip','Menu','MenuButton','MenuList','MenuItem','MenuDivider','Tabs','TabList','Tab','TabPanels','TabPanel','Accordion','AccordionItem','AccordionButton','AccordionPanel','AccordionIcon'].forEach(function(n) { s[n] = function(p) { return __passThrough(p); }; });
+    s['ChakraProvider'] = function(p) { return __passThrough(p); };
+    s['extendTheme'] = function(t) { return t || {}; };
+    s['useDisclosure'] = function() { return { isOpen: false, onOpen: function(){}, onClose: function(){}, onToggle: function(){} }; };
+    s['useToast'] = function() { return function() {}; };
+    s['useColorMode'] = function() { return { colorMode: 'light', toggleColorMode: function(){} }; };
+    s['useBreakpointValue'] = function(v) { return typeof v === 'object' ? (v.base || v.md || Object.values(v)[0]) : v; };
+    s['useColorModeValue'] = function(l) { return l; };
+    s['useTheme'] = function() { return {}; };
+    s['Icon'] = function(props) { return React.createElement('svg', { xmlns:'http://www.w3.org/2000/svg', width:16, height:16, viewBox:'0 0 24 24', fill:'currentColor' }); };
+    ['CheckIcon','CloseIcon','AddIcon','MinusIcon','SearchIcon','ChevronDownIcon','ChevronUpIcon','ChevronLeftIcon','ChevronRightIcon','ArrowForwardIcon','ArrowBackIcon','ArrowUpIcon','ArrowDownIcon','InfoIcon','WarningIcon','WarningTwoIcon','CheckCircleIcon','DeleteIcon','EditIcon','ExternalLinkIcon','HamburgerIcon','MoonIcon','SunIcon','StarIcon','QuestionIcon','QuestionOutlineIcon','AtSignIcon','EmailIcon','LockIcon','UnlockIcon','ViewIcon','ViewOffIcon','PhoneIcon','BellIcon','CalendarIcon','TimeIcon','DownloadIcon','AttachmentIcon','LinkIcon','CopyIcon','RepeatIcon','RepeatClockIcon','SpinnerIcon','SmallCloseIcon','SmallAddIcon','TriangleDownIcon','TriangleUpIcon','DragHandleIcon','ArrowLeftIcon','ArrowRightIcon','NotAllowedIcon','ChatIcon','UpDownIcon','SearchIcon2','SettingsIcon'].forEach(function(n) { s[n] = function(props) { return React.createElement('svg', { xmlns:'http://www.w3.org/2000/svg', width: props && props.boxSize || 16, height: props && props.boxSize || 16, viewBox:'0 0 24 24', fill:'currentColor' }); }; });
+    return s;
+  })();
+  window.__s__chakra_ui_react = window.__chakra;
+  window.__s__chakra_ui_icons = window.__chakra;
+
+  // ── MUI stub (@mui/material, @mui/icons-material) ───────────────────────
+  window.__mui = window.__mkStub('MUI');
+  window.__s__mui_material = window.__mui;
+  window.__s__mui_icons_material = window.__iconStub;
+  window.__s__mui_x_date_pickers = window.__mkStub('MUIDatePickers');
+  window.__s__mui_x_data_grid = window.__mkStub('MUIDataGrid');
+
+  // ── Ant Design stub (antd) ───────────────────────────────────────────────
+  window.__s_antd = window.__mkStub('Antd');
+  </script>` : ''}
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
@@ -274,7 +529,10 @@ var ReactRouterDOM = (function() {
   <script>
     window.addEventListener('error', function(e) {
       var el = document.getElementById('root');
-      if (el) el.innerHTML = '<pre style="padding:2rem;color:#c00;background:#fff8f8;white-space:pre-wrap;font-size:13px;border-left:4px solid red;margin:1rem">' + (e.message || String(e)) + '</pre>';
+      if (!el) return;
+      var detail = e.message || String(e);
+      if (e.filename) detail += '\\n  at ' + e.filename + ':' + e.lineno + ':' + e.colno;
+      el.innerHTML = '<pre style="padding:2rem;color:#c00;background:#fff8f8;white-space:pre-wrap;font-size:13px;border-left:4px solid red;margin:1rem">' + detail + '</pre>';
     });
   </script>
 </head>
@@ -300,6 +558,14 @@ ${scriptBody}
   </script>
 </body>
 </html>`;
+
+      // Launch/refresh Docker container for this project (async, uses the HTML we just built)
+      if (dockerService.isAvailable()) {
+        dockerService.launch(project.id, reactDoc);
+        // Clear pending flag if set
+        const pending = (dockerService as unknown as { _pendingLaunch?: Set<string> })._pendingLaunch;
+        pending?.delete(project.id);
+      }
 
       return reply.header('Content-Type', 'text/html; charset=utf-8').send(reactDoc);
     }
@@ -337,9 +603,66 @@ ${scriptBody}
     return reply.header('Content-Type', 'text/html; charset=utf-8').send(doc);
   });
 
+  // GET /api/projects/:id/container — returns Docker container info for live preview
+  app.get<{ Params: { id: string } }>('/:id/container', async (req, reply) => {
+    if (!dockerService.isAvailable()) {
+      return reply.send({ available: false, status: 'unavailable', url: null });
+    }
+    const info = dockerService.getInfo(req.params.id);
+    if (!info) {
+      return reply.send({ available: true, status: 'none', url: null });
+    }
+    return reply.send({ available: true, status: info.status, url: info.url || null });
+  });
+
   // DELETE /api/projects/:id — delete project
   app.delete<{ Params: { id: string } }>('/:id', async (req, reply) => {
     await projectStore.delete(req.params.id);
+    // Stop container if running
+    if (dockerService.isAvailable()) {
+      dockerService.stop(req.params.id).catch(() => {});
+    }
     return reply.status(204).send();
+  });
+
+  // POST /api/projects/:id/prompts — append a new prompt and re-run partial pipeline
+  app.post<{ Params: { id: string }; Body: { prompt: string } }>('/:id/prompts', async (req, reply) => {
+    const { prompt } = req.body ?? {};
+
+    if (!prompt || typeof prompt !== 'string' || prompt.trim().length < 3) {
+      throw new ValidationError('prompt must be at least 3 characters');
+    }
+    if (prompt.length > 10_000) {
+      throw new ValidationError('prompt must not exceed 10,000 characters');
+    }
+
+    const existingProject = await projectStore.get(req.params.id);
+
+    const { sessionId } = orchestrator.startUpdateAsync(existingProject, prompt.trim());
+
+    return reply.status(202).send({
+      project: { ...existingProject, sessionId, status: 'running' },
+      pipeline: { sessionId, projectId: existingProject.id },
+    });
+  });
+
+  // GET /api/projects/:id/prompts — get prompt history for a project
+  app.get<{ Params: { id: string } }>('/:id/prompts', async (req, reply) => {
+    const project = await projectStore.get(req.params.id);
+    const prompts = project.prompts ?? [{ text: project.prompt, createdAt: project.createdAt }];
+    return reply.send({ prompts });
+  });
+
+  // GET /api/projects/:id/versions — list saved versions
+  app.get<{ Params: { id: string } }>('/:id/versions', async (req, reply) => {
+    const project = await projectStore.get(req.params.id);
+    const versions = (project.versions ?? []).map((v) => ({
+      id: v.id,
+      createdAt: v.createdAt,
+      promptText: v.promptText,
+      summary: v.summary,
+      fileCount: v.files.length,
+    }));
+    return reply.send({ versions });
   });
 }

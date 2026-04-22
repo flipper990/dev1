@@ -1,6 +1,6 @@
 'use client';
 import { useRef, useState, useCallback } from 'react';
-import { Zap, Layers, Terminal, Box, Radio, Bot, Play, Loader2 } from 'lucide-react';
+import { Zap, Layers, Terminal, Box, Radio, Bot, Loader2, PlusCircle, RefreshCw } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { cn } from '../lib/cn';
 
@@ -19,9 +19,10 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-export function PromptPanel({ onSubmit, disabled }: {
+export function PromptPanel({ onSubmit, disabled, mode = 'create' }: {
   onSubmit: (prompt: string) => void;
   disabled?: boolean;
+  mode?: 'create' | 'edit';
 }) {
   const [prompt, setPrompt] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -30,6 +31,8 @@ export function PromptPanel({ onSubmit, disabled }: {
   const tokens    = estimateTokens(prompt);
   const costEst   = (tokens * 0.00000015).toFixed(6);
   const tokenWarn = tokens > MAX_TOKENS * 0.9 ? 'danger' : tokens > MAX_TOKENS * 0.6 ? 'warn' : '';
+
+  const isEdit = mode === 'edit';
 
   const handleSubmit = useCallback(() => {
     const trimmed = prompt.trim();
@@ -56,7 +59,9 @@ export function PromptPanel({ onSubmit, disabled }: {
     <div className="flex-shrink-0 border-b border-white/[0.06] bg-[#0B0F19]/50">
       {/* Header row */}
       <div className="flex items-center justify-between px-3 pt-2.5 pb-0">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Prompt</span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">
+          {isEdit ? 'Update Project' : 'New Project'}
+        </span>
         {prompt && (
           <span className={cn(
             'text-[11px] font-mono',
@@ -67,29 +72,33 @@ export function PromptPanel({ onSubmit, disabled }: {
         )}
       </div>
 
-      {/* Template chips */}
-      <div className="flex gap-1.5 px-3 pt-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-        {TEMPLATES.map((t) => {
-          const Icon = t.icon;
-          return (
-            <button
-              key={t.label}
-              onClick={() => applyTemplate(t)}
-              className="flex-shrink-0 flex items-center gap-1.5 bg-white/[0.04] border border-white/[0.06] rounded-full px-3 py-1 text-[11px] text-[#94A3B8] hover:bg-[#3B82F6]/10 hover:border-[#3B82F6]/30 hover:text-[#60A5FA] transition-colors whitespace-nowrap"
-            >
-              <Icon size={11} />
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
+      {/* Template chips — only shown in create mode */}
+      {!isEdit && (
+        <div className="flex gap-1.5 px-3 pt-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+          {TEMPLATES.map((t) => {
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.label}
+                onClick={() => applyTemplate(t)}
+                className="flex-shrink-0 flex items-center gap-1.5 bg-white/[0.04] border border-white/[0.06] rounded-full px-3 py-1 text-[11px] text-[#94A3B8] hover:bg-[#3B82F6]/10 hover:border-[#3B82F6]/30 hover:text-[#60A5FA] transition-colors whitespace-nowrap"
+              >
+                <Icon size={11} />
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Textarea */}
       <div className="px-3 pt-2">
         <textarea
           ref={textareaRef}
           className="w-full bg-transparent border-0 border-b border-white/[0.08] px-0 py-1.5 text-[13px] text-[#F1F5F9] outline-none resize-none leading-relaxed min-h-[72px] max-h-[140px] placeholder:text-[#475569] focus:border-[#3B82F6]/50 transition-colors"
-          placeholder="Describe the project you want to build… (Ctrl+Enter to generate)"
+          placeholder={isEdit
+            ? 'Describe what you want to change or add… (Ctrl+Enter to update)'
+            : 'Describe the project you want to build… (Ctrl+Enter to generate)'}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -103,7 +112,7 @@ export function PromptPanel({ onSubmit, disabled }: {
           <kbd className="bg-white/[0.04] border border-white/[0.06] rounded px-1 py-0.5 text-[10px] font-mono">Ctrl</kbd>
           +
           <kbd className="bg-white/[0.04] border border-white/[0.06] rounded px-1 py-0.5 text-[10px] font-mono">↵</kbd>
-          {' '}generate &nbsp;·&nbsp;
+          {' '}{isEdit ? 'update' : 'generate'} &nbsp;·&nbsp;
           <kbd className="bg-white/[0.04] border border-white/[0.06] rounded px-1 py-0.5 text-[10px] font-mono">⇧L</kbd>
           {' '}logs
         </span>
@@ -118,9 +127,11 @@ export function PromptPanel({ onSubmit, disabled }: {
           )}
         >
           {isGenerating ? (
-            <><Loader2 size={13} className="animate-spin" /> Building…</>
+            <><Loader2 size={13} className="animate-spin" /> {isEdit ? 'Updating…' : 'Building…'}</>
+          ) : isEdit ? (
+            <><RefreshCw size={12} /> Update Project</>
           ) : (
-            <><Play size={12} /> Generate</>
+            <><PlusCircle size={12} /> Create Project</>
           )}
         </button>
       </div>

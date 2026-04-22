@@ -47,7 +47,7 @@ export function AppHeader({ onNewProject }: { onNewProject?: () => void }) {
       </div>
 
       {/* Status badge */}
-      <StatusBadge status={statusLabel} pct={progress?.progress} />
+      <StatusBadge status={statusLabel} pct={progress?.progress != null ? Math.round(progress.progress * 100) : undefined} />
 
       <div className="flex-1" />
 

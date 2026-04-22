@@ -13,14 +13,14 @@ const AGENT_CONFIG: Record<string, { label: string; color: string; bg: string; e
   devops:   { label: 'DevOps',   color: '#FB7185', bg: 'rgba(251,113,133,0.12)', emoji: '🚀' },
 };
 
-function getAgentKey(name: string): string {
-  const n = name.toLowerCase();
+function getAgentKey(name: string | undefined | null): string {
+  const n = (name ?? '').toLowerCase();
   if (n.includes('planner') || n.includes('architect')) return 'planner';
   if (n.includes('coder')   || n.includes('developer') || n.includes('backend') || n.includes('frontend')) return 'coder';
   if (n.includes('review')  || n.includes('quality')) return 'reviewer';
   if (n.includes('test')    || n.includes('qa')) return 'tester';
   if (n.includes('devops')  || n.includes('deploy') || n.includes('infra')) return 'devops';
-  return 'coder';
+  return n || 'planner'; // fallback to the name itself, or planner (first step)
 }
 
 function fmt(ms: number): string {
@@ -48,7 +48,7 @@ export function AgentPipeline() {
   }
 
   const steps: PipelineStep[] = progress?.steps ?? [];
-  const pct = progress?.progress ?? 0;
+  const pct = Math.round((progress?.progress ?? 0) * 100);
 
   // Dedupe by agent role, prefer running/failed over completed
   const agentNodes = steps.reduce<PipelineStep[]>((acc, step) => {
@@ -112,7 +112,7 @@ export function AgentPipeline() {
           const prevDone = i > 0 && (displayNodes[i - 1].status === 'completed' || displayNodes[i - 1].status === 'skipped');
 
           return (
-            <div key={step.stepId} className="flex items-center">
+            <div key={step.stepId ?? `${agentKey}-${i}`} className="flex items-center">
               {/* Connector SVG */}
               {i > 0 && (
                 <div className="relative flex-1 min-w-[16px] mx-0.5" style={{ marginBottom: '28px' }}>

@@ -3,11 +3,12 @@
 import { Component, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Monitor, Tablet, Smartphone,
-  RefreshCw, ExternalLink, AlertTriangle, RotateCcw, Globe,
+  RefreshCw, ExternalLink, AlertTriangle, RotateCcw, Globe, Container,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../lib/store';
 import { cn } from '../lib/cn';
+import { getContainerInfo } from '../lib/api';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
 
@@ -74,6 +75,46 @@ export function LivePreview() {
     : null;
   const canPreview = !!previewUrl && projectStatus === 'completed';
 
+  // ── Docker container URL polling ──────────────────────────────────────────
+  const [containerUrl, setContainerUrl] = useState<string | null>(null);
+  const [containerStatus, setContainerStatus] = useState<string>('none');
+
+  useEffect(() => {
+    if (!selectedProjectId || projectStatus !== 'completed') {
+      setContainerUrl(null);
+      setContainerStatus('none');
+      return;
+    }
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    async function poll() {
+      if (cancelled || !selectedProjectId) return;
+      try {
+        const info = await getContainerInfo(selectedProjectId);
+        if (cancelled) return;
+        setContainerStatus(info.status);
+        if (info.url) {
+          setContainerUrl(info.url);
+          return; // container is running — stop polling
+        }
+        if (info.status === 'building') {
+          // keep polling every 3 seconds while building
+          timer = setTimeout(poll, 3000);
+        }
+      } catch {
+        // Docker not available or endpoint not found — silently ignore
+      }
+    }
+
+    poll();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [selectedProjectId, projectStatus]);
+
   useEffect(() => {
     if (projectStatus === 'completed' && selectedProjectId) {
       setIframeKey((k) => k + 1);
@@ -87,8 +128,9 @@ export function LivePreview() {
   }, []);
 
   const handleOpenTab = useCallback(() => {
-    if (previewUrl) window.open(previewUrl, '_blank', 'noopener,noreferrer');
-  }, [previewUrl]);
+    const url = containerUrl ?? previewUrl;
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  }, [containerUrl, previewUrl]);
 
   const pct         = progress?.progress ?? 0;
   const currentStep = progress?.currentStep?.name ?? null;
@@ -108,11 +150,14 @@ export function LivePreview() {
             Preview
           </span>
 
-          {/* URL bar mockup */}
+          {/* URL bar mockup — shows container URL when available, otherwise preview endpoint */}
           {canPreview && (
-            <div className="flex items-center gap-1.5 flex-1 max-w-[300px] bg-white/[0.04] border border-white/[0.06] rounded px-2 py-1 text-[11px] text-[#64748B] min-w-0 overflow-hidden">
+            <div className="flex items-center gap-1.5 flex-1 max-w-[360px] bg-white/[0.04] border border-white/[0.06] rounded px-2 py-1 text-[11px] text-[#64748B] min-w-0 overflow-hidden">
               <Globe size={10} className="flex-shrink-0" />
-              <span className="truncate font-mono">{previewUrl}</span>
+              <span className="truncate font-mono">{containerUrl ?? previewUrl}</span>
+              {containerStatus === 'building' && (
+                <span className="flex-shrink-0 text-[9px] font-bold text-[#F59E0B] uppercase tracking-wider">Docker…</span>
+              )}
             </div>
           )}
 
@@ -187,6 +232,17 @@ export function LivePreview() {
         >
           <ExternalLink size={13} />
         </button>
+
+        {/* Open Docker container URL in new tab — only shown when container is running */}
+        {containerUrl && (
+          <button
+            onClick={() => window.open(containerUrl, '_blank', 'noopener,noreferrer')}
+            title="Open in Docker container (isolated preview)"
+            className="flex items-center justify-center w-7 h-7 rounded border border-[#3B82F6]/30 bg-[#3B82F6]/[0.08] text-[#60A5FA] hover:bg-[#3B82F6]/[0.20] transition-colors"
+          >
+            <Container size={13} />
+          </button>
+        )}
       </div>
 
       {/* Stage */}

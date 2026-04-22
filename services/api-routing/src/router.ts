@@ -6,6 +6,33 @@ import { CostTracker, globalCostTracker } from './cost-tracker.js';
 // ─── Model registry ───────────────────────────────────────────────────────────
 
 export const MODEL_REGISTRY: Record<string, LLMModel> = {
+  'gpt-4.1': {
+    id: 'gpt-4.1',
+    provider: 'openai',
+    contextWindow: 1_047_576,
+    inputCostPer1kTokens: 0.002,
+    outputCostPer1kTokens: 0.008,
+    supportsStreaming: true,
+    supportsVision: true,
+  },
+  'gpt-4.1-mini': {
+    id: 'gpt-4.1-mini',
+    provider: 'openai',
+    contextWindow: 1_047_576,
+    inputCostPer1kTokens: 0.0004,
+    outputCostPer1kTokens: 0.0016,
+    supportsStreaming: true,
+    supportsVision: true,
+  },
+  'gpt-4.1-nano': {
+    id: 'gpt-4.1-nano',
+    provider: 'openai',
+    contextWindow: 1_047_576,
+    inputCostPer1kTokens: 0.0001,
+    outputCostPer1kTokens: 0.0004,
+    supportsStreaming: true,
+    supportsVision: true,
+  },
   'gpt-4o': {
     id: 'gpt-4o',
     provider: 'openai',

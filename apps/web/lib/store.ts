@@ -26,6 +26,9 @@ interface DashboardState {
   isGenerating: boolean;
   progress: SessionProgress | null;
 
+  // Mode
+  projectMode: 'create' | 'edit';
+
   // Logs
   logs: DashboardLog[];
   logFilter: 'all' | 'info' | 'warn' | 'error';
@@ -41,6 +44,7 @@ interface DashboardState {
   // Actions
   setProjects: (projects: GeneratedProject[]) => void;
   setSelectedProjectId: (id: string | null) => void;
+  setProjectMode: (mode: 'create' | 'edit') => void;
   setFiles: (files: ProjectFileEntry[]) => void;
   setSelectedFilePath: (path: string | null) => void;
   setFileContent: (content: ProjectFileContent | null) => void;
@@ -66,6 +70,7 @@ export const useStore = create<DashboardState>((set) => ({
   fileContent: null,
   isGenerating: false,
   progress: null,
+  projectMode: 'create',
   logs: [],
   logFilter: 'all',
   logSearch: '',
@@ -77,6 +82,7 @@ export const useStore = create<DashboardState>((set) => ({
 
   setProjects: (projects) => set({ projects }),
   setSelectedProjectId: (id) => set({ selectedProjectId: id }),
+  setProjectMode: (projectMode) => set({ projectMode }),
   setFiles: (files) => set({ files }),
   setSelectedFilePath: (path) => set({ selectedFilePath: path }),
   setFileContent: (content) => set({ fileContent: content }),

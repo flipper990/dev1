@@ -71,10 +71,30 @@ export interface ProjectArtifacts {
   deploymentConfig?: string;
 }
 
+export interface PromptHistoryEntry {
+  text: string;
+  createdAt: string;
+  sessionId?: string;
+  changedFiles?: string[];
+}
+
+export interface ProjectVersion {
+  id: string;
+  createdAt: string;
+  promptText: string;
+  files: ProjectFile[];
+  summary?: string;
+}
+
 export interface Project {
   id: string;
   name: string;
+  /** The most recent prompt (kept for backward compat) */
   prompt: string;
+  /** Full history of all prompts submitted against this project */
+  prompts?: PromptHistoryEntry[];
+  /** Saved versions for rollback */
+  versions?: ProjectVersion[];
   preferences?: ProjectPreferences;
   artifacts: ProjectArtifacts;
   status: PipelineStatus;

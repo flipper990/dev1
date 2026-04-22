@@ -69,6 +69,32 @@ export async function getProjectFile(projectId: string, filePath: string): Promi
   return request<ProjectFileContent>(`/api/projects/${projectId}/file?path=${encodedPath}`);
 }
 
+export async function updateProject(projectId: string, prompt: string): Promise<GenerateResponse> {
+  const result = await request<{ project: GenerateResponse['project']; pipeline: { sessionId: string } }>(`/api/projects/${projectId}/prompts`, {
+    method: 'POST',
+    body: JSON.stringify({ prompt }),
+  });
+  return {
+    projectId: result.project.id,
+    sessionId: result.pipeline.sessionId,
+    project: result.project,
+  } as GenerateResponse;
+}
+
+export async function getProjectPromptHistory(projectId: string): Promise<import('../types/dashboard').PromptHistoryEntry[]> {
+  const result = await request<{ prompts: import('../types/dashboard').PromptHistoryEntry[] }>(`/api/projects/${projectId}/prompts`);
+  return result.prompts;
+}
+
+export async function getProjectVersions(projectId: string): Promise<import('../types/dashboard').ProjectVersion[]> {
+  const result = await request<{ versions: import('../types/dashboard').ProjectVersion[] }>(`/api/projects/${projectId}/versions`);
+  return result.versions;
+}
+
+export async function getContainerInfo(projectId: string): Promise<{ available: boolean; status: string; url: string | null }> {
+  return request<{ available: boolean; status: string; url: string | null }>(`/api/projects/${projectId}/container`);
+}
+
 export async function getSessionProgress(sessionId: string): Promise<SessionProgress> {
   return request<SessionProgress>(`/api/sessions/${sessionId}/progress`);
 }

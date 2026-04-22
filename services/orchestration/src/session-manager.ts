@@ -30,6 +30,7 @@ type SessionListener = (event: { type: string; data: unknown }) => void;
 export class SessionManager {
   private readonly sessions = new Map<string, Session>();
   private readonly listeners = new Map<string, Set<SessionListener>>();
+  private readonly lastProgress = new Map<string, unknown>(); // buffer for late subscribers
   private readonly logger = new Logger('session-manager');
   private activeSessions = 0;
 
@@ -64,6 +65,7 @@ export class SessionManager {
 
     if (patch.status === 'completed' || patch.status === 'failed' || patch.status === 'cancelled') {
       this.activeSessions = Math.max(0, this.activeSessions - 1);
+      this.lastProgress.delete(sessionId);
     }
 
     this.emit(sessionId, 'session.updated', session);
@@ -79,10 +81,21 @@ export class SessionManager {
       this.listeners.set(sessionId, set);
     }
     set.add(listener);
+
+    // Replay the last known progress immediately so late subscribers don't miss steps
+    const cached = this.lastProgress.get(sessionId);
+    if (cached) {
+      try { listener({ type: 'progress', data: cached }); } catch { /* ignore */ }
+    }
+
     return () => set!.delete(listener);
   }
 
   emit(sessionId: string, type: string, data: unknown): void {
+    // Cache latest progress for late subscribers
+    if (type === 'progress') {
+      this.lastProgress.set(sessionId, data);
+    }
     const set = this.listeners.get(sessionId);
     if (!set) return;
     for (const listener of set) {

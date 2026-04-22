@@ -34,12 +34,32 @@ export interface SessionProgress {
   durationMs: number;
 }
 
+export interface PromptHistoryEntry {
+  text: string;
+  createdAt: string;
+  sessionId?: string;
+  changedFiles?: string[];
+}
+
+export interface ProjectVersion {
+  id: string;
+  createdAt: string;
+  promptText: string;
+  summary?: string;
+  fileCount?: number;
+}
+
 export interface GeneratedProject {
   id: string;
   sessionId: string;
   name: string;
   status: 'generating' | 'completed' | 'failed';
+  /** Legacy single prompt (kept for compat) */
   prompts: string[];
+  /** Full prompt history */
+  promptHistory?: PromptHistoryEntry[];
+  /** Saved versions for rollback */
+  versions?: ProjectVersion[];
   totalTokens: number;
   totalCostUsd: number;
   durationMs: number;

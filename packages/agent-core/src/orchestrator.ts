@@ -1,11 +1,18 @@
 // ─────────────────────────────────────────────────────────────
-// Pipeline Orchestrator — Step-by-step execution with state
+// Pipeline Orchestrator — Parallel-wave execution with state
 // tracking, error recovery, and checkpoint/resume support.
 //
 // Execution model:
-//   7 sequential stages, each with one primary agent.
-//   Each stage: prepare input → run agent (with retry) →
-//               validate output → store artifact → checkpoint.
+//   Steps execute in dependency-ordered waves; all steps whose
+//   upstream dependencies are satisfied run concurrently within
+//   the same wave via Promise.allSettled.
+//
+//   Canonical wave schedule (8 agents):
+//     Wave 1  — planner                          (serial)
+//     Wave 2  — architect                        (serial)
+//     Wave 3  — developer  ║  devops             (parallel)
+//     Wave 4  — reviewer   ║  tester  ║ optimizer (parallel)
+//     Wave 5  — debugger                         (serial)
 //
 // Error recovery:
 //   1. Automatic retry with exponential backoff (per agent config)
@@ -71,13 +78,18 @@ export interface StepState {
 export interface PipelineState {
   sessionId: string;
   status: 'running' | 'completed' | 'failed' | 'cancelled';
+  /**
+   * Index of the highest-indexed step that has started or completed.
+   * In parallel mode multiple steps advance this simultaneously; use
+   * `steps` for per-step status detail rather than relying on this field.
+   */
   currentStepIndex: number;
   steps: StepState[];
   artifacts: Map<AgentRole, Record<string, unknown>>;
   tasks: Task[];
   startedAt: Date;
   durationMs: number;
-  /** Number of steps finished (completed + skipped) out of total. */
+  /** Fraction complete (0–1). Updated whenever a step finishes. */
   progress: number;
   optimization: {
     cacheHits: number;
@@ -98,6 +110,7 @@ interface CachedStepResult {
 
 export type PipelineEvent =
   | { type: 'pipeline:started';    sessionId: string; totalSteps: number }
+  | { type: 'wave:started';        sessionId: string; wave: number; agents: AgentRole[] }
   | { type: 'step:started';        sessionId: string; stepId: string; stepName: string; agent: AgentRole; description: string; stepIndex: number; totalSteps: number }
   | { type: 'step:retrying';       sessionId: string; stepId: string; agent: AgentRole; attempt: number; maxAttempts: number; error: string }
   | { type: 'step:completed';      sessionId: string; stepId: string; agent: AgentRole; durationMs: number; stepIndex: number; totalSteps: number }
@@ -215,140 +228,82 @@ export class PipelineOrchestrator {
     this.logger.info(`Pipeline starting for session ${session.id}`, { totalSteps });
 
     try {
+      // ── Topology-aware wave scheduler ──────────────────────
+      // Each iteration of the while-loop discovers all steps whose
+      // upstream dependencies are fully resolved and runs them as a
+      // concurrent wave via Promise.allSettled.  This converts the
+      // previous 8-serial-step pipeline into 5 waves:
+      //   Wave 1 : planner
+      //   Wave 2 : architect
+      //   Wave 3 : developer ║ devops        (parallel)
+      //   Wave 4 : reviewer  ║ tester ║ optimizer  (parallel)
+      //   Wave 5 : debugger
+      // ──────────────────────────────────────────────────────
+
+      // Map agent → step index for O(1) dep resolution lookups.
+      const stepByAgent = new Map<AgentRole, number>(
+        steps.map((s, i) => [s.agent, i] as [AgentRole, number]),
+      );
+
+      /** True when every declared dependency has a resolved (completed/skipped) step. */
+      const allDepsResolved = (role: AgentRole): boolean => {
+        const deps = AGENT_DEFINITIONS[role].dependencies as AgentRole[];
+        return deps.every(dep => {
+          const idx = stepByAgent.get(dep);
+          if (idx === undefined) return true; // dep not in this pipeline — treat as satisfied
+          const st = state.steps[idx].status;
+          return st === 'completed' || st === 'skipped';
+        });
+      };
+
+      let waveNumber = 0;
+
+      while (state.status === 'running' && !this.cancelled) {
+        // Collect every pending step whose dependencies are now satisfied.
+        const wave = steps
+          .map((step, i) => ({ step, stepState: state.steps[i], i }))
+          .filter(({ stepState, step }) =>
+            stepState.status === 'pending' && allDepsResolved(step.agent),
+          );
+
+        if (wave.length === 0) break; // all work done (or deps permanently unsatisfied)
+
+        waveNumber++;
+        this.emit({
+          type: 'wave:started',
+          sessionId: session.id,
+          wave: waveNumber,
+          agents: wave.map(w => w.step.agent),
+        });
+
+        // Run the entire wave concurrently. Individual errors are handled inside
+        // runWaveStep and written to state — we never let a promise rejection
+        // escape Promise.allSettled.
+        await Promise.allSettled(
+          wave.map(({ step, stepState, i }) =>
+            this.runWaveStep(session, step, stepState, state, i, totalSteps, pipelineStart),
+          ),
+        );
+      }
+
+      if (this.cancelled && state.status === 'running') {
+        state.status = 'cancelled';
+        state.error = 'Pipeline cancelled by user';
+      }
+
+      // Mark any step that never ran because an upstream dep permanently failed.
       for (let i = 0; i < steps.length; i++) {
-        // Check cancellation
-        if (this.cancelled) {
-          state.status = 'cancelled';
-          state.error = 'Pipeline cancelled by user';
-          break;
-        }
-
-        const step = steps[i];
-        const stepState = state.steps[i];
-        state.currentStepIndex = i;
-
-        // ── Skip seeded steps (pre-populated by update mode) ──
-        if (stepState.status === 'completed') {
-          state.progress = (i + 1) / totalSteps;
-          this.emit({ type: 'step:skipped', sessionId: session.id, stepId: step.id, agent: step.agent, reason: 'Seeded from existing project state' });
-          continue;
-        }
-
-        // ── Check if upstream dependencies have artifacts ──
-        const missingDep = this.checkDependencies(step.agent, state.artifacts);
-        if (missingDep && step.critical) {
-          const error = `Missing required input from ${missingDep}`;
-          stepState.status = 'failed';
-          stepState.error = error;
-          state.status = 'failed';
-          state.error = error;
-          this.emit({ type: 'step:failed', sessionId: session.id, stepId: step.id, agent: step.agent, error, critical: true });
-          this.emit({ type: 'pipeline:failed', sessionId: session.id, error, failedStep: step.id, durationMs: Date.now() - pipelineStart });
-          break;
-        }
-        if (missingDep && !step.critical) {
-          stepState.status = 'skipped';
+        if (state.steps[i].status === 'pending') {
+          state.steps[i].status = 'skipped';
           state.optimization.skippedSteps++;
-          state.optimization.estimatedApiCallsSaved++;
-          this.emit({ type: 'step:skipped', sessionId: session.id, stepId: step.id, agent: step.agent, reason: `Missing input from ${missingDep}` });
-          state.progress = (i + 1) / totalSteps;
-          continue;
-        }
-
-        const skipReason = this.shouldSkipStep(step.agent, state.artifacts);
-        if (skipReason) {
-          stepState.status = 'skipped';
-          stepState.error = skipReason;
-          state.optimization.skippedSteps++;
-          state.optimization.estimatedApiCallsSaved++;
           this.emit({
             type: 'step:skipped',
             sessionId: session.id,
-            stepId: step.id,
-            agent: step.agent,
-            reason: skipReason,
+            stepId: steps[i].id,
+            agent: steps[i].agent,
+            reason: 'Skipped — upstream dependency did not complete',
           });
-          state.progress = (i + 1) / totalSteps;
-          continue;
         }
-
-        // ── Execute step ──
-        this.emit({
-          type: 'step:started',
-          sessionId: session.id,
-          stepId: step.id,
-          stepName: step.name,
-          agent: step.agent,
-          description: step.description,
-          stepIndex: i,
-          totalSteps,
-        });
-
-        stepState.status = 'running';
-        stepState.startedAt = new Date();
-
-        const { task, cacheHit } = await this.executeStep(session, step, stepState, state);
-
-        state.optimization.executedSteps++;
-        if (cacheHit) {
-          state.optimization.cacheHits++;
-          state.optimization.estimatedApiCallsSaved++;
-        } else {
-          state.optimization.cacheMisses++;
-        }
-
-        stepState.durationMs = Date.now() - stepState.startedAt.getTime();
-        state.tasks.push(task);
-
-        if (task.status === 'completed') {
-          stepState.status = 'completed';
-          stepState.completedAt = new Date();
-          stepState.taskId = task.id;
-
-          // Store artifact
-          state.artifacts.set(step.agent, task.output ?? {});
-
-          this.emit({
-            type: 'step:completed',
-            sessionId: session.id,
-            stepId: step.id,
-            agent: step.agent,
-            durationMs: stepState.durationMs,
-            stepIndex: i,
-            totalSteps,
-          });
-        } else {
-          // Step failed after all retries
-          stepState.status = 'failed';
-          stepState.error = task.error?.message ?? 'Unknown error';
-
-          this.emit({
-            type: 'step:failed',
-            sessionId: session.id,
-            stepId: step.id,
-            agent: step.agent,
-            error: stepState.error,
-            critical: step.critical,
-          });
-
-          if (step.critical) {
-            state.status = 'failed';
-            state.error = `Critical step "${step.name}" failed: ${stepState.error}`;
-            this.emit({
-              type: 'pipeline:failed',
-              sessionId: session.id,
-              error: state.error,
-              failedStep: step.id,
-              durationMs: Date.now() - pipelineStart,
-            });
-            break;
-          }
-
-          // Non-critical: skip and continue
-          this.logger.warn(`Non-critical step "${step.name}" failed, continuing`, { error: stepState.error });
-        }
-
-        state.progress = (i + 1) / totalSteps;
       }
 
       // Finalize
@@ -368,6 +323,7 @@ export class PipelineOrchestrator {
 
         this.logger.info(`Pipeline completed for session ${session.id}`, {
           durationMs: state.durationMs,
+          waves: waveNumber,
           ...counts,
         });
       }
@@ -388,6 +344,142 @@ export class PipelineOrchestrator {
       this.logger.error('Pipeline execution error', { error: state.error, sessionId: session.id });
       return state;
     }
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // Wave Step Execution — Runs one step within a parallel wave
+  // ══════════════════════════════════════════════════════════
+
+  /**
+   * Execute a single pipeline step within a wave. All per-step logic lives
+   * here: seeded-skip check, shouldSkipStep, executeStep, artifact storage,
+   * and state/event updates.
+   *
+   * Designed to be safe for concurrent invocation: state updates are limited
+   * to index-specific slice writes (state.steps[i]) or append-safe operations
+   * (state.tasks.push, state.artifacts.set). No two concurrent steps write to
+   * the same state slot because each occupies a unique index.
+   */
+  private async runWaveStep(
+    session: Session,
+    step: PipelineStep,
+    stepState: StepState,
+    state: PipelineState,
+    stepIndex: number,
+    totalSteps: number,
+    pipelineStart: number,
+  ): Promise<void> {
+    // Abort early if a critical step already failed or user cancelled.
+    if (this.cancelled || state.status !== 'running') return;
+
+    state.currentStepIndex = Math.max(state.currentStepIndex, stepIndex);
+
+    // ── Already seeded (update / resume mode) ──────────────
+    if (stepState.status === 'completed') {
+      state.progress = Math.max(state.progress, (stepIndex + 1) / totalSteps);
+      this.emit({
+        type: 'step:skipped',
+        sessionId: session.id,
+        stepId: step.id,
+        agent: step.agent,
+        reason: 'Seeded from existing project state',
+      });
+      return;
+    }
+
+    // ── Optional-skip check ─────────────────────────────────
+    const skipReason = this.shouldSkipStep(step.agent, state.artifacts);
+    if (skipReason) {
+      stepState.status = 'skipped';
+      stepState.error = skipReason;
+      state.optimization.skippedSteps++;
+      state.optimization.estimatedApiCallsSaved++;
+      this.emit({
+        type: 'step:skipped',
+        sessionId: session.id,
+        stepId: step.id,
+        agent: step.agent,
+        reason: skipReason,
+      });
+      state.progress = Math.max(state.progress, (stepIndex + 1) / totalSteps);
+      return;
+    }
+
+    // ── Execute ─────────────────────────────────────────────
+    this.emit({
+      type: 'step:started',
+      sessionId: session.id,
+      stepId: step.id,
+      stepName: step.name,
+      agent: step.agent,
+      description: step.description,
+      stepIndex,
+      totalSteps,
+    });
+
+    stepState.status = 'running';
+    stepState.startedAt = new Date();
+
+    const { task, cacheHit } = await this.executeStep(session, step, stepState, state);
+
+    state.optimization.executedSteps++;
+    if (cacheHit) {
+      state.optimization.cacheHits++;
+      state.optimization.estimatedApiCallsSaved++;
+    } else {
+      state.optimization.cacheMisses++;
+    }
+
+    stepState.durationMs = Date.now() - stepState.startedAt!.getTime();
+    state.tasks.push(task);
+
+    if (task.status === 'completed') {
+      stepState.status = 'completed';
+      stepState.completedAt = new Date();
+      stepState.taskId = task.id;
+      state.artifacts.set(step.agent, task.output ?? {});
+
+      this.emit({
+        type: 'step:completed',
+        sessionId: session.id,
+        stepId: step.id,
+        agent: step.agent,
+        durationMs: stepState.durationMs,
+        stepIndex,
+        totalSteps,
+      });
+    } else {
+      stepState.status = 'failed';
+      stepState.error = task.error?.message ?? 'Unknown error';
+
+      this.emit({
+        type: 'step:failed',
+        sessionId: session.id,
+        stepId: step.id,
+        agent: step.agent,
+        error: stepState.error,
+        critical: step.critical,
+      });
+
+      if (step.critical) {
+        // Signal all concurrent siblings to abort after they finish their current await.
+        state.status = 'failed';
+        state.error = `Critical step "${step.name}" failed: ${stepState.error}`;
+        this.emit({
+          type: 'pipeline:failed',
+          sessionId: session.id,
+          error: state.error,
+          failedStep: step.id,
+          durationMs: Date.now() - pipelineStart,
+        });
+      } else {
+        this.logger.warn(`Non-critical step "${step.name}" failed, continuing`, {
+          error: stepState.error,
+        });
+      }
+    }
+
+    state.progress = Math.max(state.progress, (stepIndex + 1) / totalSteps);
   }
 
   // ══════════════════════════════════════════════════════════
@@ -625,20 +717,9 @@ export class PipelineOrchestrator {
   }
 
   // ══════════════════════════════════════════════════════════
-  // Dependency Checking
   // ══════════════════════════════════════════════════════════
-
-  /** Returns the name of the missing dependency, or null if all satisfied. */
-  private checkDependencies(
-    role: AgentRole,
-    artifacts: Map<AgentRole, Record<string, unknown>>,
-  ): AgentRole | null {
-    const deps = AGENT_DEFINITIONS[role].dependencies;
-    for (const dep of deps) {
-      if (!artifacts.has(dep)) return dep;
-    }
-    return null;
-  }
+  // Optional-Skip Logic
+  // ══════════════════════════════════════════════════════════
 
   private shouldSkipStep(
     role: AgentRole,

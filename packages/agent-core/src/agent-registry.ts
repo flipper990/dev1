@@ -35,8 +35,9 @@ export const AGENT_DEFINITIONS: Record<AgentRole, AgentDefinition> = {
     role: 'planner',
     name: 'Planner Agent',
     description: 'Decomposes user prompts into a structured execution plan with tasks, priorities, and dependencies.',
-    model: MODELS.OPUS,
-    fallbackModel: MODELS.GPT4O,
+    // Sonnet is 5× cheaper than Opus and handles structured task decomposition equally well
+    model: { ...MODELS.SONNET, maxTokens: 4096 },
+    fallbackModel: { ...MODELS.GPT4O, maxTokens: 4096 },
     input: {
       description: 'Raw user prompts and optional user preferences',
       schema: {
@@ -135,8 +136,9 @@ export const AGENT_DEFINITIONS: Record<AgentRole, AgentDefinition> = {
     role: 'reviewer',
     name: 'Reviewer Agent',
     description: 'Reviews all generated code for correctness, security vulnerabilities, consistency, and best practices.',
-    model: MODELS.OPUS,
-    fallbackModel: MODELS.GPT4O,
+    // Opus retained for security analysis quality; maxTokens capped — issues list rarely exceeds 4K tokens
+    model: { ...MODELS.OPUS, maxTokens: 4096 },
+    fallbackModel: { ...MODELS.GPT4O, maxTokens: 4096 },
     input: {
       description: 'Full codebase and project spec',
       schema: {
@@ -168,8 +170,8 @@ export const AGENT_DEFINITIONS: Record<AgentRole, AgentDefinition> = {
     role: 'tester',
     name: 'Tester Agent',
     description: 'Generates unit tests, integration tests, and e2e test skeletons for the codebase.',
-    model: MODELS.SONNET,
-    fallbackModel: MODELS.GPT4O_MINI,
+    model: { ...MODELS.SONNET, maxTokens: 8192 },
+    fallbackModel: { ...MODELS.GPT4O_MINI, maxTokens: 8192 },
     input: {
       description: 'Codebase files and API contracts',
       schema: {
@@ -201,8 +203,9 @@ export const AGENT_DEFINITIONS: Record<AgentRole, AgentDefinition> = {
     role: 'debugger',
     name: 'Debugger Agent',
     description: 'Takes review issues and test failures, produces targeted code patches.',
-    model: MODELS.SONNET,
-    fallbackModel: MODELS.GPT4O,
+    // Patches are surgical — 6K tokens is more than sufficient for typical fix sets
+    model: { ...MODELS.SONNET, maxTokens: 6144 },
+    fallbackModel: { ...MODELS.GPT4O, maxTokens: 6144 },
     input: {
       description: 'Issues from Reviewer/Tester and affected files',
       schema: {
@@ -265,8 +268,8 @@ export const AGENT_DEFINITIONS: Record<AgentRole, AgentDefinition> = {
     role: 'optimizer',
     name: 'Optimizer Agent',
     description: 'Performs final-pass optimization: bundle analysis, query optimization, caching strategies, lazy loading, tree shaking hints.',
-    model: MODELS.SONNET,
-    fallbackModel: MODELS.GPT4O_MINI,
+    model: { ...MODELS.SONNET, maxTokens: 6144 },
+    fallbackModel: { ...MODELS.GPT4O_MINI, maxTokens: 6144 },
     input: {
       description: 'Final codebase after all patches applied',
       schema: {

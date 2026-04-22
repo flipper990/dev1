@@ -14,15 +14,21 @@ export class OptimizerAgent extends BaseAgent {
       qaReport?: Record<string, unknown>;
     };
 
-    let prompt = `## Project Specification\n\n\`\`\`json\n${JSON.stringify(spec, null, 2)}\n\`\`\`\n\n`;
+    // Filter to optimizable source files — test files and config files yield no
+    // optimization benefit and can easily double the prompt token count.
+    const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rb|php|java|cs|rs|swift|kt)$/;
+    const TEST_PAT  = /\.(test|spec)\.[^/]+$|[\\/]__tests__[\\/]/;
+    const sourceFiles = files.filter(f => SOURCE_EXT.test(f.path) && !TEST_PAT.test(f.path));
 
-    prompt += `## Codebase (${files.length} files)\n\n`;
-    for (const file of files) {
+    let prompt = `## Tech Stack\n\n\`\`\`json\n${JSON.stringify((spec as any).techStack ?? {})}\n\`\`\`\n\n`;
+
+    prompt += `## Codebase to Optimize (${sourceFiles.length} source files)\n\n`;
+    for (const file of sourceFiles) {
       prompt += `### ${file.path}\n\`\`\`\n${file.content}\n\`\`\`\n\n`;
     }
 
     if (qaReport) {
-      prompt += `## QA Report\n\n\`\`\`json\n${JSON.stringify(qaReport, null, 2)}\n\`\`\`\n\n`;
+      prompt += `## QA Report\n\n\`\`\`json\n${JSON.stringify(qaReport)}\n\`\`\`\n\n`;
     }
 
     if (memories.length > 0) {
@@ -47,14 +53,6 @@ export class OptimizerAgent extends BaseAgent {
     }
     for (const patch of output.patches as Record<string, unknown>[]) {
       if (!patch.file || !patch.oldContent || !patch.newContent) {
-        throw new Error('Validation: optimization patch missing file, oldContent, or newContent');
-      }
-    }
-    if (!output.recommendations || !Array.isArray(output.recommendations)) {
-      throw new Error('Validation: missing recommendations array');
-    }
-    if (!output.perfEstimate || typeof output.perfEstimate !== 'object') {
-      throw new Error('Validation: missing perfEstimate object {
         throw new Error('Validation: optimization patch missing file, oldContent, or newContent');
       }
     }

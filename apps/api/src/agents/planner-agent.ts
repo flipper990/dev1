@@ -23,7 +23,7 @@ export class PlannerAgent extends BaseAgent {
     });
 
     if (userPreferences && Object.keys(userPreferences).length > 0) {
-      sections.push(`## User Preferences\n\n\`\`\`json\n${JSON.stringify(userPreferences, null, 2)}\n\`\`\``);
+      sections.push(`## User Preferences\n\n\`\`\`json\n${JSON.stringify(userPreferences)}\n\`\`\``);
     }
 
     if (memories.length > 0) {

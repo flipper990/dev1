@@ -14,14 +14,14 @@ export class DeveloperAgent extends BaseAgent {
       context?: Record<string, unknown>;
     };
 
-    let prompt = `## Technical Specification\n\n\`\`\`json\n${JSON.stringify(spec, null, 2)}\n\`\`\`\n\n`;
+    let prompt = `## Technical Specification\n\n\`\`\`json\n${JSON.stringify(spec)}\n\`\`\`\n\n`;
 
     prompt += `## Files to Generate\n\n`;
     prompt += fileAssignment.map(f => `- ${f}`).join('\n');
     prompt += '\n\n';
 
     if (context && Object.keys(context).length > 0) {
-      prompt += `## Already Generated Files (for import resolution)\n\n\`\`\`json\n${JSON.stringify(context, null, 2)}\n\`\`\`\n\n`;
+      prompt += `## Already Generated Files (for import resolution)\n\n\`\`\`json\n${JSON.stringify(context)}\n\`\`\`\n\n`;
     }
 
     if (memories.length > 0) {

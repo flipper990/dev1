@@ -8,30 +8,31 @@ import { extractJSON } from './utils.js';
 
 export class DevOpsAgent extends BaseAgent {
   protected async buildPrompt(task: Task, memories: MemoryEntry[]): Promise<string> {
-    const { spec, fileTree, files, plan } = task.input as {
+    const { spec, fileTree, generatedFiles } = task.input as {
       spec: Record<string, unknown>;
       fileTree?: string[];
-      files?: { path?: string }[];
-      plan?: Record<string, unknown>;
+      generatedFiles?: { path: string; language?: string }[];
     };
 
-    const inferredTree = Array.isArray(fileTree)
-      ? fileTree
-      : Array.isArray(files)
-        ? files.map(f => f.path).filter((p): p is string => typeof p === 'string')
-        : [];
-
-    let prompt = `## Project Specification\n\n\`\`\`json\n${JSON.stringify(spec, null, 2)}\n\`\`\`\n\n`;
-
-    if (plan && Object.keys(plan).length > 0) {
-      prompt += `## Execution Plan\n\n\`\`\`json\n${JSON.stringify(plan, null, 2)}\n\`\`\`\n\n`;
-    }
+    let prompt = `## Project Specification\n\n\`\`\`json\n${JSON.stringify(spec)}\n\`\`\`\n\n`;
 
     prompt += `## File Tree\n\n`;
-    prompt += inferredTree.length > 0
-      ? inferredTree.map(f => `- ${f}`).join('\n')
+    prompt += (fileTree ?? []).length > 0
+      ? (fileTree ?? []).map(f => `- ${f}`).join('\n')
       : '- (No file tree provided, infer from specification)';
     prompt += '\n\n';
+
+    // Summarise generated files by language so devops can tailor the build config
+    // without receiving full file content (not needed for infra generation).
+    if (generatedFiles && generatedFiles.length > 0) {
+      const byLang = generatedFiles.reduce<Record<string, number>>((acc, f) => {
+        const lang = f.language ?? 'unknown';
+        acc[lang] = (acc[lang] ?? 0) + 1;
+        return acc;
+      }, {});
+      prompt += `## Generated Files Summary\n\n`;
+      prompt += `${generatedFiles.length} files: ${Object.entries(byLang).map(([l, c]) => `${c} ${l}`).join(', ')}\n\n`;
+    }
 
     if (memories.length > 0) {
       prompt += `## Infrastructure Patterns from Memory\n\n`;

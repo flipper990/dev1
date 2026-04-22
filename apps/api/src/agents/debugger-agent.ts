@@ -14,15 +14,17 @@ export class DebuggerAgent extends BaseAgent {
       spec?: Record<string, unknown>;
     };
 
-    let prompt = `## Issues to Fix (${issues.length})\n\n\`\`\`json\n${JSON.stringify(issues, null, 2)}\n\`\`\`\n\n`;
+    let prompt = `## Issues to Fix (${issues.length})\n\n\`\`\`json\n${JSON.stringify(issues)}\n\`\`\`\n\n`;
 
     prompt += `## Affected Files\n\n`;
     for (const file of affectedFiles) {
       prompt += `### ${file.path}\n\`\`\`\n${file.content}\n\`\`\`\n\n`;
     }
 
-    if (spec) {
-      prompt += `## Project Spec (for context)\n\n\`\`\`json\n${JSON.stringify(spec, null, 2)}\n\`\`\`\n\n`;
+    // Only include tech stack — fixes should match the project's language/framework style.
+    // All other spec fields are already encoded in the file content above.
+    if (spec && (spec as any).techStack) {
+      prompt += `## Tech Stack (for fix style reference)\n\n\`\`\`json\n${JSON.stringify((spec as any).techStack)}\n\`\`\`\n\n`;
     }
 
     if (memories.length > 0) {
@@ -44,17 +46,6 @@ export class DebuggerAgent extends BaseAgent {
   protected async validateOutput(output: Record<string, unknown>, _task: Task): Promise<void> {
     if (!output.patches || !Array.isArray(output.patches)) {
       throw new Error('Validation: missing patches array');
-    }
-    for (const patch of output.patches as Record<string, unknown>[]) {
-      if (!patch.file || typeof patch.file !== 'string') {
-        throw new Error('Validation: patch missing file path');
-      }
-      if (!patch.oldContent || !patch.newContent) {
-        throw new Error(`Validation: patch for ${patch.file} missing oldContent or newContent`);
-      }
-      if (patch.oldContent === patch.newContent) {
-        this.logger.warn(`[debugger] Patch for ${patch.file} has identical old/new content — no-op`);
-      }
     }
     for (const patch of output.patches as Record<string, unknown>[]) {
       if (!patch.file || typeof patch.file !== 'string') {

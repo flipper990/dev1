@@ -13,10 +13,10 @@ export class ArchitectAgent extends BaseAgent {
       userPreferences?: Record<string, unknown>;
     };
 
-    let prompt = `## Execution Plan\n\n\`\`\`json\n${JSON.stringify(plan, null, 2)}\n\`\`\`\n\n`;
+    let prompt = `## Execution Plan\n\n\`\`\`json\n${JSON.stringify(plan)}\n\`\`\`\n\n`;
 
     if (userPreferences && Object.keys(userPreferences).length > 0) {
-      prompt += `## User Preferences\n\n\`\`\`json\n${JSON.stringify(userPreferences, null, 2)}\n\`\`\`\n\n`;
+      prompt += `## User Preferences\n\n\`\`\`json\n${JSON.stringify(userPreferences)}\n\`\`\`\n\n`;
     }
 
     if (memories.length > 0) {

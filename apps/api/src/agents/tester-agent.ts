@@ -14,15 +14,24 @@ export class TesterAgent extends BaseAgent {
       spec: Record<string, unknown>;
     };
 
-    let prompt = `## Project Specification\n\n\`\`\`json\n${JSON.stringify(spec, null, 2)}\n\`\`\`\n\n`;
+    // Filter to source files only — test files, configs, and static assets
+    // don't need to be tested and only inflate the token count.
+    const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rb|php|java|cs|rs|swift|kt)$/;
+    const TEST_PAT  = /\.(test|spec)\.[^/]+$|[\\/]__tests__[\\/]/;
+    const sourceFiles = files.filter(f => SOURCE_EXT.test(f.path) && !TEST_PAT.test(f.path));
 
-    prompt += `## Source Files (${files.length} files)\n\n`;
-    for (const file of files) {
+    // Tech stack is the only spec field needed — it determines the test framework to use.
+    const techStack = (spec as any).techStack ?? {};
+
+    let prompt = `## Tech Stack\n\n\`\`\`json\n${JSON.stringify(techStack)}\n\`\`\`\n\n`;
+
+    prompt += `## Source Files (${sourceFiles.length} files)\n\n`;
+    for (const file of sourceFiles) {
       prompt += `### ${file.path}\n\`\`\`\n${file.content}\n\`\`\`\n\n`;
     }
 
     if (apiContracts.length > 0) {
-      prompt += `## API Contracts\n\n\`\`\`json\n${JSON.stringify(apiContracts, null, 2)}\n\`\`\`\n\n`;
+      prompt += `## API Contracts\n\n\`\`\`json\n${JSON.stringify(apiContracts)}\n\`\`\`\n\n`;
     }
 
     if (memories.length > 0) {

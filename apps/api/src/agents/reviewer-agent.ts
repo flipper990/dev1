@@ -13,7 +13,14 @@ export class ReviewerAgent extends BaseAgent {
       files: { path: string; content: string }[];
     };
 
-    let prompt = `## Project Specification\n\n\`\`\`json\n${JSON.stringify(spec, null, 2)}\n\`\`\`\n\n`;
+    // Send only the contract-verification surface — the full spec (fileTree, dbSchema,
+    // components) is already encoded in the code and doubles the token count needlessly.
+    const verificationRef = {
+      apiContracts: (spec as any).apiContracts ?? [],
+      envVars:      (spec as any).envVars ?? [],
+    };
+
+    let prompt = `## Verification Reference\n\n\`\`\`json\n${JSON.stringify(verificationRef)}\n\`\`\`\n\n`;
 
     prompt += `## Generated Codebase (${files.length} files)\n\n`;
     for (const file of files) {
@@ -40,24 +47,10 @@ export class ReviewerAgent extends BaseAgent {
     if (!output.issues || !Array.isArray(output.issues)) {
       throw new Error('Validation: missing issues array');
     }
-    // Validate each issue has required fields
     const validSeverities = new Set(['critical', 'high', 'medium', 'low', 'info']);
     for (const issue of output.issues as Record<string, unknown>[]) {
       if (!issue.file || !issue.severity || !issue.description) {
         throw new Error('Validation: issue missing required fields (file, severity, description)');
-      }
-      if (!validSeverities.has(issue.severity as string)) {
-        throw new Error(`Validation: invalid severity "${issue.severity}", must be critical|high|medium|low|info`);
-      }
-    }
-    if (typeof output.score !== 'number' || output.score < 0 || output.score > 100) {
-      throw new Error('Validation: score must be 0–100');
-    }
-    if (typeof output.passable !== 'boolean') {
-      throw new Error('Validation: passable must be boolean');
-    }
-    if (!output.summary || typeof output.summary !== 'string') {
-      throw new Error('Validation: missing review summary fields (file, severity, description)');
       }
       if (!validSeverities.has(issue.severity as string)) {
         throw new Error(`Validation: invalid severity "${issue.severity}", must be critical|high|medium|low|info`);

@@ -95,6 +95,34 @@ export async function getContainerInfo(projectId: string): Promise<{ available: 
   return request<{ available: boolean; status: string; url: string | null }>(`/api/projects/${projectId}/container`);
 }
 
+/**
+ * Trigger a ZIP export download for the given project.
+ * The backend strips all mock/preview-only code; what you get is production-ready.
+ */
+export async function exportProject(projectId: string, projectName?: string): Promise<void> {
+  const url = `${API_BASE}/api/projects/${projectId}/export`;
+  const response = await fetch(url, { cache: 'no-store' });
+  if (!response.ok) {
+    let detail = `HTTP ${response.status}`;
+    try {
+      const payload = await response.json() as { error?: string };
+      detail = payload?.error ?? detail;
+    } catch { /* keep default */ }
+    throw new Error(detail);
+  }
+
+  // Stream the blob into a browser download
+  const blob = await response.blob();
+  const anchor = document.createElement('a');
+  anchor.href = URL.createObjectURL(blob);
+  const safeName = (projectName ?? projectId).replace(/[^a-z0-9-_]/gi, '-').toLowerCase();
+  anchor.download = `${safeName}-export.zip`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(anchor.href);
+}
+
 export async function getSessionProgress(sessionId: string): Promise<SessionProgress> {
   return request<SessionProgress>(`/api/sessions/${sessionId}/progress`);
 }

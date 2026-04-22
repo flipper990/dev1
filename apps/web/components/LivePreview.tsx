@@ -3,12 +3,12 @@
 import { Component, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Monitor, Tablet, Smartphone,
-  RefreshCw, ExternalLink, AlertTriangle, RotateCcw, Globe, Container,
+  RefreshCw, ExternalLink, AlertTriangle, RotateCcw, Globe, Container, Download, Loader2, CheckCircle2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../lib/store';
 import { cn } from '../lib/cn';
-import { getContainerInfo } from '../lib/api';
+import { getContainerInfo, exportProject } from '../lib/api';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
 
@@ -62,7 +62,7 @@ class PreviewErrorBoundary extends Component<
 
 /* ---- Main component ------------------------------------------------------ */
 export function LivePreview() {
-  const { selectedProjectId, projects, isGenerating, progress } = useStore();
+  const { selectedProjectId, projects, isGenerating, progress, addToast } = useStore();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [viewport,  setViewport]  = useState<Viewport>('desktop');
   const [iframeKey, setIframeKey] = useState(0);
@@ -74,6 +74,34 @@ export function LivePreview() {
     ? `${API_BASE}/api/projects/${selectedProjectId}/preview`
     : null;
   const canPreview = !!previewUrl && projectStatus === 'completed';
+
+  // ── Download Source Code state ────────────────────────────────────────────
+  const [isExporting,  setIsExporting]  = useState(false);
+  const [exportDone,   setExportDone]   = useState(false);
+
+  const handleExport = useCallback(async () => {
+    if (!selectedProjectId || !project) return;
+    setIsExporting(true);
+    try {
+      await exportProject(selectedProjectId, project.name);
+      setExportDone(true);
+      addToast({
+        type: 'success',
+        title: 'Download started',
+        message: `${(project.name ?? project.id).replace(/[^a-z0-9-_ ]/gi, '')}-export.zip`,
+      });
+      // Reset success checkmark after 2.5 s
+      setTimeout(() => setExportDone(false), 2500);
+    } catch (err) {
+      addToast({
+        type: 'error',
+        title: 'Download failed',
+        message: (err as Error).message,
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }, [selectedProjectId, project, addToast]);
 
   // ── Docker container URL polling ──────────────────────────────────────────
   const [containerUrl, setContainerUrl] = useState<string | null>(null);
@@ -222,6 +250,26 @@ export function LivePreview() {
           className="flex items-center justify-center w-7 h-7 rounded border border-transparent text-[#64748B] hover:bg-white/[0.06] hover:border-white/[0.06] hover:text-[#F1F5F9] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
           <RefreshCw size={13} />
+        </button>
+
+        {/* Download Source Code — production-ready ZIP, mocks excluded */}
+        <button
+          onClick={handleExport}
+          disabled={!canPreview || isExporting}
+          title="Download Source Code — production-ready ZIP (mocks excluded, README included)"
+          className={cn(
+            'flex items-center gap-1.5 px-2.5 h-7 rounded-md border text-[11px] font-semibold transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed select-none',
+            exportDone
+              ? 'border-[#22C55E]/50 text-[#22C55E] bg-[#22C55E]/[0.12] shadow-[0_0_8px_rgba(34,197,94,0.25)]'
+              : 'border-[#33e6be]/40 text-[#33e6be] bg-[#33e6be]/[0.08] hover:bg-[#33e6be]/[0.18] hover:border-[#33e6be]/60 hover:shadow-[0_0_10px_rgba(51,230,190,0.2)] active:scale-95',
+          )}
+        >
+          {isExporting
+            ? <Loader2 size={11} className="animate-spin" />
+            : exportDone
+            ? <CheckCircle2 size={11} />
+            : <Download size={11} />}
+          {isExporting ? 'Downloading…' : exportDone ? 'Downloaded!' : 'Download Source Code'}
         </button>
 
         <button

@@ -7,6 +7,8 @@ import { globalLLMRouter } from '@devteam/api-routing';
 import { projectStore } from '../storage/project-store.js';
 import { dockerService } from '../services/docker-service.js';
 import { buildReactPreviewHtml } from './preview-renderer.js';
+import { injectMockLayerIntoHtml } from './preview-mock-injector.js';
+import { buildExportEntries, buildZipBuffer } from './export-builder.js';
 
 function normalizeFilePath(path: string): string {
   return path.replace(/\\/g, '/').trim();
@@ -98,11 +100,22 @@ export async function projectRoutes(app: FastifyInstance) {
 
     const isReact = jsxFiles.some(f => /from ['"]react['"]/.test(f.content) || /require\(['"]react['"]\)/.test(f.content));
 
+    // Build project meta for mock layer (uses spec's apiContracts + envVars if available)
+    const spec = project.artifacts?.spec as Record<string, unknown> | undefined;
+    const mockMeta = {
+      id: project.id,
+      name: project.name ?? 'Preview',
+      envVars: (spec?.envVars as { name: string; description?: string; example?: string }[] | undefined) ?? [],
+      apiContracts: (spec?.apiContracts as { method: string; path: string; response?: unknown }[] | undefined) ?? [],
+    };
+
     if (isReact) {
-      const html = buildReactPreviewHtml({
+      let html = buildReactPreviewHtml({
         projectId: project.id, projectName: project.name ?? 'Preview',
         componentFiles: jsxFiles, cssFiles, normalizeFilePath, dockerService,
       });
+      // Inject mock layer AFTER the base HTML is built so it wraps all app scripts
+      html = injectMockLayerIntoHtml(html, mockMeta);
       const pending = (dockerService as unknown as { _pendingLaunch?: Set<string> })._pendingLaunch;
       pending?.delete(project.id);
       return reply.header('Content-Type', 'text/html; charset=utf-8').send(html);
@@ -110,7 +123,8 @@ export async function projectRoutes(app: FastifyInstance) {
 
     if (htmlFiles.length === 0) {
       const fileList = files.map(f => `<li><code>${normalizeFilePath(f.path)}</code> (${f.content.length} B)</li>`).join('\n');
-      return reply.header('Content-Type', 'text/html; charset=utf-8').send(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Preview</title><style>body{font-family:system-ui,sans-serif;background:#0e1322;color:#d4def7;padding:2rem}h2{color:#33e6be}li{margin:.4rem 0}code{background:rgba(255,255,255,.1);padding:.1rem .3rem;border-radius:4px;font-size:.9em}p{color:#8fa1c7}</style></head><body><h2>Generated Project: ${project.name ?? project.id}</h2><p>No HTML entry point found. Files generated:</p><ul>${fileList}</ul></body></html>`);
+      const fallbackHtml = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Preview</title><style>body{font-family:system-ui,sans-serif;background:#0e1322;color:#d4def7;padding:2rem}h2{color:#33e6be}li{margin:.4rem 0}code{background:rgba(255,255,255,.1);padding:.1rem .3rem;border-radius:4px;font-size:.9em}p{color:#8fa1c7}</style></head><body><h2>Generated Project: ${project.name ?? project.id}</h2><p>No HTML entry point found. Files generated:</p><ul>${fileList}</ul></body></html>`;
+      return reply.header('Content-Type', 'text/html; charset=utf-8').send(fallbackHtml);
     }
 
     const entryHtml = htmlFiles.find(f => normalizeFilePath(f.path).endsWith('index.html')) ?? htmlFiles[0];
@@ -121,7 +135,48 @@ export async function projectRoutes(app: FastifyInstance) {
     doc = doc.replace(/<script[^>]+src=["'][^"']*["'][^>]*><\/script>/gi, '');
     doc = doc.includes('</head>') ? doc.replace('</head>', `${cssBlock}\n</head>`) : cssBlock + '\n' + doc;
     doc = doc.includes('</body>') ? doc.replace('</body>', `${jsBlock}\n</body>`) : doc + '\n' + jsBlock;
+    // Inject mock layer
+    doc = injectMockLayerIntoHtml(doc, mockMeta);
     return reply.header('Content-Type', 'text/html; charset=utf-8').send(doc);
+  });
+
+  /**
+   * Export route — returns a ZIP of the complete production-ready project.
+   * Mocks are excluded. Real backend code is included. README is generated.
+   */
+  app.get<{ Params: { id: string } }>('/:id/export', async (req, reply) => {
+    const project = await projectStore.get(req.params.id);
+    if (project.status !== 'completed') {
+      return reply.status(409).send({ error: 'Project is not yet complete — cannot export while generating.' });
+    }
+
+    const spec = project.artifacts?.spec as Record<string, unknown> | undefined;
+    const files = (project.artifacts?.files ?? []) as { path: string; content: string }[];
+
+    const exportProject = {
+      id: project.id,
+      name: project.name ?? project.id,
+      prompt: project.prompt,
+      prompts: project.prompts,
+      spec,
+      plan: project.artifacts?.plan as Record<string, unknown> | undefined,
+      files,
+      totalTokens: project.tokensUsed,
+      totalCostUsd: project.costUsd,
+      createdAt: project.createdAt,
+    };
+
+    const entries = buildExportEntries(exportProject);
+    const zip = buildZipBuffer(entries);
+
+    const safeName = (project.name ?? project.id).replace(/[^a-z0-9-_]/gi, '-').toLowerCase();
+    const filename = `${safeName}-export.zip`;
+
+    return reply
+      .header('Content-Type', 'application/zip')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .header('Content-Length', zip.length.toString())
+      .send(zip);
   });
 
   app.get<{ Params: { id: string } }>('/:id/container', async (req, reply) => {

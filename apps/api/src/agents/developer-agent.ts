@@ -14,11 +14,45 @@ export class DeveloperAgent extends BaseAgent {
       context?: Record<string, unknown>;
     };
 
+    // Detect whether any assigned files are frontend/UI files.
+    const FRONTEND_EXT = /\.(tsx|jsx|vue|svelte)$/i;
+    const FRONTEND_PATHS = /\/(components|pages|app|views|screens|ui)\//i;
+    const isFrontendBatch = fileAssignment.some(
+      f => FRONTEND_EXT.test(f) || FRONTEND_PATHS.test(f),
+    );
+
     let prompt = `## Technical Specification\n\n\`\`\`json\n${JSON.stringify(spec)}\n\`\`\`\n\n`;
+
+    // Surface the design system prominently when generating UI code so the LLM
+    // doesn't have to hunt for it inside the large spec blob.
+    const designSystem = (spec as { designSystem?: Record<string, unknown> }).designSystem;
+    if (isFrontendBatch && designSystem) {
+      prompt += `## Design System (apply to ALL UI files in this batch)\n\n`;
+      prompt += `\`\`\`json\n${JSON.stringify(designSystem)}\n\`\`\`\n\n`;
+      prompt += `> Use the color palette, typography scale, spacing, and border-radius tokens above.\n`;
+      prompt += `> Derive Tailwind theme extension values from these tokens in tailwind.config.ts.\n`;
+      prompt += `> All primitives (Button, Input, Badge, Card, etc.) must implement the variant/size system from designSystem.primitives.\n\n`;
+    }
 
     prompt += `## Files to Generate\n\n`;
     prompt += fileAssignment.map(f => `- ${f}`).join('\n');
     prompt += '\n\n';
+
+    if (isFrontendBatch) {
+      prompt += `## Frontend Generation Checklist\n\n`;
+      prompt += `For each UI file in this batch, verify before outputting:\n`;
+      prompt += `- [ ] Component has a TypeScript Props interface\n`;
+      prompt += `- [ ] Primitive components (Button, Input) use React.forwardRef\n`;
+      prompt += `- [ ] Multi-variant primitives use CVA (class-variance-authority)\n`;
+      prompt += `- [ ] cn() helper imported from src/lib/cn.ts for conditional classes\n`;
+      prompt += `- [ ] Loading state implemented (Skeleton or Spinner)\n`;
+      prompt += `- [ ] Empty state implemented (EmptyState component)\n`;
+      prompt += `- [ ] Error state displayed inline (not just a thrown exception)\n`;
+      prompt += `- [ ] All inputs have visible labels (not placeholder-only)\n`;
+      prompt += `- [ ] All interactive elements have focus-visible ring styles\n`;
+      prompt += `- [ ] Layout is responsive (mobile-first, sidebar collapses on <md)\n`;
+      prompt += `- [ ] Spacing follows 4px grid (Tailwind p-1/p-2/p-4/p-6/p-8)\n\n`;
+    }
 
     if (context && Object.keys(context).length > 0) {
       prompt += `## Already Generated Files (for import resolution)\n\n\`\`\`json\n${JSON.stringify(context)}\n\`\`\`\n\n`;

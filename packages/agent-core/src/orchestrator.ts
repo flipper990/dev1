@@ -14,6 +14,7 @@ import {
   PIPELINE_STEPS,
 } from './pipeline-types';
 import { executeStep, getStepCacheKey, writeStepCache } from './step-executor';
+import { validateAndRepair } from './step-validator';
 
 // Re-export types so existing consumers of this module are unaffected.
 export type {
@@ -229,10 +230,70 @@ export class PipelineOrchestrator {
     state.tasks.push(task);
 
     if (task.status === 'completed') {
+      // ── Self-heal gate ────────────────────────────────────
+      // Validate the step's output against its schema and cross-step
+      // invariants. Programmatic repairs (default-fill, shape coercion,
+      // upstream alignment) are applied in-place. If the validator
+      // returns `blocked`, the pipeline is hard-stopped here — honouring
+      // the rule: the system must NOT proceed if errors exist.
+      const validation = validateAndRepair(step.agent, task.output ?? {}, state);
+
+      // Persist the (possibly repaired) output instead of the raw output.
+      state.artifacts.set(step.agent, validation.output);
+      stepState.validationVerdict = validation.verdict;
+      stepState.repairCount = validation.repairs.length;
+
+      this.emit({
+        type: 'step:validated',
+        sessionId: session.id,
+        stepId: step.id,
+        agent: step.agent,
+        verdict: validation.verdict,
+        issueCount: validation.issues.length,
+        repairCount: validation.repairs.length,
+        issues: validation.issues.map(i => ({
+          id: i.id, message: i.message, severity: i.severity, category: i.category,
+        })),
+      });
+
+      if (validation.repairs.length > 0) {
+        this.emit({
+          type: 'step:repaired',
+          sessionId: session.id,
+          stepId: step.id,
+          agent: step.agent,
+          changes: validation.repairs.map(r => ({ path: r.path, action: r.action, detail: r.detail })),
+        });
+        this.logger.info(`Step "${step.name}" auto-repaired ${validation.repairs.length} issue(s)`, {
+          agent: step.agent,
+          verdict: validation.verdict,
+        });
+      }
+
+      if (validation.verdict === 'blocked') {
+        const reason = validation.blockReason ?? 'Validation blocked by unrepairable errors';
+        stepState.status = 'failed';
+        stepState.error = `Validation blocked: ${reason}`;
+        this.emit({ type: 'step:blocked', sessionId: session.id, stepId: step.id, agent: step.agent, reason });
+        this.emit({ type: 'step:failed', sessionId: session.id, stepId: step.id, agent: step.agent, error: stepState.error, critical: step.critical });
+
+        state.status = 'failed';
+        state.error = `Pipeline halted — step "${step.name}" produced unrepairable output: ${reason}`;
+        this.emit({ type: 'pipeline:failed', sessionId: session.id, error: state.error, failedStep: step.id, durationMs: Date.now() - pipelineStart });
+        this.logger.error('Pipeline blocked by validator', { step: step.id, reason });
+        return;
+      }
+
+      if (validation.verdict === 'deferred') {
+        this.logger.warn(`Step "${step.name}" has deferred issues — downstream agent will resolve`, {
+          agent: step.agent,
+          issues: validation.issues.map(i => i.id),
+        });
+      }
+
       stepState.status = 'completed';
       stepState.completedAt = new Date();
       stepState.taskId = task.id;
-      state.artifacts.set(step.agent, task.output ?? {});
       this.emit({ type: 'step:completed', sessionId: session.id, stepId: step.id, agent: step.agent, durationMs: stepState.durationMs, stepIndex, totalSteps });
     } else {
       stepState.status = 'failed';

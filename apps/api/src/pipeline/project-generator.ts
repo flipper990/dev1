@@ -14,6 +14,7 @@ import { SessionManager } from './session-manager.js';
 import { ProjectStore, type ProjectRecord } from '../storage/project-store.js';
 import { FileMemoryStore } from '../storage/memory-store.js';
 import { assembleProject, buildTaskSummaries, buildStepSummaries } from './project-assembler.js';
+import { runQualityAssurance } from './quality-assurance.js';
 import { ProjectUpdater } from './project-updater.js';
 
 // Re-export all public types from generator-types for backward compatibility
@@ -116,16 +117,43 @@ export class ProjectGenerator {
       const taskSummaries = buildTaskSummaries(pipelineState);
       const stepSummaries = buildStepSummaries(pipelineState);
 
+      // ── Final QA gate ────────────────────────────────────
+      // Runs programmatic checks over the fully-assembled codebase.
+      // Applies deterministic repairs in-place. If any quality bar
+      // still fails after repair, the project is marked `failed` with
+      // a QA report so the user sees exactly what went wrong instead
+      // of receiving a broken generation.
+      const qa = runQualityAssurance(files);
+      const finalFiles = qa.files;
+      if (qa.report.autoFixCount > 0) {
+        this.logger.info(`QA gate auto-fixed ${qa.report.autoFixCount} issue(s) for project ${projectId}`);
+      }
+      if (!qa.report.passed) {
+        this.logger.warn(`QA gate FAILED for project ${projectId}`, {
+          score: qa.report.score,
+          blockers: qa.report.blockers.map((b) => b.id),
+        });
+      }
+
       const planOutput = pipelineState.artifacts.get('planner') as { projectName?: string } | undefined;
 
       project.name = planOutput?.projectName ?? 'Generated Project';
-      project.status = pipelineState.status === 'completed' ? 'completed' : 'failed';
-      project.files = files;
+      // QA failure overrides pipeline success — low-quality outputs are never marked `completed`.
+      project.status =
+        pipelineState.status === 'completed' && qa.report.passed ? 'completed' : 'failed';
+      project.files = finalFiles;
       project.spec = pipelineState.artifacts.get('architect') as Record<string, unknown> | undefined;
       project.plan = pipelineState.artifacts.get('planner') as Record<string, unknown> | undefined;
       project.qaReport = pipelineState.artifacts.get('reviewer') as Record<string, unknown> | undefined;
       project.expandedSpec = pipelineState.artifacts.get('intent_expander') as Record<string, unknown> | undefined;
       project.qualityReport = pipelineState.artifacts.get('quality_enforcer') as Record<string, unknown> | undefined;
+      project.qaAssurance = {
+        passed: qa.report.passed,
+        score: qa.report.score,
+        autoFixCount: qa.report.autoFixCount,
+        bars: qa.report.bars,
+        blockers: qa.report.blockers.map((b) => ({ id: b.id, message: b.message, bar: b.bar, file: b.file })),
+      };
       project.tasks = taskSummaries;
       project.totalTokens = taskSummaries.reduce((sum, t) => sum + t.tokensUsed, 0);
       project.totalCostUsd = taskSummaries.reduce((sum, t) => sum + t.costUsd, 0);
@@ -158,7 +186,7 @@ export class ProjectGenerator {
       });
 
       return {
-        projectId, sessionId, success: pipelineState.status === 'completed',
+        projectId, sessionId, success: pipelineState.status === 'completed' && qa.report.passed,
         cached: false, project, steps: stepSummaries,
         optimization: {
           requestCacheHit: false,
@@ -167,7 +195,7 @@ export class ProjectGenerator {
           skippedSteps: pipelineState.optimization.skippedSteps,
           estimatedApiCallsSaved: pipelineState.optimization.estimatedApiCallsSaved,
         },
-        error: pipelineState.error,
+        error: pipelineState.error ?? (qa.report.passed ? undefined : `QA gate failed (score ${qa.report.score}/100): ${qa.report.blockers[0]?.message ?? 'see qaAssurance'}`),
       };
 
     } catch (err) {

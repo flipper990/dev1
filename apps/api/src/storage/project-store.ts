@@ -64,6 +64,14 @@ export interface ProjectRecord {
   expandedSpec?: Record<string, unknown>;
   /** Quality-enforcer output: scores, verdict, findings, patches summary. */
   qualityReport?: Record<string, unknown>;
+  /** Final QA-gate report: UI, layout, e2e, preview, placeholders — see quality-assurance.ts. */
+  qaAssurance?: {
+    passed: boolean;
+    score: number;
+    autoFixCount: number;
+    bars: Record<string, { passed: boolean; score: number; notes: string[] }>;
+    blockers: { id: string; message: string; bar: string; file?: string }[];
+  };
   tasks: TaskSummary[];
   totalTokens: number;
   totalCostUsd: number;

@@ -45,6 +45,10 @@ export interface StepState {
   durationMs: number;
   startedAt?: Date;
   completedAt?: Date;
+  /** Populated by the self-heal pass when step output is validated. */
+  validationVerdict?: 'ok' | 'repaired' | 'deferred' | 'blocked';
+  /** Count of auto-repairs applied to this step's output. */
+  repairCount?: number;
 }
 
 // ── Pipeline State ──────────────────────────────────────────
@@ -88,6 +92,9 @@ export type PipelineEvent =
   | { type: 'step:started';       sessionId: string; stepId: string; stepName: string; agent: AgentRole; description: string; stepIndex: number; totalSteps: number }
   | { type: 'step:retrying';      sessionId: string; stepId: string; agent: AgentRole; attempt: number; maxAttempts: number; error: string }
   | { type: 'step:completed';     sessionId: string; stepId: string; agent: AgentRole; durationMs: number; stepIndex: number; totalSteps: number }
+  | { type: 'step:validated';     sessionId: string; stepId: string; agent: AgentRole; verdict: 'ok' | 'repaired' | 'deferred' | 'blocked'; issueCount: number; repairCount: number; issues: { id: string; message: string; severity: 'info'|'warning'|'error'|'blocker'; category: string }[] }
+  | { type: 'step:repaired';      sessionId: string; stepId: string; agent: AgentRole; changes: { path: string; action: string; detail: string }[] }
+  | { type: 'step:blocked';       sessionId: string; stepId: string; agent: AgentRole; reason: string }
   | { type: 'step:failed';        sessionId: string; stepId: string; agent: AgentRole; error: string; critical: boolean }
   | { type: 'step:skipped';       sessionId: string; stepId: string; agent: AgentRole; reason: string }
   | { type: 'pipeline:completed'; sessionId: string; durationMs: number; stepsCompleted: number; stepsFailed: number; stepsSkipped: number }

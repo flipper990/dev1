@@ -51,6 +51,19 @@ export const PREVIEW_MOCK_SCRIPT = `<script id="__devteam_preview_mock">
   };
   var FAKE_TOKEN = 'preview.mock.token.not_real';
 
+  // Seed the shimmed storage so code that reads 'token' / 'user' on mount
+  // finds a value and renders the authenticated UI instead of redirecting to
+  // /login (which is a common "blank screen" failure mode in the preview).
+  try {
+    var storageKeys = ['token', 'accessToken', 'auth_token', 'authToken', 'jwt'];
+    for (var si = 0; si < storageKeys.length; si++) {
+      try { window.localStorage.setItem(storageKeys[si], FAKE_TOKEN); } catch (_) {}
+    }
+    try { window.localStorage.setItem('user', JSON.stringify(FAKE_USER)); } catch (_) {}
+    try { window.localStorage.setItem('currentUser', JSON.stringify(FAKE_USER)); } catch (_) {}
+    try { window.localStorage.setItem('auth', JSON.stringify({ user: FAKE_USER, token: FAKE_TOKEN, isAuthenticated: true })); } catch (_) {}
+  } catch (_) {}
+
   function rid() { return 'preview-' + Math.random().toString(36).slice(2, 10); }
   function rdate() { return new Date(Date.now() - Math.floor(Math.random() * 86400000 * 30)).toISOString(); }
   function listOf(factory, n) {
@@ -59,41 +72,141 @@ export const PREVIEW_MOCK_SCRIPT = `<script id="__devteam_preview_mock">
     return out;
   }
 
+  // Entity templates keyed by URL path segment. Keeps mock responses
+  // contextually plausible (product endpoints return product-shaped data,
+  // etc.) so apps that render based on response shape don't blank out.
+  var ENTITY_TEMPLATES = {
+    product: function (i) {
+      return { id: rid(), name: 'Product ' + (i + 1), title: 'Product ' + (i + 1), description: 'High-quality sample product for preview.', price: Math.floor(Math.random() * 9000 + 1000) / 100, currency: 'USD', stock: Math.floor(Math.random() * 100) + 1, category: ['Electronics','Clothing','Home','Books'][i % 4], image: null, imageUrl: null, rating: Math.floor(Math.random() * 20 + 30) / 10, inStock: true, createdAt: rdate(), updatedAt: rdate() };
+    },
+    order: function (i) {
+      return { id: rid(), orderNumber: 'ORD-' + (10000 + i), total: Math.floor(Math.random() * 50000) / 100, status: ['pending','processing','shipped','delivered'][i % 4], items: [], customerId: FAKE_USER.id, createdAt: rdate(), updatedAt: rdate() };
+    },
+    user: function (i) {
+      return { id: rid(), name: 'User ' + (i + 1), email: 'user' + (i + 1) + '@example.com', role: i === 0 ? 'admin' : 'user', avatar: null, active: true, createdAt: rdate() };
+    },
+    message: function (i) {
+      return { id: rid(), text: 'Sample message ' + (i + 1), content: 'This is a preview message. No real data.', senderId: FAKE_USER.id, senderName: FAKE_USER.name, read: i > 0, createdAt: rdate() };
+    },
+    post: function (i) {
+      return { id: rid(), title: 'Sample Post ' + (i + 1), content: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sample post body for preview.', excerpt: 'Lorem ipsum dolor sit amet...', author: FAKE_USER.name, authorId: FAKE_USER.id, published: true, tags: ['sample','preview'], createdAt: rdate(), updatedAt: rdate() };
+    },
+    comment: function (i) {
+      return { id: rid(), text: 'Great post! (sample comment ' + (i + 1) + ')', content: 'Sample comment content.', authorId: FAKE_USER.id, authorName: FAKE_USER.name, createdAt: rdate() };
+    },
+    notification: function (i) {
+      return { id: rid(), type: ['info','success','warning'][i % 3], title: 'Notification ' + (i + 1), message: 'Sample notification body.', read: i > 0, createdAt: rdate() };
+    },
+    task: function (i) {
+      return { id: rid(), title: 'Task ' + (i + 1), description: 'Sample task description.', status: ['todo','in-progress','done'][i % 3], priority: ['low','medium','high'][i % 3], assigneeId: FAKE_USER.id, dueDate: new Date(Date.now() + 86400000 * (i + 1)).toISOString(), createdAt: rdate() };
+    },
+    project: function (i) {
+      return { id: rid(), name: 'Project ' + (i + 1), description: 'Sample project for preview.', status: 'active', ownerId: FAKE_USER.id, members: 3, createdAt: rdate() };
+    },
+    event: function (i) {
+      return { id: rid(), title: 'Event ' + (i + 1), description: 'Sample event.', startDate: new Date(Date.now() + 86400000 * i).toISOString(), endDate: new Date(Date.now() + 86400000 * (i + 1)).toISOString(), location: 'Online' };
+    },
+    category: function (i) {
+      return { id: rid(), name: ['Electronics','Clothing','Home','Books','Sports','Food'][i % 6], slug: ['electronics','clothing','home','books','sports','food'][i % 6], count: Math.floor(Math.random() * 50) + 5 };
+    }
+  };
+
+  function detectEntity(path) {
+    var p = String(path || '').toLowerCase();
+    // Strip query string
+    var qi = p.indexOf('?'); if (qi >= 0) p = p.slice(0, qi);
+    var segments = p.split('/').filter(Boolean);
+    // Scan right-to-left so the most specific segment wins
+    for (var i = segments.length - 1; i >= 0; i--) {
+      var seg = segments[i];
+      // Singular + common plural forms
+      var keys = Object.keys(ENTITY_TEMPLATES);
+      for (var k = 0; k < keys.length; k++) {
+        var key = keys[k];
+        if (seg === key || seg === key + 's' || seg === key + 'es' || seg.indexOf(key) === 0) {
+          return key;
+        }
+      }
+    }
+    return null;
+  }
+
+  function genericItem(i) {
+    return {
+      id: rid(),
+      name: 'Item ' + (i + 1),
+      title: 'Sample ' + (i + 1),
+      description: 'Mocked preview response — no real backend is involved.',
+      createdAt: rdate(),
+      updatedAt: rdate(),
+      status: 'active'
+    };
+  }
+
   function inferMockBody(path, method) {
     path = String(path || '');
     method = String(method || 'GET').toUpperCase();
 
     if (/\\/(auth|login|signin|token)/i.test(path)) {
-      return { user: FAKE_USER, token: FAKE_TOKEN, accessToken: FAKE_TOKEN, refreshToken: FAKE_TOKEN + '.refresh' };
+      return { user: FAKE_USER, token: FAKE_TOKEN, accessToken: FAKE_TOKEN, refreshToken: FAKE_TOKEN + '.refresh', isAuthenticated: true };
     }
-    if (/\\/(me|profile|account)(\\?|$)/i.test(path)) {
-      return { user: FAKE_USER, profile: FAKE_USER };
+    if (/\\/(register|signup)/i.test(path)) {
+      return { user: FAKE_USER, token: FAKE_TOKEN, accessToken: FAKE_TOKEN, success: true };
+    }
+    if (/\\/(me|profile|account|current[-_]?user|whoami)(\\?|$|\\/)/i.test(path)) {
+      return { user: FAKE_USER, profile: FAKE_USER, id: FAKE_USER.id, email: FAKE_USER.email, name: FAKE_USER.name, role: FAKE_USER.role };
     }
     if (/\\/(logout|signout)/i.test(path)) {
       return { success: true };
     }
+    if (/\\/(stats|metrics|analytics|dashboard|summary|overview)/i.test(path)) {
+      return {
+        totalUsers: 1284, totalOrders: 342, totalRevenue: 48290.5, totalProducts: 89,
+        growth: 0.12, activeUsers: 423, pendingOrders: 18,
+        recentActivity: listOf(function (i) { return { id: rid(), type: 'activity', description: 'Sample activity ' + (i + 1), timestamp: rdate() }; }, 5),
+        chart: listOf(function (i) { return { label: 'Day ' + (i + 1), value: Math.floor(Math.random() * 1000) + 200 }; }, 7)
+      };
+    }
+    if (/\\/(health|ping|status|ready)(\\?|$)/i.test(path)) {
+      return { status: 'ok', healthy: true, uptime: 12345 };
+    }
+    if (/\\/(config|settings|preferences)(\\?|$|\\/)/i.test(path)) {
+      return { theme: 'light', locale: 'en', features: { darkMode: true, notifications: true, experimental: false }, version: '1.0.0' };
+    }
+
     if (method === 'DELETE') {
-      return { success: true, deleted: true };
+      return { success: true, deleted: true, id: rid() };
     }
+
+    // Detect entity from path and respond with shape-appropriate data.
+    var entity = detectEntity(path);
+    var factory = entity ? ENTITY_TEMPLATES[entity] : genericItem;
+
+    // Detect "get single by id" — trailing segment looks like an id/slug.
+    var trailing = path.split(/[?#]/)[0].replace(/\\/+$/, '').split('/').pop() || '';
+    var isSingle = method === 'GET' && /^[a-f0-9-]{6,}$|^\\d+$/i.test(trailing);
+
     if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
-      return { success: true, id: rid(), createdAt: rdate(), updatedAt: rdate() };
+      var base = factory(0);
+      return Object.assign({}, base, { success: true, id: base.id, createdAt: rdate(), updatedAt: rdate() });
     }
-    // Default GET response — a small, shape-agnostic list of items.
+
+    if (isSingle) {
+      return factory(0);
+    }
+
+    // Default: list response with both bare-array and paginated shapes covered.
+    var items = listOf(factory, 6);
     return {
-      items: listOf(function (i) {
-        return {
-          id: rid(),
-          name: 'Item ' + (i + 1),
-          title: 'Sample ' + (i + 1),
-          description: 'Mocked preview response — no real backend is involved.',
-          createdAt: rdate(),
-          updatedAt: rdate(),
-          status: 'active'
-        };
-      }, 4),
-      total: 4,
+      items: items,
+      data: items,
+      results: items,
+      list: items,
+      total: items.length,
+      count: items.length,
       page: 1,
-      pageSize: 20
+      pageSize: 20,
+      hasMore: false
     };
   }
 

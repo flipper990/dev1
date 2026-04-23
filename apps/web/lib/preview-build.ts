@@ -31,9 +31,25 @@ type BuildResult = {
   note?: string;
 };
 
-const REACT_CDN_URL     = 'https://unpkg.com/react@18/umd/react.development.js';
-const REACT_DOM_CDN_URL = 'https://unpkg.com/react-dom@18/umd/react-dom.development.js';
-const BABEL_CDN_URL     = 'https://unpkg.com/@babel/standalone/babel.min.js';
+const REACT_CDN_URLS     = [
+  'https://unpkg.com/react@18/umd/react.development.js',
+  'https://cdn.jsdelivr.net/npm/react@18/umd/react.development.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.development.js',
+];
+const REACT_DOM_CDN_URLS = [
+  'https://unpkg.com/react-dom@18/umd/react-dom.development.js',
+  'https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.development.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.development.js',
+];
+const BABEL_CDN_URLS     = [
+  'https://unpkg.com/@babel/standalone/babel.min.js',
+  'https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.22.17/babel.min.js',
+];
+const TAILWIND_CDN_URLS  = [
+  'https://cdn.tailwindcss.com',
+  'https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4/dist/index.global.min.js',
+];
 
 /** Escape a string for safe inclusion in an HTML <script> tag body. */
 function safeForScript(s: string): string {
@@ -85,8 +101,13 @@ function isBackendFile(path: string): boolean {
   );
 }
 
-/** Detects server-only imports inside a file's content — belt-and-suspenders for `isBackendFile`. */
-const SERVER_ONLY_IMPORT_RE = /from\s+['"](?:express|fastify|@fastify\/[^'"]+|passport|passport-[^'"]+|jsonwebtoken|bcrypt(?:js)?|@prisma\/client|prisma|mongoose|pg|mysql2?|sqlite3|redis|ioredis|nodemailer|multer|helmet|morgan|cookie-parser|body-parser|dotenv|fs|fs\/promises|path|crypto|os|http|https|net|dgram|child_process|cluster|worker_threads|stream|util|events|url|querystring)['"]/;
+/**
+ * Detects server-only imports inside a file's content — belt-and-suspenders for `isBackendFile`.
+ * NOTE: `crypto` is intentionally omitted (browser has `window.crypto`); `url`/`util` also kept
+ * out because they have browser equivalents and are commonly used npm-package names. We only
+ * filter packages that have NO browser equivalent and are unambiguously backend-only.
+ */
+const SERVER_ONLY_IMPORT_RE = /from\s+['"](?:express|fastify|@fastify\/[^'"]+|passport|passport-[^'"]+|jsonwebtoken|bcrypt(?:js)?|@prisma\/client|prisma|mongoose|pg|mysql2?|sqlite3|redis|ioredis|nodemailer|multer|helmet|morgan|cookie-parser|body-parser|dotenv|fs|fs\/promises|child_process|cluster|worker_threads|net|dgram|http|https)['"]/;
 function hasServerOnlyImports(content: string): boolean {
   return SERVER_ONLY_IMPORT_RE.test(content);
 }
@@ -99,6 +120,9 @@ function stripModuleSyntax(code: string, ctx?: { selfPath?: string; resolveDefau
   const selfKey = ctx?.selfPath ? pathToDefaultKey(ctx.selfPath) : '';
   const resolveDefault = ctx?.resolveDefault ?? (() => null);
   const defaultBindings: string[] = [];
+  // Per-call scratch for default-export name aliasing. Previously this was a
+  // module-scope array — it leaked across builds and caused phantom aliases.
+  const localPendingDefaults: Array<[string, string]> = [];
 
   // -1) Capture default imports BEFORE stripping. Forms handled:
   //     `import Alias from '<rel>'`
@@ -146,21 +170,17 @@ function stripModuleSyntax(code: string, ctx?: { selfPath?: string; resolveDefau
   out = out.replace(/\bexport\s*\{[\s\S]*?\}\s*;?/g, '');
 
   // 4) `export default <...>` — capture so other files can reference this file's default.
+  // IMPORTANT: The previously-present "tricky to end-match" regex that tried to
+  // match the full function body has been removed — it mangled the source before
+  // the correct regex below could run. Now we only do the two safe transforms:
+  // named-function / named-class → emit alias after declaration, expression → assignment.
   if (selfKey) {
-    out = out.replace(/\bexport\s+default\s+function\s+(\w+)([\s\S]*?)(?=\n\}|\}\s*$|\}\s*\n)/m, (_m, name: string, tail: string) => {
-      // Fallback — this pattern is tricky to end-match. Keep the function and append alias.
-      return `function ${name}${tail}`; // body close handled by original code
-    });
-    // Simpler, robust transforms:
     out = out.replace(/\bexport\s+default\s+function\s+(\w+)\s*\(/g, (_m, name: string) => {
-      defaultBindings.push(`/* default-bind emitted at end */`); // placeholder
-      // After this function declaration, we need to emit `var __default_<selfKey> = <name>;`.
-      // We can't easily append inline here, so we do it via a sentinel handled after.
-      __pendingDefaultAliasNames.push([selfKey, name]);
+      localPendingDefaults.push([selfKey, name]);
       return `function ${name}(`;
     });
     out = out.replace(/\bexport\s+default\s+class\s+(\w+)/g, (_m, name: string) => {
-      __pendingDefaultAliasNames.push([selfKey, name]);
+      localPendingDefaults.push([selfKey, name]);
       return `class ${name}`;
     });
     // `export default <expression>;` — convert to assignment.
@@ -192,23 +212,192 @@ function stripModuleSyntax(code: string, ctx?: { selfPath?: string; resolveDefau
 
   // 10) If this file had a default-exported named function/class, append the binding.
   if (selfKey) {
-    for (const [key, name] of __pendingDefaultAliasNames) {
+    for (const [key, name] of localPendingDefaults) {
       if (key === selfKey) out += `\nvar ${key} = ${name};`;
     }
-    // clear self entries
-    __pendingDefaultAliasNames = __pendingDefaultAliasNames.filter(([k]) => k !== selfKey);
   }
 
   return out;
 }
 
-/** Module-scope scratch for default-alias emissions keyed by file's default-export key. */
-let __pendingDefaultAliasNames: Array<[string, string]> = [];
-
 /** Convert a normalized source-file path into a stable identifier used as that file's default export alias. */
 function pathToDefaultKey(p: string): string {
   const withoutExt = norm(p).replace(/\.(?:[jt]sx?|mjs|cjs)$/i, '');
   return '__dflt_' + withoutExt.replace(/[^a-zA-Z0-9_]/g, '_');
+}
+
+/**
+ * Identifiers the prelude / browser already provides. Used to filter the
+ * universal-stub auto-declarator so we never override a real binding.
+ *
+ * This MUST be a superset of every symbol emitted by `buildSymbolPrelude()`
+ * plus the standard browser globals (React, console, etc.). Adding a new
+ * prelude symbol? Add it here too.
+ */
+const PRELUDE_GLOBALS = new Set<string>([
+  // JS / browser builtins
+  'React','ReactDOM','window','document','console','Math','Date','Object','Array','String','Number','Boolean',
+  'JSON','RegExp','Error','TypeError','ReferenceError','SyntaxError','Map','Set','WeakMap','WeakSet',
+  'Promise','Symbol','Proxy','Reflect','Intl','URL','URLSearchParams','FormData','Blob','File','FileReader',
+  'Headers','Request','Response','AbortController','AbortSignal','Event','EventTarget','CustomEvent',
+  'Image','Audio','Video','XMLHttpRequest','WebSocket','Worker','Notification',
+  'localStorage','sessionStorage','location','history','navigator','screen','performance',
+  'setTimeout','setInterval','clearTimeout','clearInterval','requestAnimationFrame','cancelAnimationFrame',
+  'fetch','atob','btoa','structuredClone','queueMicrotask','crypto',
+  'Infinity','NaN','undefined','globalThis','Function','Array','ArrayBuffer','DataView',
+  'Int8Array','Uint8Array','Int16Array','Uint16Array','Int32Array','Uint32Array','Float32Array','Float64Array',
+  // React hooks / primitives from prelude
+  'useState','useEffect','useRef','useMemo','useCallback','useContext','useReducer',
+  'useLayoutEffect','useImperativeHandle','useDebugValue','useId','useDeferredValue',
+  'useTransition','useSyncExternalStore','useInsertionEffect',
+  'createContext','createElement','cloneElement','isValidElement','Fragment',
+  'forwardRef','memo','lazy','Suspense','StrictMode','Component','PureComponent','Children','createRef',
+  // router shims
+  'BrowserRouter','HashRouter','MemoryRouter','Router','Routes','Route','Navigate','Outlet','Link','NavLink',
+  'useNavigate','useParams','useLocation','useSearchParams','useMatch','useRoutes','useOutletContext',
+  // redux + toolkit
+  'createStore','combineReducers','applyMiddleware','compose','bindActionCreators',
+  'Provider','useSelector','useDispatch','useStore','connect','shallowEqual',
+  'createSlice','configureStore','createAsyncThunk','createAction','createReducer','createSelector','nanoid',
+  // common libs stubbed in prelude
+  'axios','z','clsx','classnames','twMerge','cn','format','formatDistanceToNow','parseISO','io',
+  '__makeIcon','__previewStore','__safeState','__wrapSafe','__universalStub',
+  // JSX intrinsics (lowercase tags don't match our capital-letter regex anyway,
+  // but Babel sometimes references these) + common React-internal names
+  'jsx','jsxs','jsxDEV',
+]);
+
+/**
+ * Scan the concatenated (but still-pre-Babel) source for capital-letter
+ * identifiers used in a component/constructor position, and emit a universal
+ * stub `var X = __universalStub('X');` for each one that isn't declared
+ * anywhere in the source.
+ *
+ * This is the structural cure for the "fix one undefined identifier → the
+ * next library breaks" loop: an app can now reference any component from any
+ * unstubbed library and still render something visible.
+ */
+function injectUniversalStubs(combined: string): string {
+  // ── Strip comments + strings so we don't false-positive on text inside
+  //    strings (e.g. `'use client'`, jsdoc @param Foo).
+  const scannable = combined
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^\\])\/\/[^\n]*/g, '$1')
+    .replace(/'(?:\\.|[^'\\])*'/g, "''")
+    .replace(/"(?:\\.|[^"\\])*"/g, '""')
+    .replace(/`(?:\\.|[^`\\])*`/g, '``');
+
+  // ── Collect declared identifiers (var/let/const/function/class — plus the
+  //    converted `function X` / `class X` forms).
+  const declared = new Set<string>();
+  const declRe = /\b(?:var|let|const|function|class)\s+([A-Z]\w*)/g;
+  let dm: RegExpExecArray | null;
+  while ((dm = declRe.exec(scannable)) !== null) declared.add(dm[1]);
+
+  // Also pick up destructured declarations: `var { Foo, Bar } = ...`.
+  const destrRe = /\b(?:var|let|const)\s*\{([^}]+)\}/g;
+  let em: RegExpExecArray | null;
+  while ((em = destrRe.exec(scannable)) !== null) {
+    for (const piece of em[1].split(',')) {
+      const name = piece.split(/\s*:\s*/)[1]?.trim() || piece.trim();
+      const clean = name.replace(/\s*=.*$/, '').trim();
+      if (/^[A-Z]\w*$/.test(clean)) declared.add(clean);
+    }
+  }
+
+  // ── Collect referenced identifiers. Patterns we care about:
+  //   <Foo     — JSX open tag
+  //   </Foo>   — JSX close tag (match anyway, harmless)
+  //   React.createElement(Foo   — post-Babel JSX (in case any file already is)
+  //   new Foo( — constructor call
+  //   Foo.     — dot-access on a capital-letter identifier
+  //   Foo(     — function call on a capital-letter identifier
+  //
+  //  We're being liberal: any referenced capital-letter identifier that isn't
+  //  declared, isn't a prelude symbol, and isn't a namespace member gets a stub.
+  const referenced = new Set<string>();
+  const refPatterns: RegExp[] = [
+    /<\s*([A-Z]\w*)[\s/>]/g,
+    /<\/\s*([A-Z]\w*)\s*>/g,
+    /\bReact\s*\.\s*createElement\s*\(\s*([A-Z]\w*)\b/g,
+    /\bnew\s+([A-Z]\w*)\s*\(/g,
+    /(?<![.\w])([A-Z]\w*)\s*\(/g,
+    /(?<![.\w])([A-Z]\w*)\s*\./g,
+  ];
+  for (const re of refPatterns) {
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(scannable)) !== null) referenced.add(m[1]);
+  }
+
+  // ── Undeclared = referenced but not declared and not a known global.
+  const undeclared: string[] = [];
+  for (const name of referenced) {
+    if (declared.has(name)) continue;
+    if (PRELUDE_GLOBALS.has(name)) continue;
+    // Skip TypeScript / Babel artifacts that sometimes leak through.
+    if (/^__/.test(name)) continue;
+    undeclared.push(name);
+  }
+  if (undeclared.length === 0) return combined;
+
+  const stubDecls = undeclared
+    .map((n) => `var ${n} = (typeof ${n} !== 'undefined') ? ${n} : __universalStub(${JSON.stringify(n)});`)
+    .join('\n');
+
+  return `${buildUniversalStubFactory()}\n${stubDecls}\n\n${combined}`;
+}
+
+/**
+ * The universal stub factory. `__universalStub(name)` returns a value that is:
+ *   - a React functional component (renders children, otherwise an empty span)
+ *   - callable like a function (returns another stub)
+ *   - has arbitrary properties (`.Provider`, `.Consumer`, etc.) that are
+ *     themselves universal stubs \u2014 so `Dialog.Panel`, `Menu.Item`, etc. all
+ *     resolve without error
+ *   - stringifies to `''` so template/JSX text renders cleanly
+ *   - thenable: NO (not a promise, so awaiting doesn't hang)
+ */
+function buildUniversalStubFactory(): string {
+  return `
+/* ── universal identifier fallback ──────────────────────────────────── */
+function __universalStub(name) {
+  function Stub(props) {
+    var children = props && props.children;
+    // Render children transparently so <UnknownLibraryComponent>content</UnknownLibraryComponent>
+    // still shows "content". If no children, render an empty fragment.
+    return children != null ? React.createElement(React.Fragment, null, children) : null;
+  }
+  Stub.displayName = String(name || 'UnknownStub');
+  return new Proxy(Stub, {
+    get: function (target, key) {
+      if (key === Symbol.toPrimitive) return function () { return ''; };
+      if (key === Symbol.toStringTag) return 'UniversalStub';
+      if (key === 'toString' || key === 'valueOf') return function () { return ''; };
+      if (key === 'then') return undefined; // not thenable
+      if (key === '$$typeof') return target.$$typeof;
+      if (key === 'displayName' || key === 'name') return target.displayName;
+      if (key === 'prototype') return target.prototype;
+      if (key === 'call' || key === 'apply' || key === 'bind') return Function.prototype[key].bind(target);
+      if (key in target) return target[key];
+      // Any unknown access returns another universal stub \u2014 covers
+      // namespace patterns like Dialog.Panel, Menu.Item, etc.
+      return __universalStub(String(name) + '.' + String(key));
+    },
+    apply: function (_target, _thisArg, args) {
+      // Called as a plain function \u2014 e.g. a hook or builder. Return a stub so
+      // destructuring/chaining keeps working.
+      if (args.length === 1 && args[0] && typeof args[0] === 'object' && 'children' in args[0]) {
+        return Stub(args[0]);
+      }
+      return __universalStub(String(name) + '()');
+    },
+    construct: function () {
+      return Object.create(null);
+    }
+  });
+}
+/* ── end universal stub factory ─────────────────────────────────────── */
+`;
 }
 
 /** Consume one parenthesized group starting at `start` (which points to the `(`). Returns index after matching `)` + optional trailing `;`, or -1. */
@@ -651,13 +840,25 @@ function buildReactSynthHtml(files: PreviewFile[], entry: PreviewFile, projectNa
     return null;
   };
 
-  const combinedJs = [
+  const combinedJsRaw = [
     buildSymbolPrelude(),
     ...sources.map((f) => `/* ── ${norm(f.path)} ── */\n${stripModuleSyntax(f.content, {
       selfPath: f.path,
       resolveDefault: (rel) => resolveDefaultKey(f.path, rel),
     })}`),
   ].join('\n\n');
+
+  // ── Universal identifier fallback ─────────────────────────────────────
+  // Root cause of most "fix → new error" loops: generated code imports from
+  // libraries we don't have stubs for (e.g. a new UI kit, chart library, form
+  // library). The import gets stripped but references to <Component /> remain.
+  // At runtime: `Component is not defined` → blank screen.
+  //
+  // Fix: scan the combined source for capital-letter identifiers used in JSX
+  // tag position or as constructor/component calls. For any that isn't
+  // declared anywhere in the source, emit a universal pass-through stub so
+  // the app keeps rendering instead of crashing.
+  const combinedJs = injectUniversalStubs(combinedJsRaw);
 
   // Tailwind CDN handles @tailwind / @apply at runtime. Strip them from user CSS to avoid
   // CSSOM parse errors if Tailwind isn't loaded yet (the CDN script handles them separately).
@@ -746,10 +947,6 @@ function buildReactSynthHtml(files: PreviewFile[], entry: PreviewFile, projectNa
       #root { min-height: 100vh; }
       ${cleanedCss}
     </style>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="${REACT_CDN_URL}" crossorigin></script>
-    <script src="${REACT_DOM_CDN_URL}" crossorigin></script>
-    <script src="${BABEL_CDN_URL}" crossorigin></script>
   </head>
   <body>
     <div id="root"></div>
@@ -760,6 +957,34 @@ ${safeForScript(bootstrap)}
     </script>
     <script>
       (function () {
+        // ── Config pulled in from the builder ─────────────────────────────
+        var REACT_URLS    = ${JSON.stringify(REACT_CDN_URLS)};
+        var REACT_DOM_URLS= ${JSON.stringify(REACT_DOM_CDN_URLS)};
+        var BABEL_URLS    = ${JSON.stringify(BABEL_CDN_URLS)};
+        var TAILWIND_URLS = ${JSON.stringify(TAILWIND_CDN_URLS)};
+
+        // ── Resilient script loader: try each CDN in order until one works ──
+        function loadFrom(urls, checkGlobal) {
+          return new Promise(function (resolve) {
+            var i = 0;
+            function tryNext() {
+              if (checkGlobal && window[checkGlobal]) { resolve(true); return; }
+              if (i >= urls.length) { resolve(false); return; }
+              var s = document.createElement('script');
+              s.src = urls[i++];
+              s.crossOrigin = 'anonymous';
+              s.onload = function () {
+                if (!checkGlobal || window[checkGlobal]) resolve(true);
+                else tryNext();
+              };
+              s.onerror = tryNext;
+              document.head.appendChild(s);
+            }
+            tryNext();
+          });
+        }
+
+        // Show a readable failure card so we NEVER leave a blank iframe.
         function showErr(title, msg) {
           var r = document.getElementById('root') || document.body;
           r.innerHTML = '';
@@ -774,11 +999,44 @@ ${safeForScript(bootstrap)}
           wrap.appendChild(h); wrap.appendChild(pre);
           r.appendChild(wrap);
         }
-        function run() {
+
+        // Watchdog: if #root has no meaningful content a few seconds after
+        // mount, render a synthesized placeholder so the user never sees a
+        // blank iframe (e.g. App returns null, data still loading, etc.).
+        function installWatchdog() {
+          var WATCHDOG_MS = 4000;
+          setTimeout(function () {
+            try {
+              var r = document.getElementById('root');
+              if (!r) return;
+              var txt = (r.textContent || '').trim();
+              var hasVisible = r.children.length > 0 && (
+                txt.length > 0 ||
+                r.querySelector('img,svg,input,button,a,canvas,video,iframe') !== null
+              );
+              if (hasVisible) return;
+              var wrap = document.createElement('div');
+              wrap.setAttribute('data-devteam-watchdog', '1');
+              wrap.style.cssText = 'padding:48px 24px;max-width:720px;margin:0 auto;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#0F172A;';
+              wrap.innerHTML =
+                '<div style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:#E0F2FE;color:#0369A1;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:20px;">Preview placeholder</div>' +
+                '<h1 style="font-size:28px;font-weight:700;margin:0 0 12px 0;line-height:1.2;">${escapeHtml(projectName).replace(/'/g, "\\'")}</h1>' +
+                '<p style="font-size:14px;line-height:1.6;color:#475569;margin:0 0 24px 0;max-width:520px;">The app mounted successfully but did not render any visible content — most commonly because it is waiting on data or the default route renders nothing. The harness has kept the preview alive.</p>' +
+                '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">' +
+                  '<div style="padding:16px;border:1px solid #E2E8F0;border-radius:8px;background:#fff;"><div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;font-weight:600;">Mock API</div><div style="font-size:13px;color:#0F172A;">All fetch/XHR calls return plausible JSON — no real backend is contacted.</div></div>' +
+                  '<div style="padding:16px;border:1px solid #E2E8F0;border-radius:8px;background:#fff;"><div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;font-weight:600;">Sandboxed</div><div style="font-size:13px;color:#0F172A;">Runs in an isolated iframe with an opaque origin. Cannot touch the host app.</div></div>' +
+                  '<div style="padding:16px;border:1px solid #E2E8F0;border-radius:8px;background:#fff;"><div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;font-weight:600;">Safe by default</div><div style="font-size:13px;color:#0F172A;">Errors are caught and surfaced instead of leaving a blank screen.</div></div>' +
+                '</div>';
+              r.appendChild(wrap);
+            } catch (_) { /* never throw from the watchdog */ }
+          }, WATCHDOG_MS);
+        }
+
+        function runBootstrap() {
           var srcEl = document.getElementById('__preview_src');
           var src = srcEl ? srcEl.textContent : '';
           if (!src) { showErr('Preview source missing', 'No __preview_src script tag found.'); return; }
-          if (typeof Babel === 'undefined') { showErr('Babel failed to load', 'The Babel standalone CDN did not load. Check network.'); return; }
+          if (typeof Babel === 'undefined') { showErr('Babel failed to load', 'All Babel CDN mirrors failed. Check network connectivity.'); return; }
           var res;
           try {
             res = Babel.transform(src, {
@@ -793,11 +1051,22 @@ ${safeForScript(bootstrap)}
               compact: false,
             });
           } catch (e) { showErr('Transpile failed', (e && e.message) || String(e)); return; }
-          try { (0, eval)(res.code); }
+          try { (0, eval)(res.code); installWatchdog(); }
           catch (e) { showErr('Runtime error', (e && e.message) || String(e)); }
         }
-        if (window.Babel && window.React && window.ReactDOM) run();
-        else window.addEventListener('load', run);
+
+        // Load runtime deps with fallbacks, then bootstrap.
+        // Tailwind is optional (fire-and-forget), React/ReactDOM/Babel are critical.
+        loadFrom(TAILWIND_URLS, null);
+        Promise.all([
+          loadFrom(REACT_URLS,    'React'),
+          loadFrom(REACT_DOM_URLS,'ReactDOM'),
+          loadFrom(BABEL_URLS,    'Babel'),
+        ]).then(function (ok) {
+          if (!ok[0] || !ok[1]) { showErr('React failed to load', 'All React/ReactDOM CDN mirrors failed. Preview cannot render without React.'); return; }
+          if (!ok[2])           { showErr('Babel failed to load', 'All Babel CDN mirrors failed. Preview cannot transpile source.'); return; }
+          runBootstrap();
+        });
       })();
     </script>
   </body>

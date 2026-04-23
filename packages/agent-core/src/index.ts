@@ -79,6 +79,10 @@ export type { MetricsCollector } from './agent-middleware';
 export { PipelineOrchestrator, PIPELINE_STEPS } from './orchestrator';
 export type { PipelineEvent, PipelineEventHandler, PipelineState, PipelineStep, StepState, StepStatus } from './orchestrator';
 
+// Self-heal validator
+export { validateAndRepair } from './step-validator';
+export type { ValidationResult, ValidationIssue, ValidationSeverity, RepairChange } from './step-validator';
+
 // Message bus
 export { RedisMessageBus, InMemoryMessageBus } from './message-bus';
 

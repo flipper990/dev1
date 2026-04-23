@@ -1,5 +1,5 @@
 'use client';
-import { Settings, User, ChevronDown, Zap, TrendingUp, TrendingDown, FolderOpen, Hash, DollarSign } from 'lucide-react';
+import { Settings, ChevronDown, Zap, TrendingUp, TrendingDown, FolderOpen, Hash, DollarSign, Sparkles } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useStore } from '../lib/store';
 import { cn } from '../lib/cn';
@@ -38,13 +38,15 @@ export function AppHeader({ onNewProject }: { onNewProject?: () => void }) {
 
   return (
     <header
-      className="flex items-center gap-3 px-4 border-b border-white/[0.06] bg-[#0B0F19]/80 backdrop-blur-xl flex-shrink-0 z-50"
+      className="app-header flex items-center gap-3 flex-shrink-0"
       style={{ height: 'var(--header-h)' }}
     >
-      {/* Logo */}
-      <a href="/" className="flex items-center gap-2 font-bold text-sm tracking-tight text-[#F1F5F9] no-underline flex-shrink-0">
-        <span className="w-2 h-2 rounded-full bg-[#3B82F6]" style={{ boxShadow: '0 0 8px #3B82F6' }} />
-        DEVteam
+      {/* Branded wordmark */}
+      <a href="/" className="brand-wordmark flex-shrink-0" aria-label="DEVteam home">
+        <span className="brand-wordmark__mark">
+          <Sparkles size={14} strokeWidth={2.5} />
+        </span>
+        <span className="brand-wordmark__text">DEVteam</span>
       </a>
 
       <div className="w-px h-5 bg-white/10 flex-shrink-0" />
@@ -88,9 +90,9 @@ export function AppHeader({ onNewProject }: { onNewProject?: () => void }) {
           <button
             onClick={onNewProject}
             title="New project (Ctrl+N)"
-            className="flex items-center gap-1.5 bg-[#3B82F6] hover:bg-[#3B82F6]/90 active:bg-[#3B82F6] text-white rounded px-3 py-1.5 text-[11px] font-semibold transition-all hover:-translate-y-px active:translate-y-0 shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]"
+            className="btn btn-primary btn--sm"
           >
-            <Zap size={11} />
+            <Zap size={12} strokeWidth={2.5} />
             New
           </button>
         )}
@@ -101,7 +103,7 @@ export function AppHeader({ onNewProject }: { onNewProject?: () => void }) {
             window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }));
           }}
           title="Keyboard shortcuts (?)"
-          className="flex items-center justify-center w-7 h-7 rounded border border-transparent text-[#64748B] hover:bg-white/[0.06] hover:border-white/[0.06] hover:text-[#F1F5F9] transition-colors font-mono text-[13px]"
+          className="flex items-center justify-center w-7 h-7 rounded-md border border-transparent text-[#64748B] hover:bg-white/[0.06] hover:border-white/[0.08] hover:text-[#F1F5F9] transition-colors font-mono text-[13px]"
           aria-label="Show keyboard shortcuts"
         >
           ?
@@ -110,21 +112,26 @@ export function AppHeader({ onNewProject }: { onNewProject?: () => void }) {
         {/* Settings */}
         <button
           title="Settings"
-          className="flex items-center justify-center w-7 h-7 rounded border border-transparent text-[#64748B] hover:bg-white/[0.06] hover:border-white/[0.06] hover:text-[#F1F5F9] transition-colors"
+          className="flex items-center justify-center w-7 h-7 rounded-md border border-transparent text-[#64748B] hover:bg-white/[0.06] hover:border-white/[0.08] hover:text-[#F1F5F9] transition-colors"
         >
           <Settings size={14} />
         </button>
 
-        {/* User avatar */}
+        {/* Branded avatar */}
         <div className="relative">
           <button
             onClick={() => setShowMenu((v) => !v)}
-            className="flex items-center justify-center w-7 h-7 rounded-full bg-[#3B82F6]/20 border border-[#3B82F6]/30 text-[#3B82F6] hover:bg-[#3B82F6]/30 transition-colors"
+            className="avatar hover:scale-105 active:scale-100 transition-transform"
+            aria-label="Account menu"
           >
-            <User size={14} />
+            A
           </button>
           {showMenu && (
-            <div className="absolute right-0 top-9 bg-[#151B2B] border border-white/[0.08] rounded-lg shadow-panel w-44 z-50 py-1 overflow-hidden">
+            <div className="card-elevated absolute right-0 top-10 w-52 z-50 py-1 overflow-hidden">
+              <div className="px-3 py-2 border-b border-white/[0.06]">
+                <div className="text-[12px] font-semibold text-[#F8FAFC]">Signed in</div>
+                <div className="text-[11px] text-[#64748B] truncate">you@devteam.ai</div>
+              </div>
               <button className="w-full text-left px-3 py-2 text-[12px] text-[#CBD5E1] hover:bg-white/[0.06] transition-colors">Profile</button>
               <button className="w-full text-left px-3 py-2 text-[12px] text-[#CBD5E1] hover:bg-white/[0.06] transition-colors">Settings</button>
               <div className="h-px bg-white/[0.06] my-1" />

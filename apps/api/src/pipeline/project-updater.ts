@@ -11,6 +11,7 @@ import { ProjectStore, type ProjectSnapshot, type VersionMeta } from '../storage
 import { FileMemoryStore } from '../storage/memory-store.js';
 import { computeFileDiffs } from './diff-utils.js';
 import { assembleProject, buildTaskSummaries, buildStepSummaries } from './project-assembler.js';
+import { runQualityAssurance } from './quality-assurance.js';
 import type { UpdateRequest, UpdateResult } from './generator-types.js';
 
 export class ProjectUpdater {
@@ -74,7 +75,23 @@ export class ProjectUpdater {
     try {
       const pipelineState = await orchestrator.execute(session, seedArtifacts);
 
-      const newFiles = assembleProject(pipelineState.artifacts, this.logger);
+      const assembled = assembleProject(pipelineState.artifacts, this.logger);
+
+      // ── Final QA gate ─────────────────────────────────────
+      // Same guarantee as ProjectGenerator: no low-quality output is
+      // ever marked `completed`. Deterministic fixes applied in-place.
+      const qa = runQualityAssurance(assembled);
+      const newFiles = qa.files;
+      if (qa.report.autoFixCount > 0) {
+        this.logger.info(`QA gate auto-fixed ${qa.report.autoFixCount} issue(s) on update of ${projectId}`);
+      }
+      if (!qa.report.passed) {
+        this.logger.warn(`QA gate FAILED on update of ${projectId}`, {
+          score: qa.report.score,
+          blockers: qa.report.blockers.map((b) => b.id),
+        });
+      }
+
       const diffs = computeFileDiffs(existing.files ?? [], newFiles);
 
       const previousVersion = existing.version ?? 1;
@@ -108,7 +125,7 @@ export class ProjectUpdater {
       };
 
       existing.name = planOutput?.projectName ?? existing.name;
-      existing.status = pipelineState.status === 'completed' ? 'completed' : 'failed';
+      existing.status = pipelineState.status === 'completed' && qa.report.passed ? 'completed' : 'failed';
       existing.prompts = allPrompts;
       existing.files = newFiles;
       existing.spec = pipelineState.artifacts.get('architect') as Record<string, unknown> | undefined ?? existing.spec;
@@ -116,6 +133,13 @@ export class ProjectUpdater {
       existing.qaReport = pipelineState.artifacts.get('reviewer') as Record<string, unknown> | undefined;
       existing.expandedSpec = pipelineState.artifacts.get('intent_expander') as Record<string, unknown> | undefined ?? existing.expandedSpec;
       existing.qualityReport = pipelineState.artifacts.get('quality_enforcer') as Record<string, unknown> | undefined;
+      existing.qaAssurance = {
+        passed: qa.report.passed,
+        score: qa.report.score,
+        autoFixCount: qa.report.autoFixCount,
+        bars: qa.report.bars,
+        blockers: qa.report.blockers.map((b) => ({ id: b.id, message: b.message, bar: b.bar, file: b.file })),
+      };
       existing.tasks = taskSummaries;
       existing.totalTokens = (existing.totalTokens ?? 0) + versionMeta.totalTokens;
       existing.totalCostUsd = (existing.totalCostUsd ?? 0) + versionMeta.totalCostUsd;
@@ -135,9 +159,9 @@ export class ProjectUpdater {
 
       return {
         projectId, sessionId,
-        success: pipelineState.status === 'completed',
+        success: pipelineState.status === 'completed' && qa.report.passed,
         project: existing, version: newVersion, diffs, steps: stepSummaries,
-        error: pipelineState.error,
+        error: pipelineState.error ?? (qa.report.passed ? undefined : `QA gate failed (score ${qa.report.score}/100): ${qa.report.blockers[0]?.message ?? 'see qaAssurance'}`),
       };
 
     } catch (err) {

@@ -5,20 +5,32 @@
 /* ── Design tokens ──────────────────────────────────────────────────────────── */
 :root {
   color-scheme: dark;
-  --bg:        #0B0F19;
-  --bg-1:      #151B2B;
-  --bg-2:      #1E293B;
-  --surface:        rgba(255,255,255,0.04);
-  --surface-hover:  rgba(255,255,255,0.07);
-  --surface-active: rgba(255,255,255,0.10);
-  --border:        rgba(255,255,255,0.06);
-  --border-strong: rgba(255,255,255,0.12);
-  --text:    #F1F5F9;
+  /* Deeper, more premium dark palette — higher contrast between canvas
+     and elevated surfaces, subtle blue cast to feel less "flat gray". */
+  --bg:        #07090F;
+  --bg-1:      #0E1322;
+  --bg-2:      #161D30;
+  --bg-3:      #1E263D;
+  --surface:        rgba(255,255,255,0.03);
+  --surface-hover:  rgba(255,255,255,0.06);
+  --surface-active: rgba(255,255,255,0.09);
+  --surface-raised: rgba(255,255,255,0.045);
+  --border:         rgba(255,255,255,0.055);
+  --border-strong:  rgba(255,255,255,0.11);
+  --border-focus:   rgba(129,140,248,0.45);
+  --text:    #F8FAFC;
   --text-2:  #CBD5E1;
   --muted:   #64748B;
   --muted-2: #475569;
-  --accent:      #3B82F6;
-  --accent-dim:  rgba(59,130,246,0.12);
+  /* Brand primary = indigo → violet. Used for wordmark, primary buttons,
+     focus rings, and key pipeline accents. */
+  --brand-1: #6366F1;
+  --brand-2: #818CF8;
+  --brand-3: #A78BFA;
+  --brand-grad: linear-gradient(135deg, #6366F1 0%, #818CF8 45%, #A78BFA 100%);
+  --brand-grad-soft: linear-gradient(135deg, rgba(99,102,241,0.18) 0%, rgba(167,139,250,0.18) 100%);
+  --accent:      #818CF8;
+  --accent-dim:  rgba(129,140,248,0.12);
   --agent-planner:   #FBBF24;
   --agent-architect: #38BDF8;
   --agent-developer: #60A5FA;
@@ -38,48 +50,96 @@
   --success: #22C55E;
   --warning: #F59E0B;
   --error:   #EF4444;
-  --info:    #3B82F6;
-  --header-h:            52px;
-  --sidebar-w:           260px;
-  --sidebar-collapsed-w: 48px;
-  --right-w:             360px;
+  --info:    #38BDF8;
+  --header-h:            56px;
+  --sidebar-w:           280px;
+  --sidebar-collapsed-w: 56px;
+  --right-w:             380px;
   --preview-w:           52%;
   --preview-w-min:       480px;
-  --logs-h:              180px;
-  --logs-bar-h:          38px;
-  --radius:    10px;
+  --logs-h:              200px;
+  --logs-bar-h:          40px;
+  --radius-xs: 4px;
   --radius-sm: 6px;
+  --radius:    10px;
   --radius-lg: 14px;
-  --shadow:    0 8px 32px rgba(0,0,0,0.45);
-  --transition: 150ms ease-out;
+  --radius-xl: 18px;
+  /* Multi-stop elevation system — SaaS feel requires true depth, not a single
+     opaque drop shadow. Each level stacks a tight highlight and a soft cast. */
+  --shadow-xs: 0 1px 0 rgba(255,255,255,0.04) inset, 0 1px 2px rgba(0,0,0,0.25);
+  --shadow-sm: 0 1px 0 rgba(255,255,255,0.04) inset, 0 2px 6px rgba(0,0,0,0.32);
+  --shadow-md: 0 1px 0 rgba(255,255,255,0.05) inset, 0 6px 16px rgba(0,0,0,0.42);
+  --shadow-lg: 0 1px 0 rgba(255,255,255,0.06) inset, 0 12px 32px rgba(0,0,0,0.55);
+  --shadow-xl: 0 1px 0 rgba(255,255,255,0.06) inset, 0 24px 56px rgba(0,0,0,0.62);
+  --shadow-brand: 0 1px 0 rgba(255,255,255,0.15) inset, 0 6px 20px rgba(99,102,241,0.35), 0 2px 4px rgba(99,102,241,0.25);
+  --shadow: var(--shadow-md);
+  --ring: 0 0 0 3px rgba(129,140,248,0.18), 0 0 0 1px rgba(129,140,248,0.55);
+  --transition: 150ms cubic-bezier(0.2, 0, 0.1, 1);
+  --transition-slow: 300ms cubic-bezier(0.2, 0, 0.1, 1);
 }
 
 /* ── Reset ──────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; overflow: hidden; font-family: 'Inter', system-ui, sans-serif; font-size: 13px; color: var(--text); background: var(--bg); }
-h1, h2, h3, h4, p { margin: 0; }
-button { font-family: inherit; cursor: pointer; }
-input, textarea { font-family: inherit; color: var(--text); }
-* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.06) transparent; }
-*::-webkit-scrollbar { width: 4px; height: 4px; }
-*::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
-.mono { font-family: 'JetBrains Mono', monospace; }
+html, body {
+  margin: 0; height: 100%; overflow: hidden;
+  font-family: 'Inter', 'SF Pro Text', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  /* Opt-in to better text rendering on macOS + advanced OpenType features */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'cv02','cv03','cv04','cv11', 'ss01';
+  letter-spacing: -0.005em;
+}
+h1, h2, h3, h4, p { margin: 0; letter-spacing: -0.015em; }
+h1, h2, h3 { font-weight: 600; }
+button { font-family: inherit; cursor: pointer; letter-spacing: inherit; }
+input, textarea { font-family: inherit; color: var(--text); letter-spacing: inherit; }
+:focus { outline: none; }
+:focus-visible { outline: none; box-shadow: var(--ring); border-radius: var(--radius-sm); }
+::selection { background: rgba(129,140,248,0.35); color: #fff; }
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.08) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; border: 2px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); background-clip: padding-box; border: 2px solid transparent; }
+.mono { font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace; font-feature-settings: 'zero','ss01'; }
 
 /* ── Root layout ─────────────────────────────────────────────────────────────*/
 .app-root {
   display: flex; flex-direction: column; height: 100vh; overflow: hidden;
-  background: radial-gradient(80rem 45rem at 80% -5%,rgba(59,130,246,0.07),transparent 60%),
-              radial-gradient(60rem 35rem at -5% 105%,rgba(192,132,252,0.07),transparent 55%),
-              var(--bg);
+  position: relative;
+  /* Layered ambient gradient: two soft brand glows, a faint grid, and the base canvas */
+  background:
+    radial-gradient(90rem 50rem at 78% -10%, rgba(99,102,241,0.10), transparent 60%),
+    radial-gradient(70rem 40rem at -8% 108%, rgba(167,139,250,0.08), transparent 55%),
+    radial-gradient(40rem 24rem at 50% 120%, rgba(56,189,248,0.05), transparent 60%),
+    var(--bg);
 }
+.app-root::before {
+  /* Subtle grid texture — gives the background depth without adding noise. */
+  content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: radial-gradient(60rem 40rem at 50% 20%, #000 20%, transparent 75%);
+  opacity: 0.5;
+}
+.app-root > * { position: relative; z-index: 1; }
 .app-body { display: flex; flex: 1; overflow: hidden; }
 .main-workspace { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
 
 /* ── Header ──────────────────────────────────────────────────────────────────*/
 .app-header {
   height: var(--header-h); display: flex; align-items: center; gap: 0.75rem;
-  padding: 0 1rem; border-bottom: 1px solid var(--border);
-  background: rgba(15,23,42,0.85); backdrop-filter: blur(16px); flex-shrink: 0; z-index: 50;
+  padding: 0 1.15rem; border-bottom: 1px solid var(--border);
+  background: rgba(7,9,15,0.78); backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  flex-shrink: 0; z-index: 50;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.02) inset, 0 1px 0 rgba(0,0,0,0.4);
 }
 .header-logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 0.95rem; letter-spacing: -0.01em; color: var(--text); flex-shrink: 0; text-decoration: none; }
 .header-logo__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
@@ -186,9 +246,18 @@ input, textarea { font-family: inherit; color: var(--text); }
 .prompt-actions { display: flex; align-items: center; justify-content: space-between; padding: 0 0.75rem 0.65rem; }
 .prompt-hint { font-size: 0.7rem; color: var(--muted-2); }
 .prompt-hint kbd { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.3rem; font-size: 0.68rem; font-family: 'JetBrains Mono', monospace; }
-.btn-generate { display: flex; align-items: center; gap: 0.4rem; background: linear-gradient(120deg, #0ea5e9, #38bdf8 50%, #7dd3fc); border: 0; border-radius: var(--radius-sm); padding: 0.45rem 0.9rem; font-size: 0.82rem; font-weight: 600; color: #0c2a3d; transition: opacity var(--transition), transform var(--transition); }
-.btn-generate:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
-.btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-generate {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  background: var(--brand-grad); border: 0;
+  border-radius: var(--radius-sm); padding: 0.5rem 1rem;
+  font-size: 0.82rem; font-weight: 600; color: #fff;
+  letter-spacing: -0.005em;
+  box-shadow: var(--shadow-brand);
+  transition: transform var(--transition), filter var(--transition), box-shadow var(--transition);
+}
+.btn-generate:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.08); box-shadow: 0 1px 0 rgba(255,255,255,0.2) inset, 0 10px 26px rgba(99,102,241,0.48), 0 2px 6px rgba(99,102,241,0.3); }
+.btn-generate:active:not(:disabled)  { transform: translateY(0); filter: brightness(0.96); }
+.btn-generate:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; filter: grayscale(0.35); }
 
 /* ── File explorer ───────────────────────────────────────────────────────────*/
 .file-explorer { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
@@ -332,3 +401,221 @@ input, textarea { font-family: inherit; color: var(--text); }
 @media (max-width: 900px)  { .right-panel { display: none; } :root { --sidebar-w: 220px; --preview-w: 38%; --preview-w-min: 320px; } }
 @media (max-width: 640px)  { .sidebar { display: none; } .header-metrics { display: none; } :root { --preview-w: 100%; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SaaS polish layer
+   ──────────────────────────────────────────────────────────────────────────
+   Reusable utility classes that raise component quality to commercial-SaaS
+   baseline: branded wordmarks, elevated cards, proper button system, kbd
+   chips, refined focus ring, gradient text, premium avatars, status pills.
+   ══════════════════════════════════════════════════════════════════════════*/
+
+/* ── Brand wordmark ──────────────────────────────────────────────────────── */
+.brand-wordmark {
+  display: inline-flex; align-items: center; gap: 0.55rem;
+  font-weight: 700; font-size: 0.98rem;
+  letter-spacing: -0.025em; text-decoration: none;
+  color: var(--text);
+}
+.brand-wordmark__mark {
+  position: relative;
+  width: 26px; height: 26px; border-radius: 8px;
+  background: var(--brand-grad);
+  display: grid; place-items: center;
+  box-shadow: var(--shadow-brand);
+  color: #fff;
+  overflow: hidden;
+}
+.brand-wordmark__mark::after {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(12px 12px at 30% 25%, rgba(255,255,255,0.55), transparent 60%);
+  pointer-events: none;
+}
+.brand-wordmark__text {
+  background: linear-gradient(135deg, #F8FAFC 0%, #C7D2FE 55%, #A78BFA 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  font-feature-settings: 'ss01', 'cv11';
+}
+
+/* ── Gradient text utility ─────────────────────────────────────────────────*/
+.gradient-text {
+  background: var(--brand-grad);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
+
+/* ── Button system ─────────────────────────────────────────────────────────*/
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem;
+  font-family: inherit; font-size: 0.82rem; font-weight: 600;
+  letter-spacing: -0.005em;
+  padding: 0.5rem 0.9rem; border-radius: var(--radius-sm);
+  border: 1px solid transparent; cursor: pointer;
+  transition: background var(--transition), border-color var(--transition),
+              color var(--transition), transform var(--transition),
+              box-shadow var(--transition), filter var(--transition);
+  white-space: nowrap;
+}
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn--sm { font-size: 0.76rem; padding: 0.35rem 0.7rem; border-radius: var(--radius-xs); }
+.btn--lg { font-size: 0.9rem;  padding: 0.65rem 1.1rem; border-radius: var(--radius); }
+.btn--block { width: 100%; }
+
+.btn-primary {
+  background: var(--brand-grad); color: #fff; border: 0;
+  box-shadow: var(--shadow-brand);
+}
+.btn-primary:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.08); }
+.btn-primary:active:not(:disabled) { transform: translateY(0); filter: brightness(0.96); }
+
+.btn-secondary {
+  background: var(--surface-raised); color: var(--text);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-xs);
+}
+.btn-secondary:hover:not(:disabled) { background: var(--surface-hover); border-color: rgba(255,255,255,0.18); }
+
+.btn-ghost {
+  background: transparent; color: var(--text-2);
+  border-color: transparent;
+}
+.btn-ghost:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
+
+.btn-danger {
+  background: linear-gradient(135deg, #EF4444, #DC2626);
+  color: #fff; border: 0;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset, 0 6px 16px rgba(239,68,68,0.32);
+}
+.btn-danger:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.06); }
+
+/* ── Card surfaces ─────────────────────────────────────────────────────────*/
+.card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-xs);
+}
+.card-elevated {
+  background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  position: relative;
+}
+.card-elevated::before {
+  /* Subtle top-edge highlight on elevated cards — a true SaaS signal. */
+  content: ''; position: absolute; top: 0; left: 1rem; right: 1rem; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent);
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+/* ── Avatar ────────────────────────────────────────────────────────────────*/
+.avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--brand-grad);
+  display: grid; place-items: center;
+  font-size: 0.72rem; font-weight: 700; color: #fff;
+  letter-spacing: 0;
+  box-shadow: var(--shadow-brand);
+  flex-shrink: 0;
+}
+
+/* ── Keyboard chip ────────────────────────────────────────────────────────*/
+.kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 0.35rem;
+  background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  font-size: 0.68rem; font-weight: 600;
+  color: var(--text-2);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.25);
+}
+
+/* ── Section heading (uppercase eyebrow) ──────────────────────────────────*/
+.eyebrow {
+  font-size: 0.66rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--muted);
+  font-feature-settings: 'ss01';
+}
+.eyebrow--accent { color: var(--accent); }
+
+/* ── Divider ──────────────────────────────────────────────────────────────*/
+.soft-divider {
+  height: 1px; width: 100%;
+  background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
+}
+
+/* ── Glow pulse (for status dots beyond the generic .pulse-dot) ───────────*/
+.glow-dot { position: relative; }
+.glow-dot::after {
+  content: ''; position: absolute; inset: -4px; border-radius: inherit;
+  background: inherit; filter: blur(6px); opacity: 0.6;
+  animation: glow-pulse 2s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes glow-pulse { 0%,100%{opacity:0.35;transform:scale(1)} 50%{opacity:0.7;transform:scale(1.15)} }
+
+/* ── Empty-state shell ────────────────────────────────────────────────────*/
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.75rem; padding: 2.5rem 1.5rem; text-align: center;
+  color: var(--muted); font-size: 0.82rem; line-height: 1.6;
+}
+.empty-state__icon {
+  width: 48px; height: 48px; border-radius: 14px;
+  display: grid; place-items: center;
+  background: var(--brand-grad-soft);
+  border: 1px solid var(--border-strong);
+  color: var(--brand-2);
+  box-shadow: var(--shadow-xs);
+  margin-bottom: 0.25rem;
+}
+.empty-state__title { color: var(--text); font-size: 0.92rem; font-weight: 600; letter-spacing: -0.01em; }
+
+/* ── Input refinement ─────────────────────────────────────────────────────*/
+.input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.65rem;
+  font-size: 0.82rem;
+  color: var(--text);
+  transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
+}
+.input::placeholder { color: var(--muted); }
+.input:hover { border-color: var(--border-strong); }
+.input:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(129,140,248,0.15); outline: none; }
+
+/* ── Header wordmark override (pairs with AppHeader edits) ────────────────*/
+.app-header .brand-wordmark { font-size: 0.95rem; }
+
+/* ── Sidebar polish override: the project item active state gets a cleaner
+      indicator rail + left-side accent glow.  */
+.project-item.active {
+  background: linear-gradient(90deg, rgba(99,102,241,0.16), rgba(99,102,241,0.02) 60%, transparent);
+  border-color: rgba(99,102,241,0.22);
+  box-shadow: inset 2px 0 0 var(--brand-2);
+}
+
+/* ── Prompt textarea upgrade ──────────────────────────────────────────────*/
+.prompt-textarea {
+  background: rgba(255,255,255,0.025);
+  border: 1px solid var(--border);
+}
+.prompt-textarea:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(129,140,248,0.15);
+}
+
+/* ── Pulse-dot color accent override (was cyan, now brand indigo) ─────────*/
+@keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.55;transform:scale(1.15)} }
+
+/* ── Smooth app-root backdrop interaction ─────────────────────────────────*/
+.app-header, .sidebar, .right-panel, .logs-panel { position: relative; z-index: 2; }

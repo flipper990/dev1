@@ -63,26 +63,31 @@ export function Sidebar() {
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 border-b border-white/[0.06] flex-shrink-0" style={{ height: 'var(--header-h)' }}>
-        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Projects</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="eyebrow">Workspace</span>
+          <span className="text-[10px] font-mono text-[#475569] bg-white/[0.04] border border-white/[0.05] rounded-full px-1.5 py-[1px]">
+            {projects.length}
+          </span>
+        </div>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setShowcaseOpen(true)}
             title="Browse example projects"
-            className="flex items-center justify-center w-7 h-7 rounded text-[#64748B] hover:bg-[#8B5CF6]/10 hover:text-[#C4B5FD] transition-colors"
+            className="flex items-center justify-center w-7 h-7 rounded-md text-[#64748B] hover:bg-[#A78BFA]/10 hover:text-[#C4B5FD] transition-colors"
           >
             <Sparkles size={13} />
           </button>
           <button
             onClick={handleNewProject}
             title="New project"
-            className="flex items-center justify-center w-7 h-7 rounded text-[#64748B] hover:bg-[#3B82F6]/10 hover:text-[#60A5FA] transition-colors"
+            className="flex items-center justify-center w-7 h-7 rounded-md text-[#818CF8] bg-[#818CF8]/[0.08] hover:bg-[#818CF8]/[0.16] border border-[#818CF8]/20 transition-colors"
           >
-            <Plus size={14} />
+            <Plus size={14} strokeWidth={2.5} />
           </button>
           <button
             onClick={toggleSidebar}
             title="Collapse sidebar"
-            className="flex items-center justify-center w-7 h-7 rounded text-[#64748B] hover:bg-white/[0.06] hover:text-[#F1F5F9] transition-colors"
+            className="flex items-center justify-center w-7 h-7 rounded-md text-[#64748B] hover:bg-white/[0.06] hover:text-[#F1F5F9] transition-colors"
           >
             <PanelLeftClose size={15} />
           </button>
@@ -90,11 +95,11 @@ export function Sidebar() {
       </div>
 
       {/* Search */}
-      <div className="px-3 py-2 flex-shrink-0">
+      <div className="px-3 py-2.5 flex-shrink-0">
         <div className="relative">
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#64748B] pointer-events-none" />
           <input
-            className="w-full bg-white/[0.04] border border-white/[0.06] rounded pl-7 pr-2.5 py-1.5 text-[12px] text-[#F1F5F9] outline-none placeholder:text-[#64748B] focus:border-white/10 transition-colors"
+            className="input pl-7 pr-2.5 py-1.5 text-[12px]"
             placeholder="Search projects…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -102,19 +107,27 @@ export function Sidebar() {
         </div>
       </div>
 
+      <div className="soft-divider" />
+
       {/* List */}
-      <div className="flex-1 overflow-y-auto px-2 py-1 flex flex-col gap-0.5">
+      <div className="flex-1 overflow-y-auto px-2 py-2 flex flex-col gap-0.5">
         {filtered.length === 0 && (
-          <div className="px-3 py-8 flex flex-col items-center gap-3">
-            <p className="text-center text-[#64748B] text-[12px] leading-relaxed whitespace-pre-line">
+          <div className="empty-state">
+            <div className="empty-state__icon">
+              <Sparkles size={20} />
+            </div>
+            <div className="empty-state__title">
+              {projects.length === 0 ? 'No projects yet' : 'No matches'}
+            </div>
+            <p className="text-[12px] text-[#64748B] leading-relaxed max-w-[200px]">
               {projects.length === 0
-                ? 'No projects yet.\nGenerate one to get started.'
-                : 'No matches.'}
+                ? 'Describe what you want to build and a team of AI agents will ship it.'
+                : 'Try a different search.'}
             </p>
             {projects.length === 0 && (
               <button
                 onClick={() => setShowcaseOpen(true)}
-                className="group flex items-center gap-1.5 text-[11px] font-medium text-[#C4B5FD] hover:text-[#DDD6FE] bg-[#8B5CF6]/10 hover:bg-[#8B5CF6]/15 border border-[#8B5CF6]/20 rounded-full px-3 py-1.5 transition-colors"
+                className="btn btn-secondary btn--sm mt-1"
               >
                 <Sparkles size={11} />
                 Browse examples

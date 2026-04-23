@@ -27,9 +27,13 @@ const MOCK_PATH_PATTERNS: RegExp[] = [
   /^mocks?\//i,
   /\/mocks?\//i,
   /\.mock\.[jt]sx?$/i,
+  /\.mocks\.[jt]sx?$/i,
   /\.stub\.[jt]sx?$/i,
   /__mocks__\//i,
   /\/preview-only\//i,
+  /\/fixtures?\/.*mock/i,
+  /(?:^|\/)mock-data\.[jt]sx?$/i,
+  /(?:^|\/)fake-data\.[jt]sx?$/i,
 ];
 
 /** Strip any content between DEVTEAM_MOCK_START and DEVTEAM_MOCK_END comment markers. */
@@ -70,17 +74,34 @@ export function buildExportEntries(project: ExportProject): ProjectFile[] {
     out.push({ path: file.path, content });
   }
 
-  // ── .env.example — only add if not already present ───────────────────────
-  const hasEnvExample = out.some((f) => f.path === '.env.example' || f.path === 'frontend/.env.example');
-  if (!hasEnvExample) {
-    const envVars = (project.spec?.envVars as { name: string; description?: string; example?: string }[] | undefined) ?? [];
-    out.push({ path: '.env.example', content: buildEnvExample(envVars) });
+  const detected = detectTechStack(out);
+  const layout = detectLayout(out);
+
+  // ── package.json — synthesize if the project looks like Node but has none.
+  // We never overwrite a generated one; we only fill the gap when the agents
+  // shipped JS/TS source files without a manifest. Without this, `npm install`
+  // fails and the exported project cannot run locally.
+  const declaredEnvVars = (project.spec?.envVars as { name: string; description?: string; example?: string }[] | undefined) ?? [];
+  const scannedEnvVars = scanEnvVarUsage(out);
+  const mergedEnvVars = mergeEnvVars(declaredEnvVars, scannedEnvVars);
+
+  ensurePackageJsons(out, project.name ?? 'generated-project', detected, layout);
+
+  // ── Database schema placeholder — emit only if a DB is clearly in use
+  // (ORM imports or DATABASE_URL referenced) but no schema artefact was
+  // written by the agents. A stub is better than silent breakage.
+  ensureSchemaArtefact(out, detected, mergedEnvVars);
+
+  // ── .env.example — always at root, always reflects the real code ─────────
+  const hasRootEnvExample = out.some((f) => f.path === '.env.example');
+  if (!hasRootEnvExample) {
+    out.push({ path: '.env.example', content: buildEnvExample(mergedEnvVars, detected) });
   }
 
   // ── README.md ─────────────────────────────────────────────────────────────
   const hasReadme = out.some((f) => /^readme\.md$/i.test(f.path));
   if (!hasReadme) {
-    out.push({ path: 'README.md', content: buildReadme(project) });
+    out.push({ path: 'README.md', content: buildReadme(project, detected, layout) });
   }
 
   // ── .gitignore ────────────────────────────────────────────────────────────
@@ -92,31 +113,285 @@ export function buildExportEntries(project: ExportProject): ProjectFile[] {
   return out;
 }
 
-// ── File content builders ─────────────────────────────────────────────────
+// ── Layout detection ──────────────────────────────────────────────────────
 
-function buildEnvExample(envVars: { name: string; description?: string; example?: string }[]): string {
-  if (envVars.length === 0) {
-    return [
-      '# Environment variables',
-      '# Copy this file to .env and fill in the values.',
-      '',
-      'NODE_ENV=production',
-      'PORT=3000',
-      '',
-      '# Add your environment variables below:',
-      '',
-    ].join('\n');
+interface ProjectLayout {
+  /** True when the export has a frontend/ (or web/, client/, apps/web/) subtree. */
+  frontendDir?: string;
+  /** True when the export has a backend/ (or server/, api/, apps/api/) subtree. */
+  backendDir?: string;
+}
+
+function detectLayout(files: ProjectFile[]): ProjectLayout {
+  const dirs = new Set<string>();
+  for (const f of files) {
+    const first = f.path.split('/')[0];
+    if (first) dirs.add(first);
+  }
+  const pick = (candidates: string[]): string | undefined =>
+    candidates.find((c) => dirs.has(c));
+  return {
+    frontendDir: pick(['frontend', 'web', 'client', 'apps/web']),
+    backendDir:  pick(['backend', 'server', 'api', 'apps/api']),
+  };
+}
+
+// ── Env-var discovery ─────────────────────────────────────────────────────
+
+/** Scan real source files for env-var references so `.env.example` is complete. */
+function scanEnvVarUsage(files: ProjectFile[]): { name: string; example?: string }[] {
+  const found = new Set<string>();
+  // Node / Next / Vite / Python / generic shell patterns.
+  const patterns: RegExp[] = [
+    /process\.env\.([A-Z0-9_]{2,})/g,
+    /process\.env\[['"]([A-Z0-9_]{2,})['"]\]/g,
+    /import\.meta\.env\.([A-Z0-9_]{2,})/g,
+    /\bos\.environ\.get\(\s*['"]([A-Z0-9_]{2,})['"]/g,
+    /\bos\.environ\[['"]([A-Z0-9_]{2,})['"]\]/g,
+    /\bDeno\.env\.get\(\s*['"]([A-Z0-9_]{2,})['"]/g,
+  ];
+  // Exclude obvious non-config lookups that appear everywhere.
+  const ignore = new Set(['NODE_ENV', 'npm_package_version']);
+
+  for (const f of files) {
+    if (f.path.endsWith('.lock') || f.path.endsWith('.md')) continue;
+    for (const re of patterns) {
+      re.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(f.content)) !== null) {
+        const name = m[1];
+        if (name && !ignore.has(name)) found.add(name);
+      }
+    }
+  }
+  return [...found].sort().map((name) => ({ name }));
+}
+
+function mergeEnvVars(
+  declared: { name: string; description?: string; example?: string }[],
+  scanned: { name: string; example?: string }[],
+): { name: string; description?: string; example?: string }[] {
+  const map = new Map<string, { name: string; description?: string; example?: string }>();
+  for (const v of declared) map.set(v.name, v);
+  for (const v of scanned) if (!map.has(v.name)) map.set(v.name, v);
+  // Always ship a couple of universally-expected knobs so `.env.example` is
+  // never empty on projects that use dotenv implicitly.
+  if (!map.has('NODE_ENV'))     map.set('NODE_ENV',     { name: 'NODE_ENV',     description: 'Runtime environment', example: 'development' });
+  if (!map.has('PORT'))         map.set('PORT',         { name: 'PORT',         description: 'HTTP port the server listens on', example: '3000' });
+  return [...map.values()];
+}
+
+// ── package.json guarantees ───────────────────────────────────────────────
+
+function ensurePackageJsons(
+  out: ProjectFile[],
+  projectName: string,
+  detected: ReturnType<typeof detectTechStack>,
+  layout: ProjectLayout,
+): void {
+  const safeName = projectName.replace(/[^a-z0-9-_]/gi, '-').toLowerCase().slice(0, 100) || 'generated-project';
+  const looksNode = (detected.frontend || detected.backend) && !(detected.backend ?? '').startsWith('Python') && !detected.backend?.startsWith('Go') && !detected.backend?.startsWith('Rust');
+  if (!looksNode) return;
+
+  // Monorepo-shaped export: synthesize a root workspaces manifest and per-package manifests.
+  if (layout.frontendDir || layout.backendDir) {
+    if (!out.some((f) => f.path === 'package.json')) {
+      const workspaces = [layout.frontendDir, layout.backendDir].filter(Boolean) as string[];
+      out.push({
+        path: 'package.json',
+        content: JSON.stringify({
+          name: safeName,
+          version: '0.1.0',
+          private: true,
+          workspaces,
+          scripts: {
+            dev:   workspaces.map((w) => `npm --workspace ${w} run dev`).join(' & '),
+            build: workspaces.map((w) => `npm --workspace ${w} run build`).join(' && '),
+            start: workspaces.map((w) => `npm --workspace ${w} run start`).join(' & '),
+            'install:all': 'npm install',
+          },
+        }, null, 2) + '\n',
+      });
+    }
+    if (layout.frontendDir && !out.some((f) => f.path === `${layout.frontendDir}/package.json`)) {
+      out.push({
+        path: `${layout.frontendDir}/package.json`,
+        content: JSON.stringify(stubFrontendPkg(`${safeName}-frontend`, detected.frontend), null, 2) + '\n',
+      });
+    }
+    if (layout.backendDir && !out.some((f) => f.path === `${layout.backendDir}/package.json`)) {
+      out.push({
+        path: `${layout.backendDir}/package.json`,
+        content: JSON.stringify(stubBackendPkg(`${safeName}-backend`, detected.backend), null, 2) + '\n',
+      });
+    }
+    return;
   }
 
+  // Flat layout — single root package.json.
+  if (!out.some((f) => f.path === 'package.json')) {
+    const isNext = detected.frontend === 'Next.js + React';
+    const pkg = isNext
+      ? stubFrontendPkg(safeName, detected.frontend)
+      : detected.backend
+      ? stubBackendPkg(safeName, detected.backend)
+      : stubFrontendPkg(safeName, detected.frontend);
+    out.push({ path: 'package.json', content: JSON.stringify(pkg, null, 2) + '\n' });
+  }
+}
+
+function stubFrontendPkg(name: string, frontend?: string): Record<string, unknown> {
+  if (frontend === 'Next.js + React') {
+    return {
+      name, version: '0.1.0', private: true,
+      scripts: { dev: 'next dev', build: 'next build', start: 'next start', lint: 'next lint' },
+      dependencies: { next: '^15.0.0', react: '^18.3.1', 'react-dom': '^18.3.1' },
+      devDependencies: { typescript: '^5.4.0', '@types/node': '^20.12.0', '@types/react': '^18.3.0', '@types/react-dom': '^18.3.0' },
+    };
+  }
+  return {
+    name, version: '0.1.0', private: true,
+    scripts: { dev: 'vite', build: 'vite build', preview: 'vite preview' },
+    dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1' },
+    devDependencies: { vite: '^5.2.0', '@vitejs/plugin-react': '^4.3.0', typescript: '^5.4.0' },
+  };
+}
+
+function stubBackendPkg(name: string, backend?: string): Record<string, unknown> {
+  const isFastify = backend === 'Node.js (Fastify)';
+  const isExpress = backend === 'Node.js (Express)';
+  return {
+    name, version: '0.1.0', private: true,
+    type: 'module',
+    scripts: {
+      dev:   'tsx watch src/server.ts',
+      build: 'tsc -p tsconfig.json',
+      start: 'node dist/server.js',
+    },
+    dependencies: {
+      ...(isFastify ? { fastify: '^4.28.0', '@fastify/cors': '^9.0.0' } : {}),
+      ...(isExpress ? { express: '^4.19.0', cors: '^2.8.5' } : {}),
+      zod: '^3.23.0',
+      dotenv: '^16.4.0',
+    },
+    devDependencies: {
+      typescript: '^5.4.0',
+      tsx: '^4.7.0',
+      '@types/node': '^20.12.0',
+      ...(isExpress ? { '@types/express': '^4.17.0', '@types/cors': '^2.8.0' } : {}),
+    },
+  };
+}
+
+// ── Database schema guarantees ────────────────────────────────────────────
+
+function ensureSchemaArtefact(
+  out: ProjectFile[],
+  detected: ReturnType<typeof detectTechStack>,
+  envVars: { name: string }[],
+): void {
+  const hasAnySchema = out.some((f) =>
+    /schema\.prisma$/i.test(f.path) ||
+    /(?:^|\/)schema\.sql$/i.test(f.path) ||
+    /migrations?\//i.test(f.path) ||
+    /(?:^|\/)models?\/.+\.[jt]s$/i.test(f.path),
+  );
+  if (hasAnySchema) return;
+
+  const dbMentioned = Boolean(detected.database) || envVars.some((v) => /DATABASE_URL|DB_HOST|DB_URL|POSTGRES|MONGODB/i.test(v.name));
+  if (!dbMentioned) return;
+
+  const kind = (detected.database ?? '').toLowerCase();
+  if (kind.includes('prisma')) {
+    out.push({
+      path: 'prisma/schema.prisma',
+      content: [
+        '// Prisma schema placeholder — the generator left no schema file.',
+        '// Replace with your real models before running `prisma migrate dev`.',
+        '',
+        'generator client {',
+        '  provider = "prisma-client-js"',
+        '}',
+        '',
+        'datasource db {',
+        '  provider = "postgresql"',
+        '  url      = env("DATABASE_URL")',
+        '}',
+        '',
+        '// TODO: add your models, e.g.',
+        '// model User { id String @id @default(cuid()); email String @unique; createdAt DateTime @default(now()) }',
+        '',
+      ].join('\n'),
+    });
+  } else if (kind.includes('mongo')) {
+    // MongoDB is schemaless; ship a README note instead of SQL.
+    out.push({
+      path: 'db/README.md',
+      content: '# MongoDB\n\nThis project uses MongoDB. There is no SQL schema to run — collections are created on first write. Make sure `MONGODB_URI` in `.env` points at a reachable cluster before starting the server.\n',
+    });
+  } else {
+    out.push({
+      path: 'db/schema.sql',
+      content: [
+        '-- SQL schema placeholder — the generator left no schema file.',
+        '-- Replace with your real tables before running against a real database.',
+        '',
+        '-- Example:',
+        '-- CREATE TABLE users (',
+        '--   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),',
+        '--   email TEXT UNIQUE NOT NULL,',
+        '--   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()',
+        '-- );',
+        '',
+      ].join('\n'),
+    });
+  }
+}
+
+// ── File content builders ─────────────────────────────────────────────────
+
+function buildEnvExample(
+  envVars: { name: string; description?: string; example?: string }[],
+  detected: { frontend?: string; backend?: string; database?: string; testing?: string },
+): string {
   const lines: string[] = [
+    '# ─────────────────────────────────────────────────────────────────────────',
     '# Environment variables',
-    '# Copy this file to .env and fill in the values.',
+    '# Copy this file to `.env` and fill in real values before running the app.',
+    '# Values below are examples/defaults only — DO NOT commit real secrets.',
+    '# ─────────────────────────────────────────────────────────────────────────',
     '',
   ];
 
+  // Sensible defaults for common knobs so the file is never empty.
+  const defaults: Record<string, { example: string; desc: string }> = {
+    NODE_ENV:     { example: 'development',                                           desc: 'Runtime environment (development / production / test)' },
+    PORT:         { example: '3000',                                                  desc: 'HTTP port the server listens on' },
+    DATABASE_URL: { example: 'postgresql://user:password@localhost:5432/app',          desc: 'Primary database connection string' },
+    MONGODB_URI:  { example: 'mongodb://localhost:27017/app',                          desc: 'MongoDB connection URI' },
+    JWT_SECRET:   { example: 'replace-me-with-a-long-random-string',                   desc: 'Secret used to sign JWTs' },
+    SESSION_SECRET: { example: 'replace-me-with-a-long-random-string',                 desc: 'Secret used to sign session cookies' },
+    OPENAI_API_KEY: { example: 'sk-...',                                               desc: 'OpenAI API key' },
+    STRIPE_SECRET_KEY: { example: 'sk_test_...',                                       desc: 'Stripe secret API key (test mode)' },
+    STRIPE_WEBHOOK_SECRET: { example: 'whsec_...',                                     desc: 'Stripe webhook signing secret' },
+    REDIS_URL:    { example: 'redis://localhost:6379',                                 desc: 'Redis connection URL' },
+    NEXT_PUBLIC_API_URL: { example: 'http://localhost:3001',                           desc: 'Base URL of the API (must start with NEXT_PUBLIC_ to be exposed to the browser)' },
+  };
+
   for (const v of envVars) {
-    if (v.description) lines.push(`# ${v.description}`);
-    lines.push(`${v.name}=${v.example ?? ''}`);
+    const fallback = defaults[v.name];
+    const desc = v.description ?? fallback?.desc;
+    const example = v.example ?? fallback?.example ?? '';
+    if (desc) lines.push(`# ${desc}`);
+    lines.push(`${v.name}=${example}`);
+    lines.push('');
+  }
+
+  // Footer hint for mock/test mode so local runs never hit real paid services.
+  if (detected.backend || detected.frontend) {
+    lines.push('# ─── Local development hints ─────────────────────────────────────────────');
+    lines.push('# Use test keys (stripe sk_test_..., OpenAI staging project, etc.) for local runs.');
+    lines.push('# Never commit this file after filling it in.');
     lines.push('');
   }
 
@@ -185,14 +460,20 @@ function detectTechStack(files: ProjectFile[]): { frontend?: string; backend?: s
   return out;
 }
 
-function buildReadme(project: ExportProject): string {
+function buildReadme(
+  project: ExportProject,
+  detected: ReturnType<typeof detectTechStack>,
+  layout: ProjectLayout,
+): string {
   const name = project.name ?? 'Generated Project';
   const prompts = project.prompts?.map((p) => `- ${p.text}`).join('\n') ?? `- ${project.prompt}`;
   const hasDocker = project.files.some((f) => f.path === 'Dockerfile' || f.path === 'docker-compose.yml');
   const hasPrisma = project.files.some((f) => /schema\.prisma$/.test(f.path));
+  const hasSqlSchema = project.files.some((f) => /(?:^|\/)schema\.sql$/i.test(f.path));
   const hasMigrations = project.files.some((f) => /migrations?\//i.test(f.path));
-  const detected = detectTechStack(project.files);
   const isPythonBackend = (detected.backend ?? '').startsWith('Python');
+  const hasFrontendDir = Boolean(layout.frontendDir);
+  const hasBackendDir = Boolean(layout.backendDir);
 
   const sections: string[] = [];
 
@@ -225,38 +506,56 @@ function buildReadme(project: ExportProject): string {
   sections.push('');
   sections.push('### Prerequisites');
   sections.push('');
-  if (!isPythonBackend) sections.push('- Node.js 18+');
-  if (isPythonBackend) sections.push('- Python 3.10+');
-  sections.push(isPythonBackend ? '- pip' : '- npm or pnpm');
-  if (hasPrisma || hasMigrations || (detected.database ?? '').length > 0) sections.push('- A database matching your `.env` configuration');
+  if (!isPythonBackend) sections.push('- Node.js 18+ and npm 10+');
+  if (isPythonBackend) sections.push('- Python 3.10+ and pip');
+  if (hasPrisma || hasSqlSchema || hasMigrations || (detected.database ?? '').length > 0) {
+    sections.push(`- A running ${detected.database ?? 'database'} instance matching your \`.env\` configuration`);
+  }
   if (hasDocker) sections.push('- Docker & Docker Compose (optional — for containerised setup)');
   sections.push('');
+
   sections.push('### Installation');
   sections.push('');
   sections.push('```bash');
   sections.push('# 1. Install dependencies');
-  if (isPythonBackend) {
+  if (hasFrontendDir && hasBackendDir) {
+    sections.push(`cd ${layout.frontendDir} && npm install && cd ..`);
+    sections.push(`cd ${layout.backendDir}  && npm install && cd ..`);
+  } else if (isPythonBackend) {
     sections.push('pip install -r requirements.txt');
   } else {
     sections.push('npm install');
   }
   sections.push('');
-  sections.push('# 2. Copy environment variables');
+  sections.push('# 2. Configure environment');
   sections.push('cp .env.example .env');
-  sections.push('# Edit .env with your real values');
+  sections.push('# Open .env and fill in every value — the app will not run with placeholders.');
   sections.push('');
 
   let step = 3;
   if (hasPrisma) {
-    sections.push(`# ${step}. Run database migrations`);
-    sections.push('npx prisma migrate dev');
+    sections.push(`# ${step}. Create the database schema`);
+    sections.push('npx prisma migrate dev --name init');
+    sections.push('');
+    step++;
+  } else if (hasSqlSchema) {
+    sections.push(`# ${step}. Create the database schema`);
+    sections.push('psql "$DATABASE_URL" -f db/schema.sql');
     sections.push('');
     step++;
   }
 
-  sections.push(`# ${step}. Start the development server`);
-  if (isPythonBackend) sections.push('uvicorn main:app --reload');
-  else sections.push('npm run dev');
+  sections.push(`# ${step}. Start the app`);
+  if (hasFrontendDir && hasBackendDir) {
+    sections.push(`# In one terminal:`);
+    sections.push(`cd ${layout.backendDir} && npm run dev`);
+    sections.push(`# In another terminal:`);
+    sections.push(`cd ${layout.frontendDir} && npm run dev`);
+  } else if (isPythonBackend) {
+    sections.push('uvicorn main:app --reload');
+  } else {
+    sections.push('npm run dev');
+  }
   sections.push('```');
   sections.push('');
 
@@ -276,11 +575,13 @@ function buildReadme(project: ExportProject): string {
   sections.push(dirs);
   sections.push('```');
   sections.push('');
-  sections.push('## Notes');
+
+  sections.push('## Production notes');
   sections.push('');
-  sections.push('- This project was generated from a natural language prompt.');
-  sections.push('- Review all generated code before deploying to production.');
-  sections.push('- Environment variables in `.env.example` must be populated before running.');
+  sections.push('- **No mock data.** All preview-only mocks and fixtures were stripped from this export. The app talks to real services defined in `.env`.');
+  sections.push('- Review all generated code before deploying to production — this is a starting point, not a finished product.');
+  sections.push('- Rotate any example secrets; the placeholders in `.env.example` are not safe to ship.');
+  sections.push('- Run your own linter / type-checker / security scan before merging.');
 
   return sections.join('\n');
 }

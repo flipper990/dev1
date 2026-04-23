@@ -76,6 +76,12 @@ export const config = {
     maxConcurrentSessions: optionalNumber('MAX_CONCURRENT_SESSIONS', 5),
     maxTokensPerRequest: optionalNumber('MAX_TOKENS_PER_REQUEST', 128_000),
     monthlyBudgetUsd: optionalNumber('MONTHLY_BUDGET_USD', 100),
+    /** Max completed generations (initial + updates) allowed per project. */
+    maxGenerationsPerProject: optionalNumber('MAX_GENERATIONS_PER_PROJECT', 25),
+    /** Max cumulative cost (USD) allowed per project before further runs are blocked. */
+    maxCostPerProjectUsd: optionalNumber('MAX_COST_PER_PROJECT_USD', 5),
+    /** Percentage (0..1) of a limit at which a warning is emitted. */
+    warnThresholdPct: optionalNumber('LIMIT_WARN_THRESHOLD_PCT', 0.8),
   },
 
   llm: {

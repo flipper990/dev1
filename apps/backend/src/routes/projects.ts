@@ -2,6 +2,7 @@
 import { ValidationError, now } from '@devteam/core';
 import type { CreateProjectRequest } from '@devteam/core';
 import { Orchestrator, sessionManager } from '@devteam/orchestration';
+import { restoreVersion, evaluateUsage } from '@devteam/orchestration';
 import { globalMemoryStore } from '@devteam/memory';
 import { globalLLMRouter } from '@devteam/api-routing';
 import { projectStore } from '../storage/project-store.js';
@@ -278,5 +279,39 @@ export async function projectRoutes(app: FastifyInstance) {
     const project = await projectStore.get(req.params.id);
     const versions = (project.versions ?? []).map(v => ({ id: v.id, createdAt: v.createdAt, promptText: v.promptText, summary: v.summary, fileCount: v.files.length }));
     return reply.send({ versions });
+  });
+
+  /**
+   * Usage snapshot — how many generations have run, cumulative cost, % of
+   * configured limits. Used by the dashboard to render warning banners.
+   */
+  app.get<{ Params: { id: string } }>('/:id/usage', async (req, reply) => {
+    const project = await projectStore.get(req.params.id);
+    const usage = evaluateUsage(project);
+    return reply.send({ usage });
+  });
+
+  /**
+   * Restore the project to a previously-snapshotted version.
+   *
+   * Safe: always takes a pre-restore snapshot first, so the restore itself is
+   * reversible. Rejects if the project is currently being generated/updated.
+   */
+  app.post<{ Params: { id: string; versionId: string } }>('/:id/versions/:versionId/restore', async (req, reply) => {
+    const existing = await projectStore.get(req.params.id);
+    if (existing.status === 'running') {
+      return reply.status(409).send({
+        error: 'Project is currently being generated or updated. Please wait for the current run to finish.',
+        statusCode: 409,
+        currentSessionId: existing.sessionId,
+      });
+    }
+    try {
+      const restored = restoreVersion(existing, req.params.versionId);
+      await projectStore.save(restored);
+      return reply.status(200).send({ project: restored });
+    } catch (err) {
+      return reply.status(404).send({ error: (err as Error).message, statusCode: 404 });
+    }
   });
 }

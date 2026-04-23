@@ -40,6 +40,10 @@ interface DashboardState {
   rightPanelTab: 'agents' | 'files';
   wsConnected: boolean;
   toasts: ToastItem[];
+  showcaseOpen: boolean;
+  templateGalleryOpen: boolean;
+  /** A one-shot prompt seed consumed by PromptPanel. Cleared once read. */
+  pendingPrompt: string | null;
 
   // Actions
   setProjects: (projects: GeneratedProject[]) => void;
@@ -60,6 +64,9 @@ interface DashboardState {
   setWsConnected: (v: boolean) => void;
   addToast: (toast: Omit<ToastItem, 'id'>) => void;
   removeToast: (id: string) => void;
+  setShowcaseOpen: (v: boolean) => void;
+  setTemplateGalleryOpen: (v: boolean) => void;
+  setPendingPrompt: (v: string | null) => void;
 }
 
 export const useStore = create<DashboardState>((set) => ({
@@ -79,6 +86,9 @@ export const useStore = create<DashboardState>((set) => ({
   rightPanelTab: 'agents',
   wsConnected: false,
   toasts: [],
+  showcaseOpen: false,
+  templateGalleryOpen: false,
+  pendingPrompt: null,
 
   setProjects: (projects) => set({ projects }),
   setSelectedProjectId: (id) => set({ selectedProjectId: id }),
@@ -120,4 +130,7 @@ export const useStore = create<DashboardState>((set) => ({
     })),
 
   removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+  setShowcaseOpen: (showcaseOpen) => set({ showcaseOpen }),
+  setTemplateGalleryOpen: (templateGalleryOpen) => set({ templateGalleryOpen }),
+  setPendingPrompt: (pendingPrompt) => set({ pendingPrompt }),
 }));

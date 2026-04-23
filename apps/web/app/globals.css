@@ -43,6 +43,8 @@
   --sidebar-w:           260px;
   --sidebar-collapsed-w: 48px;
   --right-w:             360px;
+  --preview-w:           52%;
+  --preview-w-min:       480px;
   --logs-h:              180px;
   --logs-bar-h:          38px;
   --radius:    10px;
@@ -325,7 +327,8 @@ input, textarea { font-family: inherit; color: var(--text); }
 
 
 /* ── Responsive ──────────────────────────────────────────────────────────────*/
-@media (max-width: 1100px) { :root { --right-w: 300px; } }
-@media (max-width: 900px)  { .right-panel { display: none; } :root { --sidebar-w: 220px; } }
-@media (max-width: 640px)  { .sidebar { display: none; } .header-metrics { display: none; } }
+@media (max-width: 1400px) { :root { --preview-w: 46%; } }
+@media (max-width: 1100px) { :root { --right-w: 300px; --preview-w: 42%; --preview-w-min: 380px; } }
+@media (max-width: 900px)  { .right-panel { display: none; } :root { --sidebar-w: 220px; --preview-w: 38%; --preview-w-min: 320px; } }
+@media (max-width: 640px)  { .sidebar { display: none; } .header-metrics { display: none; } :root { --preview-w: 100%; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }

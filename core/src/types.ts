@@ -78,7 +78,16 @@ export interface PromptHistoryEntry {
   text: string;
   createdAt: string;
   sessionId?: string;
+  /** Union of added + modified + removed. Kept for backward compat. */
   changedFiles?: string[];
+  /** Paths newly created by this iteration. */
+  added?: string[];
+  /** Paths whose content was rewritten by this iteration. */
+  modified?: string[];
+  /** Paths explicitly removed by this iteration. */
+  removed?: string[];
+  /** Which version snapshot was taken before this iteration ran. */
+  snapshotVersionId?: string;
 }
 
 export interface ProjectVersion {
@@ -106,7 +115,16 @@ export interface Project {
   updatedAt: string;
   costUsd?: number;
   tokensUsed?: number;
+  /** Total number of completed generations + updates run against this project. */
+  generationCount?: number;
+  /** Optional per-project overrides for cost limits (fall back to config defaults). */
+  limits?: ProjectLimits;
   error?: string;
+}
+
+export interface ProjectLimits {
+  maxGenerations?: number;
+  maxCostUsd?: number;
 }
 
 export interface ProjectPreferences {

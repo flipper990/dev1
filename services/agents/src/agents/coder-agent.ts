@@ -13,12 +13,20 @@ export interface CoderInput {
   layoutPatterns?: string[];
   componentsNeeded?: string[];
   existingStyleFiles?: ProjectFile[];
+
+  // ── Update / iteration mode ─────────────────────────────────────────────
+  /** All files that currently exist in the project. Triggers patch mode. */
+  existingFiles?: ProjectFile[];
+  /** The user's raw update prompt, relayed verbatim to the model. */
+  updateInstructions?: string;
 }
 
 export interface CoderOutput {
   files: ProjectFile[];
   summary: string;
   dependencies: Record<string, string>;
+  /** Paths the model asked to delete entirely. Only honoured in update mode. */
+  filesToDelete?: string[];
 }
 
 // ─── Prompt ───────────────────────────────────────────────────────────────────
@@ -74,15 +82,39 @@ export class CoderAgent extends BaseAgent<CoderInput, CoderOutput> {
       ? `\n\nPre-generated style files (already exist — DO NOT regenerate these, but your code MUST honor them):\n${input.existingStyleFiles.map(f => `- ${f.path}`).join('\n')}`
       : '';
 
+    // ── Update / iteration mode ─────────────────────────────────────────
+    // When existingFiles is present, switch to *patch mode*: the coder is
+    // told to emit ONLY new or modified files, plus an optional deletion list.
+    const isUpdate = !!input.existingFiles?.length;
+    const existingFilesSection = isUpdate
+      ? `\n\n=== EXISTING CODEBASE (${input.existingFiles!.length} files — PRESERVE UNTOUCHED FILES) ===\n` +
+        `Paths currently in the project:\n${input.existingFiles!.map(f => `- ${f.path} (${f.content.length} chars)`).join('\n')}\n`
+      : '';
+    const updateInstructionsSection = input.updateInstructions
+      ? `\n\n=== UPDATE REQUEST ===\n${input.updateInstructions}\n`
+      : '';
+    const patchRules = isUpdate
+      ? `\n\n=== PATCH MODE RULES ===\n` +
+        `- Emit ONLY the files you need to ADD or MODIFY for this update.\n` +
+        `- Every existing path you DO NOT include will be preserved verbatim.\n` +
+        `- To modify a file, output its full new content at the same path.\n` +
+        `- To add a file, output it at a new path.\n` +
+        `- To delete a file, list its path in the top-level "filesToDelete" array.\n` +
+        `- Do NOT re-emit unchanged files. That wastes tokens and risks drift.\n` +
+        `- Keep the overall architecture, naming conventions and design system consistent with existing files.\n`
+      : '';
+
     const pastCode =
       memories.length
         ? `\n\nCode patterns from previous sessions:\n${memories.map((m) => m.content.slice(0, 300)).join('\n---\n')}`
         : '';
 
-    return `Write all source files for this project and respond with JSON only:
+    const verb = isUpdate ? 'Patch the existing project' : 'Write all source files for this project';
+
+    return `${verb} and respond with JSON only:
 
 Plan:
-${JSON.stringify(input.plan, null, 2)}${archSection}${designSection}${existingStyleFilesSection}${pastCode}
+${JSON.stringify(input.plan, null, 2)}${archSection}${designSection}${existingStyleFilesSection}${existingFilesSection}${updateInstructionsSection}${patchRules}${pastCode}
 
 Required JSON schema:
 {
@@ -93,11 +125,12 @@ Required JSON schema:
       "language": "typescript | javascript | python | etc."
     }
   ],
-  "summary": "string — what was implemented",
+  "filesToDelete": ["relative/path/old.ext"],
+  "summary": "string — what was implemented or changed",
   "dependencies": { "packageName": "version" }
 }
 
-Important: path must be relative (no leading /). Include all files needed to run the project.`;
+Important: path must be relative (no leading /). ${isUpdate ? 'Emit only ADDED or MODIFIED files.' : 'Include all files needed to run the project.'}`;
   }
 
   protected parseOutput(raw: string): CoderOutput {
@@ -124,12 +157,32 @@ Important: path must be relative (no leading /). Include all files needed to run
     }
 
     if (validFiles.length === 0) {
-      throw new ValidationError('Coder output had no valid files after sanitisation');
+      // In patch mode, a pure deletion or no-op update is allowed.
+      const isUpdate = Array.isArray(parsed.filesToDelete) && parsed.filesToDelete.length > 0;
+      if (!isUpdate) {
+        throw new ValidationError('Coder output had no valid files after sanitisation');
+      }
     }
 
     parsed.files = validFiles;
     parsed.dependencies ??= {};
     parsed.summary ??= '';
+
+    // Sanitise filesToDelete the same way — relative paths only, no traversal.
+    if (Array.isArray(parsed.filesToDelete)) {
+      const seen = new Set<string>();
+      const cleanDeletes: string[] = [];
+      for (const raw of parsed.filesToDelete) {
+        if (typeof raw !== 'string') continue;
+        const cleaned = raw.replace(/^[\\/]+/, '').replace(/\\/g, '/');
+        if (!cleaned || cleaned.includes('..') || seen.has(cleaned)) continue;
+        seen.add(cleaned);
+        cleanDeletes.push(cleaned);
+      }
+      parsed.filesToDelete = cleanDeletes;
+    } else {
+      parsed.filesToDelete = [];
+    }
 
     return parsed;
   }

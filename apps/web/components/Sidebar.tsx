@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { Search, MoreVertical, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
+import { Search, MoreVertical, PanelLeftClose, PanelLeftOpen, Plus, Sparkles } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { cn } from '../lib/cn';
 import type { GeneratedProject } from '../types/dashboard';
@@ -21,7 +21,7 @@ export function Sidebar() {
   const {
     projects, selectedProjectId, sidebarCollapsed,
     setSelectedProjectId, setProjectMode, setFiles, setFileContent, setProgress,
-    toggleSidebar,
+    toggleSidebar, setShowcaseOpen,
   } = useStore();
 
   const [search, setSearch] = useState('');
@@ -66,6 +66,13 @@ export function Sidebar() {
         <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Projects</span>
         <div className="flex items-center gap-1">
           <button
+            onClick={() => setShowcaseOpen(true)}
+            title="Browse example projects"
+            className="flex items-center justify-center w-7 h-7 rounded text-[#64748B] hover:bg-[#8B5CF6]/10 hover:text-[#C4B5FD] transition-colors"
+          >
+            <Sparkles size={13} />
+          </button>
+          <button
             onClick={handleNewProject}
             title="New project"
             className="flex items-center justify-center w-7 h-7 rounded text-[#64748B] hover:bg-[#3B82F6]/10 hover:text-[#60A5FA] transition-colors"
@@ -98,11 +105,22 @@ export function Sidebar() {
       {/* List */}
       <div className="flex-1 overflow-y-auto px-2 py-1 flex flex-col gap-0.5">
         {filtered.length === 0 && (
-          <p className="px-3 py-8 text-center text-[#64748B] text-[12px] leading-relaxed">
-            {projects.length === 0
-              ? 'No projects yet.\nGenerate one to get started.'
-              : 'No matches.'}
-          </p>
+          <div className="px-3 py-8 flex flex-col items-center gap-3">
+            <p className="text-center text-[#64748B] text-[12px] leading-relaxed whitespace-pre-line">
+              {projects.length === 0
+                ? 'No projects yet.\nGenerate one to get started.'
+                : 'No matches.'}
+            </p>
+            {projects.length === 0 && (
+              <button
+                onClick={() => setShowcaseOpen(true)}
+                className="group flex items-center gap-1.5 text-[11px] font-medium text-[#C4B5FD] hover:text-[#DDD6FE] bg-[#8B5CF6]/10 hover:bg-[#8B5CF6]/15 border border-[#8B5CF6]/20 rounded-full px-3 py-1.5 transition-colors"
+              >
+                <Sparkles size={11} />
+                Browse examples
+              </button>
+            )}
+          </div>
         )}
         {filtered.map((project) => (
           <ProjectItem

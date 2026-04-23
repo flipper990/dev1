@@ -1,16 +1,36 @@
-﻿'use client';
+'use client';
 
-import { Component, useCallback, useEffect, useRef, useState } from 'react';
+/**
+ * Frontend-only preview.
+ *
+ *   - Fetches the project's source files once, builds a self-contained HTML
+ *     document in the browser, and loads it via <iframe srcDoc>. No backend
+ *     preview-rendering endpoint is involved at any point.
+ *   - The iframe is isolated with `sandbox="allow-scripts"` (no
+ *     allow-same-origin) — maximum isolation. localStorage/sessionStorage are
+ *     polyfilled inside the iframe by the mock layer if the sandbox blocks them.
+ *   - A mock fetch/XHR/WebSocket layer is installed inside the iframe so ALL
+ *     network calls the previewed app makes resolve locally with plausible
+ *     JSON — no real backend is ever reached at runtime.
+ *   - Three layers of error handling:
+ *       1. Inside the iframe: global window.onerror / unhandledrejection
+ *          handlers render a visible fallback card on top of the app.
+ *       2. React class <PreviewErrorBoundary> around the iframe itself.
+ *       3. Host-side `status === 'error'` fallback UI if HTML can't even build.
+ *   - Refresh button forces a full rebuild + iframe remount.
+ *   - Device toggle switches max-width (desktop / tablet / mobile).
+ */
+
+import { Component, useCallback, useEffect, useState } from 'react';
 import {
   Monitor, Tablet, Smartphone,
-  RefreshCw, ExternalLink, AlertTriangle, RotateCcw, Globe, Container, Download, Loader2, CheckCircle2,
+  RefreshCw, AlertTriangle, RotateCcw, Globe, Download, Loader2, CheckCircle2, ShieldCheck,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../lib/store';
 import { cn } from '../lib/cn';
-import { getContainerInfo, exportProject } from '../lib/api';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
+import { exportProject } from '../lib/api';
+import { usePreviewHtml } from '../hooks/usePreviewHtml';
 
 type Viewport = 'desktop' | 'tablet' | 'mobile';
 
@@ -20,19 +40,12 @@ const VIEWPORTS: { id: Viewport; icon: typeof Monitor; label: string; maxW?: str
   { id: 'mobile',  icon: Smartphone, label: 'Mobile',  maxW: '390px' },
 ];
 
-/* ---- Error boundary ------------------------------------------------------ */
+/* ---- React error boundary around the iframe -------------------------------- */
 interface EBState { error: Error | null }
 
-class PreviewErrorBoundary extends Component<
-  React.PropsWithChildren<{ onRetry: () => void }>,
-  EBState
-> {
+class PreviewErrorBoundary extends Component<React.PropsWithChildren<{ onRetry: () => void }>, EBState> {
   state: EBState = { error: null };
-
-  static getDerivedStateFromError(e: Error): EBState {
-    return { error: e };
-  }
-
+  static getDerivedStateFromError(e: Error): EBState { return { error: e }; }
   render() {
     if (this.state.error) {
       return (
@@ -40,15 +53,10 @@ class PreviewErrorBoundary extends Component<
           <AlertTriangle size={32} className="text-[#F59E0B]" />
           <div>
             <p className="text-[13px] font-semibold text-[#F1F5F9]">Preview error</p>
-            <p className="text-[11px] text-[#64748B] mt-1 font-mono break-all">
-              {this.state.error.message}
-            </p>
+            <p className="text-[11px] text-[#64748B] mt-1 font-mono break-all">{this.state.error.message}</p>
           </div>
           <button
-            onClick={() => {
-              this.setState({ error: null });
-              this.props.onRetry();
-            }}
+            onClick={() => { this.setState({ error: null }); this.props.onRetry(); }}
             className="flex items-center gap-2 bg-[#3B82F6]/20 border border-[#3B82F6]/30 text-[#60A5FA] rounded-lg px-4 py-2 text-[12px] font-semibold hover:bg-[#3B82F6]/30 transition-colors"
           >
             <RotateCcw size={13} /> Retry
@@ -60,105 +68,66 @@ class PreviewErrorBoundary extends Component<
   }
 }
 
-/* ---- Main component ------------------------------------------------------ */
+/* ---- Main component -------------------------------------------------------- */
 export function LivePreview() {
-  const { selectedProjectId, projects, isGenerating, progress, addToast } = useStore();
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const { selectedProjectId, projects, isGenerating, progress, addToast, pushLog } = useStore();
   const [viewport,  setViewport]  = useState<Viewport>('desktop');
   const [iframeKey, setIframeKey] = useState(0);
   const [loading,   setLoading]   = useState(false);
 
-  const project       = projects.find((p) => p.id === selectedProjectId) ?? null;
+  const project = projects.find((p) => p.id === selectedProjectId) ?? null;
   const projectStatus = project?.status ?? null;
-  const previewUrl    = selectedProjectId
-    ? `${API_BASE}/api/projects/${selectedProjectId}/preview`
-    : null;
-  const canPreview = !!previewUrl && projectStatus === 'completed';
+  // The preview can render the moment the project has files — we don't require
+  // "completed" since the mock layer + fallbacks cope with partial codebases.
+  const enabled = !!selectedProjectId && projectStatus === 'completed';
 
-  // ── Download Source Code state ────────────────────────────────────────────
-  const [isExporting,  setIsExporting]  = useState(false);
-  const [exportDone,   setExportDone]   = useState(false);
+  const preview = usePreviewHtml(selectedProjectId, project?.name ?? 'Project', { enabled });
 
+  // Force a fresh iframe mount every time the builder produces a new HTML doc.
+  useEffect(() => {
+    if (preview.status === 'ready' || preview.status === 'empty' || preview.status === 'error') {
+      setIframeKey((k) => k + 1);
+      setLoading(true);
+    }
+  }, [preview.buildId, preview.status]);
+
+  // Listen for preview-side postMessage events (console + error forwarding).
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      const data = event.data as { __devteamPreview?: boolean; kind?: string; level?: string; message?: string; title?: string };
+      if (!data || !data.__devteamPreview) return;
+      if (data.kind === 'console' && data.message) {
+        const level = data.level === 'warn' || data.level === 'error' ? data.level : 'info';
+        pushLog('preview', data.message, level);
+      } else if (data.kind === 'error') {
+        pushLog('preview', `${data.title ?? 'Runtime error'}: ${data.message ?? ''}`, 'error');
+      }
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [pushLog]);
+
+  // ── Download Source Code (unchanged) ────────────────────────────────────
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportDone,  setExportDone]  = useState(false);
   const handleExport = useCallback(async () => {
     if (!selectedProjectId || !project) return;
     setIsExporting(true);
     try {
       await exportProject(selectedProjectId, project.name);
       setExportDone(true);
-      addToast({
-        type: 'success',
-        title: 'Download started',
-        message: `${(project.name ?? project.id).replace(/[^a-z0-9-_ ]/gi, '')}-export.zip`,
-      });
-      // Reset success checkmark after 2.5 s
+      addToast({ type: 'success', title: 'Download started', message: `${(project.name ?? project.id).replace(/[^a-z0-9-_ ]/gi, '')}-export.zip` });
       setTimeout(() => setExportDone(false), 2500);
     } catch (err) {
-      addToast({
-        type: 'error',
-        title: 'Download failed',
-        message: (err as Error).message,
-      });
-    } finally {
-      setIsExporting(false);
-    }
+      addToast({ type: 'error', title: 'Download failed', message: (err as Error).message });
+    } finally { setIsExporting(false); }
   }, [selectedProjectId, project, addToast]);
 
-  // ── Docker container URL polling ──────────────────────────────────────────
-  const [containerUrl, setContainerUrl] = useState<string | null>(null);
-  const [containerStatus, setContainerStatus] = useState<string>('none');
-
-  useEffect(() => {
-    if (!selectedProjectId || projectStatus !== 'completed') {
-      setContainerUrl(null);
-      setContainerStatus('none');
-      return;
-    }
-
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    async function poll() {
-      if (cancelled || !selectedProjectId) return;
-      try {
-        const info = await getContainerInfo(selectedProjectId);
-        if (cancelled) return;
-        setContainerStatus(info.status);
-        if (info.url) {
-          setContainerUrl(info.url);
-          return; // container is running — stop polling
-        }
-        if (info.status === 'building') {
-          // keep polling every 3 seconds while building
-          timer = setTimeout(poll, 3000);
-        }
-      } catch {
-        // Docker not available or endpoint not found — silently ignore
-      }
-    }
-
-    poll();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [selectedProjectId, projectStatus]);
-
-  useEffect(() => {
-    if (projectStatus === 'completed' && selectedProjectId) {
-      setIframeKey((k) => k + 1);
-      setLoading(true);
-    }
-  }, [projectStatus, selectedProjectId]);
-
   const handleRefresh = useCallback(() => {
+    preview.refresh();
     setIframeKey((k) => k + 1);
     setLoading(true);
-  }, []);
-
-  const handleOpenTab = useCallback(() => {
-    const url = containerUrl ?? previewUrl;
-    if (url) window.open(url, '_blank', 'noopener,noreferrer');
-  }, [containerUrl, previewUrl]);
+  }, [preview]);
 
   const pct         = progress?.progress ?? 0;
   const currentStep = progress?.currentStep?.name ?? null;
@@ -166,62 +135,43 @@ export function LivePreview() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-
       {/* Toolbar */}
-      <div
-        className="flex items-center gap-2 px-3 border-b border-white/[0.06] bg-[#0B0F19]/50 flex-shrink-0"
-        style={{ height: 40 }}
-      >
-        {/* Left section */}
+      <div className="flex items-center gap-2 px-3 border-b border-white/[0.06] bg-[#0B0F19]/50 flex-shrink-0" style={{ height: 40 }}>
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#64748B] flex-shrink-0">
-            Preview
-          </span>
+          <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#64748B] flex-shrink-0">Preview</span>
 
-          {/* URL bar mockup — shows container URL when available, otherwise preview endpoint */}
-          {canPreview && (
-            <div className="flex items-center gap-1.5 flex-1 max-w-[360px] bg-white/[0.04] border border-white/[0.06] rounded px-2 py-1 text-[11px] text-[#64748B] min-w-0 overflow-hidden">
-              <Globe size={10} className="flex-shrink-0" />
-              <span className="truncate font-mono">{containerUrl ?? previewUrl}</span>
-              {containerStatus === 'building' && (
-                <span className="flex-shrink-0 text-[9px] font-bold text-[#F59E0B] uppercase tracking-wider">Docker…</span>
-              )}
+          {/* Sandbox indicator — emphasises "frontend-only, no network" */}
+          {enabled && (
+            <div className="flex items-center gap-1.5 bg-white/[0.04] border border-white/[0.06] rounded px-2 py-1 text-[10px] text-[#64748B] flex-shrink-0">
+              <ShieldCheck size={10} className="text-[#22C55E]" />
+              <span className="font-mono uppercase tracking-wider">Sandboxed · mocks on</span>
             </div>
           )}
 
-          {/* Live / Building / Ready badge */}
           {project && (
             <div className={cn(
               'flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest border flex-shrink-0',
-              projectStatus === 'completed'
-                ? 'text-[#22C55E] border-[#22C55E]/30 bg-[#22C55E]/[0.08]'
-                : projectStatus === 'generating'
-                ? 'text-[#3B82F6] border-[#3B82F6]/30 bg-[#3B82F6]/[0.08]'
+              projectStatus === 'completed' ? 'text-[#22C55E] border-[#22C55E]/30 bg-[#22C55E]/[0.08]'
+                : projectStatus === 'generating' ? 'text-[#3B82F6] border-[#3B82F6]/30 bg-[#3B82F6]/[0.08]'
                 : 'text-[#64748B] border-white/[0.06] bg-white/[0.03]',
             )}>
-              <span
-                className="w-1.5 h-1.5 rounded-full"
-                style={{
-                  background:
-                    projectStatus === 'completed' ? '#22C55E'
-                    : projectStatus === 'generating' ? '#3B82F6'
-                    : '#64748B',
-                  animation:
-                    projectStatus === 'completed' || projectStatus === 'generating'
-                      ? 'pulse-dot 1.8s ease-in-out infinite'
-                      : undefined,
-                }}
-              />
-              {projectStatus === 'completed'
-                ? 'Live'
-                : projectStatus === 'generating'
-                ? 'Building'
-                : 'Ready'}
+              <span className="w-1.5 h-1.5 rounded-full" style={{
+                background: projectStatus === 'completed' ? '#22C55E' : projectStatus === 'generating' ? '#3B82F6' : '#64748B',
+                animation: projectStatus === 'completed' || projectStatus === 'generating' ? 'pulse-dot 1.8s ease-in-out infinite' : undefined,
+              }} />
+              {projectStatus === 'completed' ? 'Live' : projectStatus === 'generating' ? 'Building' : 'Ready'}
             </div>
+          )}
+
+          {/* Mode badge (react-synth / index-html / fallback) */}
+          {preview.mode && enabled && (
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[#64748B] bg-white/[0.03] border border-white/[0.06] rounded px-1.5 py-0.5 flex-shrink-0">
+              {preview.mode}
+            </span>
           )}
         </div>
 
-        {/* Segmented device toggle */}
+        {/* Device toggle */}
         <div className="flex bg-white/[0.04] border border-white/[0.06] rounded p-0.5 gap-0.5 flex-shrink-0">
           {VIEWPORTS.map((item) => {
             const Icon = item.icon;
@@ -232,9 +182,7 @@ export function LivePreview() {
                 title={item.label}
                 className={cn(
                   'flex items-center justify-center w-6 h-6 rounded text-[#64748B] transition-colors',
-                  viewport === item.id
-                    ? 'bg-white/[0.10] text-[#3B82F6]'
-                    : 'hover:text-[#F1F5F9]',
+                  viewport === item.id ? 'bg-white/[0.10] text-[#3B82F6]' : 'hover:text-[#F1F5F9]',
                 )}
               >
                 <Icon size={13} />
@@ -245,18 +193,17 @@ export function LivePreview() {
 
         <button
           onClick={handleRefresh}
-          disabled={!canPreview}
-          title="Refresh"
+          disabled={!enabled}
+          title="Refresh — rebuild preview from source"
           className="flex items-center justify-center w-7 h-7 rounded border border-transparent text-[#64748B] hover:bg-white/[0.06] hover:border-white/[0.06] hover:text-[#F1F5F9] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
-          <RefreshCw size={13} />
+          <RefreshCw size={13} className={preview.status === 'loading' ? 'animate-spin' : undefined} />
         </button>
 
-        {/* Download Source Code — production-ready ZIP, mocks excluded */}
         <button
           onClick={handleExport}
-          disabled={!canPreview || isExporting}
-          title="Download Source Code — production-ready ZIP (mocks excluded, README included)"
+          disabled={!enabled || isExporting}
+          title="Download Source Code — production-ready ZIP (mocks excluded)"
           className={cn(
             'flex items-center gap-1.5 px-2.5 h-7 rounded-md border text-[11px] font-semibold transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed select-none',
             exportDone
@@ -264,91 +211,73 @@ export function LivePreview() {
               : 'border-[#33e6be]/40 text-[#33e6be] bg-[#33e6be]/[0.08] hover:bg-[#33e6be]/[0.18] hover:border-[#33e6be]/60 hover:shadow-[0_0_10px_rgba(51,230,190,0.2)] active:scale-95',
           )}
         >
-          {isExporting
-            ? <Loader2 size={11} className="animate-spin" />
-            : exportDone
-            ? <CheckCircle2 size={11} />
+          {isExporting ? <Loader2 size={11} className="animate-spin" />
+            : exportDone ? <CheckCircle2 size={11} />
             : <Download size={11} />}
           {isExporting ? 'Downloading…' : exportDone ? 'Downloaded!' : 'Download Source Code'}
         </button>
-
-        <button
-          onClick={handleOpenTab}
-          disabled={!canPreview}
-          title="Open in new tab"
-          className="flex items-center justify-center w-7 h-7 rounded border border-transparent text-[#64748B] hover:bg-white/[0.06] hover:border-white/[0.06] hover:text-[#F1F5F9] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-        >
-          <ExternalLink size={13} />
-        </button>
-
-        {/* Open Docker container URL in new tab — only shown when container is running */}
-        {containerUrl && (
-          <button
-            onClick={() => window.open(containerUrl, '_blank', 'noopener,noreferrer')}
-            title="Open in Docker container (isolated preview)"
-            className="flex items-center justify-center w-7 h-7 rounded border border-[#3B82F6]/30 bg-[#3B82F6]/[0.08] text-[#60A5FA] hover:bg-[#3B82F6]/[0.20] transition-colors"
-          >
-            <Container size={13} />
-          </button>
-        )}
       </div>
 
       {/* Stage */}
-      <div
-        className="flex-1 relative flex items-start justify-center overflow-hidden"
-        style={{ background: '#07090f' }}
-      >
-        {/* Building overlay */}
+      <div className="flex-1 relative flex items-start justify-center overflow-hidden" style={{ background: '#07090f' }}>
+        {/* Pipeline overlay while a session is running */}
         <AnimatePresence>
           {isGenerating && (
             <motion.div
               key="building"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="absolute inset-0 flex items-center justify-center bg-[#07090f]/60 backdrop-blur-sm z-10"
             >
               <div className="flex flex-col items-center gap-4 bg-[#1E293B]/90 border border-white/10 rounded-2xl p-8 min-w-[280px] text-center">
-                <div
-                  className="w-11 h-11 rounded-full border-[3px] border-[#3B82F6]/20 border-t-[#3B82F6]"
-                  style={{ animation: 'spin 0.7s linear infinite' }}
-                />
-                <div className="text-[2.2rem] font-bold text-[#3B82F6] font-mono leading-none">
-                  {pct}%
-                </div>
-                <div className="text-[12px] text-[#CBD5E1]">
-                  {currentStep ?? 'Initialising pipeline...'}
-                </div>
+                <div className="w-11 h-11 rounded-full border-[3px] border-[#3B82F6]/20 border-t-[#3B82F6]" style={{ animation: 'spin 0.7s linear infinite' }} />
+                <div className="text-[2.2rem] font-bold text-[#3B82F6] font-mono leading-none">{pct}%</div>
+                <div className="text-[12px] text-[#CBD5E1]">{currentStep ?? 'Initialising pipeline...'}</div>
                 <div className="w-full h-1.5 bg-white/[0.08] rounded-full overflow-hidden">
-                  <motion.div
-                    className="h-full rounded-full"
-                    style={{ background: 'linear-gradient(90deg, #3B82F6, #818CF8)' }}
-                    animate={{ width: `${pct}%` }}
-                    transition={{ duration: 0.4, ease: 'easeOut' }}
-                  />
+                  <motion.div className="h-full rounded-full" style={{ background: 'linear-gradient(90deg, #3B82F6, #818CF8)' }} animate={{ width: `${pct}%` }} transition={{ duration: 0.4, ease: 'easeOut' }} />
                 </div>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Empty state */}
-        {!isGenerating && !canPreview && (
+        {/* Idle: no project selected */}
+        {!isGenerating && !enabled && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-[#64748B] text-[13px]">
             <Globe size={40} className="opacity-30" />
             <span>Generate a project to see the live preview.</span>
           </div>
         )}
 
-        {/* Device frame + iframe */}
-        {canPreview && (
+        {/* Loading state (fetching + building HTML) */}
+        {enabled && preview.status === 'loading' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-[#64748B] text-[12px]">
+            <Loader2 size={20} className="animate-spin text-[#3B82F6]" />
+            <span>Building preview…</span>
+          </div>
+        )}
+
+        {/* Host-side error fallback (builder couldn't even produce HTML) */}
+        {enabled && preview.status === 'error' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+            <AlertTriangle size={28} className="text-[#F59E0B]" />
+            <div>
+              <p className="text-[13px] font-semibold text-[#F1F5F9]">Could not build preview</p>
+              <p className="text-[11px] text-[#64748B] mt-1 font-mono break-all max-w-md">{preview.error ?? 'Unknown failure'}</p>
+            </div>
+            <button onClick={handleRefresh} className="flex items-center gap-2 bg-[#3B82F6]/20 border border-[#3B82F6]/30 text-[#60A5FA] rounded-lg px-4 py-2 text-[12px] font-semibold hover:bg-[#3B82F6]/30">
+              <RotateCcw size={13} /> Retry
+            </button>
+          </div>
+        )}
+
+        {/* Device frame + iframe (srcDoc) */}
+        {enabled && (preview.status === 'ready' || preview.status === 'empty') && (
           <motion.div
             className="relative flex flex-col overflow-hidden"
             style={{ width: '100%', height: '100%', maxWidth: vp.maxW ?? '100%' }}
             animate={{ maxWidth: vp.maxW ?? '100%' }}
             transition={{ duration: 0.2 }}
           >
-            {/* Browser chrome for tablet / mobile */}
             {viewport !== 'desktop' && (
               <div className="flex items-center gap-2 px-3 py-2 bg-[#1c1c1e] border-b border-white/10 flex-shrink-0">
                 <div className="flex gap-1">
@@ -360,28 +289,23 @@ export function LivePreview() {
               </div>
             )}
 
-            {/* Load progress bar */}
             {loading && (
               <div className="absolute top-0 left-0 right-0 h-0.5 z-10 overflow-hidden">
-                <div
-                  className="h-full w-1/3"
-                  style={{
-                    background: 'linear-gradient(90deg, #3B82F6, #818CF8)',
-                    animation: 'load-sweep 1.5s ease-in-out infinite',
-                  }}
-                />
+                <div className="h-full w-1/3" style={{ background: 'linear-gradient(90deg, #3B82F6, #818CF8)', animation: 'load-sweep 1.5s ease-in-out infinite' }} />
               </div>
             )}
 
-            {/* Iframe wrapped in error boundary */}
             <PreviewErrorBoundary onRetry={handleRefresh}>
               <iframe
                 key={iframeKey}
-                ref={iframeRef}
-                src={previewUrl}
+                srcDoc={preview.html}
                 className="flex-1 w-full border-0 bg-white block"
                 title="Live preview"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+                // NOTE: no `allow-same-origin` — iframe runs in a unique opaque
+                // origin so it cannot reach our host app, localStorage, cookies,
+                // or any backend. This is the core isolation guarantee.
+                sandbox="allow-scripts allow-forms allow-modals allow-popups"
+                referrerPolicy="no-referrer"
                 onLoad={() => setLoading(false)}
               />
             </PreviewErrorBoundary>

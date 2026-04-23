@@ -58,6 +58,18 @@ export class BudgetExceededError extends AppError {
   }
 }
 
+export class CostLimitError extends AppError {
+  constructor(
+    message: string,
+    public readonly kind: 'generation_count' | 'cost_usd',
+    public readonly currentValue: number,
+    public readonly limit: number,
+  ) {
+    super(message, 'COST_LIMIT_EXCEEDED', 402, { kind, currentValue, limit });
+    this.name = 'CostLimitError';
+  }
+}
+
 export class ConcurrencyLimitError extends AppError {
   constructor() {
     super('Maximum concurrent sessions reached', 'CONCURRENCY_LIMIT', 503);

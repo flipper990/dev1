@@ -91,6 +91,16 @@ export async function getProjectVersions(projectId: string): Promise<import('../
   return result.versions;
 }
 
+/**
+ * Roll the project back to a previously-snapshotted version.
+ * The server takes a pre-restore snapshot first, so the restore is undoable.
+ */
+export async function restoreProjectVersion(projectId: string, versionId: string): Promise<void> {
+  await request<{ project: unknown }>(`/api/projects/${projectId}/versions/${versionId}/restore`, {
+    method: 'POST',
+  });
+}
+
 export async function getContainerInfo(projectId: string): Promise<{ available: boolean; status: string; url: string | null }> {
   return request<{ available: boolean; status: string; url: string | null }>(`/api/projects/${projectId}/container`);
 }

@@ -27,6 +27,14 @@ import {
 } from './pipeline.js';
 import { startPipelineStep, completePipelineStep, emitPipelineProgress } from './orchestrator-events.js';
 import { runProjectUpdate } from './orchestrator-update.js';
+import {
+  assertWithinLimits,
+  evaluateUsage,
+  checkMidRunLimit,
+  acquireProjectLock,
+  releaseProjectLock,
+} from './cost-guard.js';
+import { config } from '@devteam/core';
 
 export interface OrchestratorDeps {
   memory: AgentMemoryAdapter;
@@ -105,6 +113,47 @@ export class Orchestrator {
       artifacts: { files: [] }, status: 'running', sessionId, createdAt: now(), updatedAt: now(),
     };
 
+    // ── Pre-flight cost check — throw before consuming any tokens ─────────
+    try {
+      const preUsage = assertWithinLimits(project);
+      acquireProjectLock(projectId, sessionId);
+      emit('usage.snapshot', { projectId, sessionId, ...preUsage, phase: 'pre' });
+      if (preUsage.nearLimit) {
+        emit('usage.warning', { projectId, sessionId, ...preUsage });
+        this.logger.info('Project approaching cost limits', {
+          projectId, costUsd: preUsage.costUsd, limit: preUsage.costLimitUsd,
+          pct: Number((preUsage.maxPct * 100).toFixed(1)),
+        });
+      }
+    } catch (err) {
+      finalizeState(pipeline, 'failed');
+      sessionManager.update(sessionId, { status: 'failed', pipeline });
+      const msg = err instanceof Error ? err.message : String(err);
+      project.status = 'failed';
+      project.error = msg;
+      project.updatedAt = now();
+      this.emit(sessionId, 'session.failed', { error: msg, code: 'COST_LIMIT_EXCEEDED' });
+      this.logger.error('Run blocked by cost limit', { projectId, error: msg });
+      if (this.deps.onProjectSave) await this.deps.onProjectSave(project);
+      throw err;
+    }
+
+    // Cumulative cost threshold — emit a one-shot warning the first time the
+    // in-flight pipeline cost crosses (warnThresholdPct * limit). Hard abort
+    // happens if the running total exceeds the cap entirely.
+    let warnedMidRun = false;
+    const midRunGuard = () => {
+      const cumulativeCost = (project.costUsd ?? 0) + (pipeline.totalCostUsd ?? 0);
+      const usage = evaluateUsage(project, pipeline.totalCostUsd ?? 0);
+      if (!warnedMidRun && cumulativeCost >= config.limits.warnThresholdPct * usage.costLimitUsd) {
+        warnedMidRun = true;
+        emit('usage.warning', { projectId, sessionId, costUsd: cumulativeCost, costLimitUsd: usage.costLimitUsd });
+        this.logger.info('Mid-run cost warning', { projectId, costUsd: cumulativeCost, limit: usage.costLimitUsd });
+      }
+      const reason = checkMidRunLimit(project, pipeline.totalCostUsd ?? 0);
+      if (reason) throw new Error(reason);
+    };
+
     try {
       // ── Intent Analyzer ───────────────────────────────────────────────────
       startPipelineStep(pipeline, 'intent_analyzer', sessionId, emit);
@@ -115,6 +164,7 @@ export class Orchestrator {
         run: (i, c) => this.intent.run(i, c),
       });
       completePipelineStep(pipeline, 'intent_analyzer', intentResult, sessionId, emit);
+      midRunGuard();
       const intent = intentResult.output;
       const effectivePrompt = intent.refinedPrompt || request.prompt;
 
@@ -170,6 +220,7 @@ export class Orchestrator {
         run: (i, c) => this.coder.run(i, c),
       });
       completePipelineStep(pipeline, 'coder', codeResult, sessionId, emit);
+      midRunGuard();
       const codeOutput = codeResult.output;
       // Merge: coder output wins over pre-generated style files with the same path,
       // but pre-generated style files that coder didn't touch stay in the bundle.
@@ -278,12 +329,30 @@ export class Orchestrator {
       finalizeState(pipeline, 'completed');
       project.status = 'completed';
       project.updatedAt = now();
-      project.costUsd = pipeline.totalCostUsd ?? 0;
-      project.tokensUsed = pipeline.totalTokens ?? 0;
+      project.costUsd         = (project.costUsd         ?? 0) + (pipeline.totalCostUsd ?? 0);
+      project.tokensUsed      = (project.tokensUsed      ?? 0) + (pipeline.totalTokens  ?? 0);
+      project.generationCount = (project.generationCount ?? 0) + 1;
       sessionManager.update(sessionId, { status: 'completed', pipeline });
       this.emit(sessionId, 'session.completed', { projectId });
+
+      // Final usage snapshot + structured cost summary log.
+      const postUsage = evaluateUsage(project);
+      this.emit(sessionId, 'usage.snapshot', { projectId, sessionId, ...postUsage, phase: 'post' });
+      this.logger.info('Pipeline completed', {
+        projectId,
+        files:            project.artifacts.files.length,
+        runCostUsd:       pipeline.totalCostUsd,
+        runTokens:        pipeline.totalTokens,
+        cumulativeCost:   project.costUsd,
+        cumulativeTokens: project.tokensUsed,
+        generationCount:  project.generationCount,
+        costPctOfLimit:   Number((postUsage.costPct * 100).toFixed(1)),
+        cacheHits:        pipeline.optimization.cacheHits,
+        skippedSteps:     pipeline.optimization.skippedSteps,
+        apiCallsSaved:    pipeline.optimization.estimatedApiCallsSaved,
+      });
+      releaseProjectLock(projectId, sessionId);
       if (this.deps.onProjectSave) await this.deps.onProjectSave(project);
-      this.logger.info('Pipeline completed', { projectId, files: project.artifacts.files.length, costUsd: project.costUsd });
       return { project, pipeline };
     } catch (error) {
       finalizeState(pipeline, 'failed');
@@ -292,14 +361,25 @@ export class Orchestrator {
       sessionManager.update(sessionId, { status: 'failed', pipeline });
       const msg = error instanceof Error ? error.message : String(error);
       project.error = msg;
+      // Preserve partial accounting even on failure so limits reflect reality.
+      project.costUsd    = (project.costUsd    ?? 0) + (pipeline.totalCostUsd ?? 0);
+      project.tokensUsed = (project.tokensUsed ?? 0) + (pipeline.totalTokens  ?? 0);
       this.emit(sessionId, 'session.failed', { error: msg });
-      this.logger.error('Pipeline failed', { sessionId, error: msg });
+      this.logger.error('Pipeline failed', {
+        sessionId, error: msg,
+        runCostUsd: pipeline.totalCostUsd, cumulativeCost: project.costUsd,
+      });
+      releaseProjectLock(projectId, sessionId);
       if (this.deps.onProjectSave) await this.deps.onProjectSave(project);
       throw error;
     }
   }
 
   startUpdateAsync(existingProject: Project, newPrompt: string): { sessionId: string } {
+    // Pre-flight cost guard — throw synchronously so the caller (HTTP route)
+    // can return 402 before we ever spin up a session.
+    assertWithinLimits(existingProject);
+
     const session = sessionManager.create(existingProject.id);
     const sessionId = session.id;
     setImmediate(() => {

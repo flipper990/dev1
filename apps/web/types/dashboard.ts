@@ -38,7 +38,12 @@ export interface PromptHistoryEntry {
   text: string;
   createdAt: string;
   sessionId?: string;
+  /** Union of added + modified + removed (compat). */
   changedFiles?: string[];
+  added?: string[];
+  modified?: string[];
+  removed?: string[];
+  snapshotVersionId?: string;
 }
 
 export interface ProjectVersion {

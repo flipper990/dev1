@@ -1,6 +1,6 @@
 'use client';
 import { Settings, User, ChevronDown, Zap, TrendingUp, TrendingDown, FolderOpen, Hash, DollarSign } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useStore } from '../lib/store';
 import { cn } from '../lib/cn';
 
@@ -14,15 +14,27 @@ export function AppHeader({ onNewProject }: { onNewProject?: () => void }) {
   const { projects, selectedProjectId, isGenerating, progress, wsConnected } = useStore();
   const [showMenu, setShowMenu] = useState(false);
 
-  const selected   = projects.find((p) => p.id === selectedProjectId);
+  const selected   = useMemo(
+    () => projects.find((p) => p.id === selectedProjectId) ?? null,
+    [projects, selectedProjectId],
+  );
   const statusLabel = isGenerating
     ? 'generating'
     : selected?.status === 'completed' ? 'completed'
     : selected?.status === 'failed'    ? 'failed'
     : 'idle';
 
-  const totalCost   = projects.reduce((a, p) => a + (p.totalCostUsd ?? 0), 0);
-  const totalTokens = projects.reduce((a, p) => a + (p.totalTokens ?? 0), 0);
+  // Reduce over all projects once per projects-change, not per render. This
+  // matters during WS streaming when the page re-renders several times per
+  // second on a large project list.
+  const { totalCost, totalTokens } = useMemo(() => {
+    let cost = 0, tokens = 0;
+    for (const p of projects) {
+      cost   += p.totalCostUsd ?? 0;
+      tokens += p.totalTokens  ?? 0;
+    }
+    return { totalCost: cost, totalTokens: tokens };
+  }, [projects]);
 
   return (
     <header
@@ -75,15 +87,31 @@ export function AppHeader({ onNewProject }: { onNewProject?: () => void }) {
         {onNewProject && (
           <button
             onClick={onNewProject}
-            className="flex items-center gap-1.5 bg-[#3B82F6] hover:bg-[#3B82F6]/90 text-white rounded px-3 py-1.5 text-[11px] font-semibold transition-colors"
+            title="New project (Ctrl+N)"
+            className="flex items-center gap-1.5 bg-[#3B82F6] hover:bg-[#3B82F6]/90 active:bg-[#3B82F6] text-white rounded px-3 py-1.5 text-[11px] font-semibold transition-all hover:-translate-y-px active:translate-y-0 shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]"
           >
             <Zap size={11} />
             New
           </button>
         )}
 
+        {/* Keyboard shortcuts hint — dispatches a `?` so the global handler opens the overlay */}
+        <button
+          onClick={() => {
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }));
+          }}
+          title="Keyboard shortcuts (?)"
+          className="flex items-center justify-center w-7 h-7 rounded border border-transparent text-[#64748B] hover:bg-white/[0.06] hover:border-white/[0.06] hover:text-[#F1F5F9] transition-colors font-mono text-[13px]"
+          aria-label="Show keyboard shortcuts"
+        >
+          ?
+        </button>
+
         {/* Settings */}
-        <button className="flex items-center justify-center w-7 h-7 rounded border border-transparent text-[#64748B] hover:bg-white/[0.06] hover:border-white/[0.06] hover:text-[#F1F5F9] transition-colors">
+        <button
+          title="Settings"
+          className="flex items-center justify-center w-7 h-7 rounded border border-transparent text-[#64748B] hover:bg-white/[0.06] hover:border-white/[0.06] hover:text-[#F1F5F9] transition-colors"
+        >
           <Settings size={14} />
         </button>
 

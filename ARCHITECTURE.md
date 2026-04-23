@@ -246,6 +246,71 @@ class Orchestrator {
 
 ---
 
+## 4a. Project state structure
+
+The single source of truth for any run is the `Project` object (see [core/src/types.ts](core/src/types.ts)). It is persisted as JSON to `apps/backend/data/projects/<id>.json` by `ProjectStore` and mutated in place by the orchestrator.
+
+```ts
+interface Project {
+  id: string;
+  name: string;
+  prompt: string;                         // most recent prompt
+  prompts?: PromptHistoryEntry[];         // full history (text, createdAt, sessionId, changedFiles)
+  versions?: ProjectVersion[];            // snapshots for rollback
+  preferences?: ProjectPreferences;       // language, framework, testFramework, cloud target
+  artifacts: ProjectArtifacts;            // ← shared mutable state
+  status: PipelineStatus;                 // pending | running | completed | failed | cancelled
+  sessionId?: string;                     // in-flight session id when running
+  createdAt: string;
+  updatedAt: string;
+  costUsd?: number;                       // accumulated cost
+  tokensUsed?: number;                    // accumulated tokens
+  error?: string;                         // on failure
+}
+
+interface ProjectArtifacts {
+  files: ProjectFile[];                   // all source files (merged, path-deduped)
+  plan?: string;                          // planner JSON (stringified)
+  architecture?: string;                  // architect JSON
+  testSuite?: string;                     // tester JSON
+  reviewNotes?: string;                   // reviewer JSON
+  deploymentConfig?: string;              // devops JSON
+}
+
+interface PipelineState {
+  sessionId: string;
+  projectId: string;
+  status: PipelineStatus;
+  steps: PipelineStep[];                  // per-role status, tokens, cost, skippedReason
+  totalDurationMs?: number;
+  totalCostUsd?: number;
+  totalTokens?: number;
+  optimization: OptimizationMetrics;      // cacheHits/Misses, skippedSteps, executedSteps
+}
+```
+
+### How state evolves
+
+1. `POST /api/projects` creates the `Project` with `status='pending'`, empty `artifacts.files`, and a fresh `PipelineState`.
+2. Each agent runs through `runStep()`, which updates the matching `PipelineStep` (`running → completed|failed|skipped`), accumulates `totalTokens` / `totalCostUsd`, and merges its output into `artifacts`:
+   - `planner` → `artifacts.plan`
+   - `architect` → `artifacts.architecture`
+   - `ui_ux` → `artifacts.files += styleFiles[]` (`globals.css`, `tailwind.config.*`)
+   - `coder` → `artifacts.files += files[]` (all sources)
+   - `integration` → `artifacts.files` updated in place for changed paths
+   - `reviewer` → `artifacts.reviewNotes`
+   - `debugger` → `artifacts.files` updated in place for fixed paths
+   - `tester` → `artifacts.files += testFiles[]`, `artifacts.testSuite`
+   - `optimizer` → `artifacts.files` updated in place for optimized paths (never touches test files)
+   - `devops` → `artifacts.files += deploymentFiles[]`, `artifacts.deploymentConfig`
+3. File merging is path-keyed (`Map<path, ProjectFile>`) with deterministic precedence: later stages override earlier ones for the same path, except the optimizer which is gated by a "only rewrites source files it actually changed" rule.
+4. At the end, `project.status = 'completed'`, `project.costUsd` and `project.tokensUsed` are copied from the pipeline totals, and the project is persisted.
+5. For **follow-up prompts** (`POST /:id/prompts`), the update orchestrator runs planner → coder → reviewer, new files replace same-path entries, and `promptHistory[n].changedFiles` records the diff. Untouched files are preserved verbatim.
+
+Agents never see the full `Project`. The orchestrator extracts a typed slice into each agent's input, keeping the agent contract narrow and the state surface auditable.
+
+---
+
 ## 5. LLM routing (`services/api-routing`)
 
 ### Router responsibilities
@@ -475,3 +540,90 @@ To add a new agent (e.g. a **Research** agent as a 12th stage):
 7. Re-run `node apps/backend/test-system.cjs` to confirm no regression
 
 The pipeline is explicitly designed so that adding a stage is a localised change — no event-bus plumbing, no registry registration required in the happy path.
+
+---
+
+## 15. Scalability considerations
+
+### Cost control (today)
+
+- Per-request cost tracked by `CostTracker` and surfaced via `GET /api/agents/cost`.
+- Cheap models (`gpt-4o-mini`, Sonnet) for 7 of 11 agents.
+- Conditional skip reduces ~30% of steps on simple or backend-only projects.
+- Update pipeline (3 stages) is ~70% cheaper than full regeneration for iteration.
+- `MONTHLY_BUDGET_USD` env guardrail exists but is **not currently enforced** in the router — it is read but not checked (see improvements below).
+
+### Performance (today)
+
+- Fastify backend with request logging, rate limit (120 req/min), Helmet.
+- In-memory step + request cache (`Map`) — process-local.
+- WebSocket events push progress to the UI instead of polling.
+- `ProjectStore` reads/writes a single JSON file per project from disk.
+
+### Known scaling bottlenecks
+
+| Area | Current | Limit | Mitigation |
+|---|---|---|---|
+| Storage | JSON file per project | Single-node, no concurrent writers | Swap `ProjectStore` → Postgres |
+| Memory search | Bag-of-words, O(n) | ~1K entries/role | Swap `FileMemoryStore` → pgvector |
+| Step cache | In-process `Map` | Lost on restart, not shared | Redis |
+| Pipeline concurrency | Single process | `MAX_CONCURRENT_SESSIONS` cap | BullMQ + workers |
+| Auth | None | Public deployment unsafe | Fastify `preHandler` + JWT |
+| Preview | Browser Babel | React-family only | Optional containerised sandbox |
+| Budget enforcement | Env var only | Nothing stops overspend | Pre-request check in router |
+
+---
+
+## 16. Weaknesses and prioritised improvements
+
+The following list is the result of an honest audit against the implementation. Items are grouped by priority and impact.
+
+### P0 — Security / correctness blockers
+
+1. **No authentication on the backend.** Any caller can create, read, delete, or export any project. Add a Fastify `preHandler` that verifies a JWT (config stub already exists in `core/src/config.ts`). Gate every `/api/*` route; leave `/health` open.
+2. **Budget enforcement is cosmetic.** `MONTHLY_BUDGET_USD` is loaded but never checked. Add a pre-request guard in `services/api-routing/router.ts` that rejects (or downgrades to a cheaper model) when cumulative monthly cost exceeds the budget.
+3. **Stuck-session recovery is manual.** A process crash leaves `status=running` projects forever. Add a startup reconciler that marks any `status=running` session older than N minutes as `failed` with `error='session_abandoned'`.
+4. **Tests workspace is orphaned.** `tests/unit/` is not in `package.json` workspaces and Jest is not installed. Either wire it up (`"tests"` in `workspaces`, add Jest, run in CI) or delete it. The current ambiguity is worse than either choice.
+
+### P1 — Output quality
+
+5. **Reviewer does not re-review debugger fixes.** After the debugger rewrites files, there is no verification that the fixes are correct. Add a lightweight `reviewer_verify` pass (cheap model) that only re-runs if the debugger applied fixes.
+6. **No syntax / typecheck gate on coder output.** `CoderAgent.parseOutput` checks path safety but not that files parse. Wire `@babel/parser` (already indirectly available via preview) or `typescript` as a compile-check; reject files that don't parse and retry the coder step.
+7. **Integration agent runs after coder but before reviewer.** Wiring errors it introduces aren't caught until the reviewer runs and usually aren't flagged because the reviewer gets the changed file set without the integration context. Reorder: reviewer should see `integration.wirings` as an explicit input.
+8. **Design system is not enforced by the coder.** The UI/UX agent emits tokens, but the coder prompt is advisory — it can still produce stock Tailwind. Feed the design system as a strict constraint list (allowed colours, font families) and validate generated Tailwind classes against it.
+
+### P2 — Scalability
+
+9. **File-based `ProjectStore` does not support concurrent writes.** Two requests against the same project can clobber each other's JSON. Swap to Postgres (or at minimum a write-lock file) before any multi-tenant deployment.
+10. **In-process step + request cache.** Replace with Redis for any deployment that runs more than one backend instance.
+11. **Pipeline runs in the request process.** Offload to BullMQ workers — the API already returns 202, so the UX change is zero; the scaling change is large.
+12. **Memory store is bag-of-words.** The interface is vector-ready; plug in `pgvector` with OpenAI/Cohere embeddings. Expected to materially improve repeated-prompt quality.
+
+### P3 — Preview and export
+
+13. **Preview only supports React-family frontends.** Python/Go/Rust backends export fine but have no visual preview. Add a containerised sandbox mode (Dockerfile-based) for non-React stacks; gate behind an env flag.
+14. **Preview does not surface runtime errors well.** Babel errors bubble to the console. Add an error overlay that catches `window.onerror` / `unhandledrejection` and displays them in the preview panel.
+15. **Export README is code-inspected but not run-tested.** The generated install/dev commands are correct per stack but never executed. Add an optional `--verify` mode that runs `npm install && npm run build` in a temp dir.
+
+### P4 — Developer experience
+
+16. **`packages/agent-core` is legacy.** It predates `services/agents/` and is not used by the live pipeline. Either delete it or document that it exists only for historical agent metadata.
+17. **No CI runs the 26-check smoke test.** `infrastructure/ci/deploy.yml` builds and deploys but does not run `apps/backend/test-system.cjs`. Add it as a required check.
+18. **Prompt templates are inline in each agent file.** Extract to `services/agents/src/prompts/<role>.md` for easier iteration and A/B experimentation.
+19. **Logger is process-local console output.** Add structured JSON logging with a request id correlation field (already generated in `app.ts` via `genReqId`) and ship to a central sink in production.
+
+### P5 — Product
+
+20. **No versioning UI.** `ProjectVersion[]` exists in the type but the web app does not expose snapshot / rollback. Surface it.
+21. **No "explain this project" view.** The architect and planner outputs are stored but not rendered. A dedicated "Spec" tab in the web app would dramatically increase perceived value.
+22. **No shareable preview URLs.** Previews are local-only. An optional read-only share token on the preview route would unlock demo / review use cases.
+23. **No model-cost estimate before running.** The prompt panel should surface an estimated cost range based on intent.complexity before the user hits Run.
+
+### Summary — top 5 to do next
+
+1. Add JWT auth + enforce monthly budget in the router. **(P0)**
+2. Add a startup reconciler for abandoned `status=running` projects. **(P0)**
+3. Add a typecheck/parse gate on coder output and a reviewer re-verify pass after the debugger. **(P1)**
+4. Swap `ProjectStore` and step cache to Postgres + Redis before multi-tenant. **(P2)**
+5. Surface architect/planner spec and version history in the web UI. **(P5 — highest commercial upside)**
+

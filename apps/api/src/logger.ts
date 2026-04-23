@@ -4,7 +4,7 @@
 
 import pino from 'pino';
 import { config } from './config.js';
-import type { Logger } from '../../packages/agent-core/src/base-agent.js';
+import type { Logger } from '@agent-core/agent-contracts.js';
 
 const pinoLogger = pino({
   level: process.env.LOG_LEVEL ?? 'info',

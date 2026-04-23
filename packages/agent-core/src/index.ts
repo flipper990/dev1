@@ -73,7 +73,7 @@ export {
 
 // Agent Metrics
 export { AgentMetrics } from './agent-metrics';
-export type { MetricsCollector } from './agent-metrics';
+export type { MetricsCollector } from './agent-middleware';
 
 // Orchestrator
 export { PipelineOrchestrator, PIPELINE_STEPS } from './orchestrator';

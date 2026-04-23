@@ -1,5 +1,21 @@
 # Multi-Agent System — Complete Design Reference
 
+> **LEGACY DOCUMENT.** This file describes the original 8-agent design from the pre-`services/` layout (`packages/agent-core` registry). The production pipeline has since moved to `services/agents` and now runs **11 stages**. For the authoritative, up-to-date system description see [`ARCHITECTURE.md`](../../ARCHITECTURE.md) at the repo root.
+>
+> Current 11-stage pipeline:
+> `intent_analyzer → planner → architect → ui_ux → coder → integration → reviewer → debugger → tester → optimizer → devops`
+>
+> Changes from the version documented below:
+> - `developer` was renamed to `coder` and moved to `services/agents/src/agents/coder-agent.ts`
+> - Three new agents added: `intent_analyzer`, `ui_ux`, `integration`
+> - Coder now receives a full design system (palette, typography, radii, motion) from `ui_ux` before writing any UI code
+> - `services/api-routing` replaces the per-agent model routing fields shown below; routing is configured in `core/src/config.ts` `modelsByRole`
+> - Memory entries are stored by `services/memory` (file-based); `pgvector` backend is planned but not wired
+>
+> The sections below are kept for historical context on the original design intent.
+
+---
+
 ## Agent Roster (8 Agents)
 
 ```

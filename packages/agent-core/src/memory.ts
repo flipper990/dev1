@@ -79,7 +79,7 @@ export class MemoryManager implements MemoryStore {
   }
 
   async setShortTerm(sessionId: string, entry: MemoryEntryInput): Promise<void> {
-    const key = this.shortTermKey(sessionId, entry.agentRole);
+    const key = this.shortTermKey(sessionId, entry.agentRole as AgentRole);
     const full: MemoryEntry = {
       ...entry,
       tags: entry.tags ?? [],

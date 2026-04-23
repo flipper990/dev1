@@ -10,6 +10,7 @@ export const MODEL_REGISTRY: Record<string, LLMModel> = {
     id: 'gpt-4.1',
     provider: 'openai',
     contextWindow: 1_047_576,
+    maxOutputTokens: 32_768,
     inputCostPer1kTokens: 0.002,
     outputCostPer1kTokens: 0.008,
     supportsStreaming: true,
@@ -19,6 +20,7 @@ export const MODEL_REGISTRY: Record<string, LLMModel> = {
     id: 'gpt-4.1-mini',
     provider: 'openai',
     contextWindow: 1_047_576,
+    maxOutputTokens: 32_768,
     inputCostPer1kTokens: 0.0004,
     outputCostPer1kTokens: 0.0016,
     supportsStreaming: true,
@@ -28,6 +30,7 @@ export const MODEL_REGISTRY: Record<string, LLMModel> = {
     id: 'gpt-4.1-nano',
     provider: 'openai',
     contextWindow: 1_047_576,
+    maxOutputTokens: 32_768,
     inputCostPer1kTokens: 0.0001,
     outputCostPer1kTokens: 0.0004,
     supportsStreaming: true,
@@ -37,6 +40,7 @@ export const MODEL_REGISTRY: Record<string, LLMModel> = {
     id: 'gpt-4o',
     provider: 'openai',
     contextWindow: 128_000,
+    maxOutputTokens: 16_384,
     inputCostPer1kTokens: 0.0025,
     outputCostPer1kTokens: 0.01,
     supportsStreaming: true,
@@ -46,6 +50,7 @@ export const MODEL_REGISTRY: Record<string, LLMModel> = {
     id: 'gpt-4o-mini',
     provider: 'openai',
     contextWindow: 128_000,
+    maxOutputTokens: 16_384,
     inputCostPer1kTokens: 0.00015,
     outputCostPer1kTokens: 0.0006,
     supportsStreaming: true,
@@ -55,6 +60,7 @@ export const MODEL_REGISTRY: Record<string, LLMModel> = {
     id: 'claude-3-5-sonnet-20241022',
     provider: 'anthropic',
     contextWindow: 200_000,
+    maxOutputTokens: 8_192,
     inputCostPer1kTokens: 0.003,
     outputCostPer1kTokens: 0.015,
     supportsStreaming: true,
@@ -64,6 +70,7 @@ export const MODEL_REGISTRY: Record<string, LLMModel> = {
     id: 'claude-3-haiku-20240307',
     provider: 'anthropic',
     contextWindow: 200_000,
+    maxOutputTokens: 4_096,
     inputCostPer1kTokens: 0.00025,
     outputCostPer1kTokens: 0.00125,
     supportsStreaming: true,
@@ -118,13 +125,46 @@ export class LLMRouter {
     }
 
     try {
-      const response = await this.executeRequest(request, model);
+      const response = await this.executeWithRetry(request, model);
       this.breaker.recordSuccess(model.provider);
       return response;
     } catch (err) {
       this.breaker.recordFailure(model.provider);
       throw err;
     }
+  }
+
+  /** Wraps executeRequest with exponential-backoff retry on transient failures. */
+  private async executeWithRetry(request: LLMRequest, model: LLMModel, maxAttempts = 3): Promise<LLMResponse> {
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await this.executeRequest(request, model);
+      } catch (err) {
+        lastErr = err;
+        const retriable = this.isRetriable(err);
+        if (!retriable || attempt === maxAttempts) throw err;
+        const backoffMs = Math.min(8000, 2 ** attempt * 250) + Math.floor(Math.random() * 250);
+        this.logger.warn('LLM transient failure, retrying', {
+          model: model.id,
+          attempt,
+          backoffMs,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        await new Promise(r => setTimeout(r, backoffMs));
+      }
+    }
+    throw lastErr;
+  }
+
+  /** Heuristic: retry on network errors, rate limits, 5xx — not on auth/4xx. */
+  private isRetriable(err: unknown): boolean {
+    if (!err) return false;
+    const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+    if (/\b(401|403|invalid api key|unauthorized|forbidden|not found|invalid request)\b/.test(msg)) return false;
+    if (/\b(429|rate.?limit|too many requests|overloaded|timeout|timed out|econnreset|etimedout|socket hang up|fetch failed|network|502|503|504|internal server error|5\d\d)\b/.test(msg)) return true;
+    // Default: don't retry on unknown errors to avoid masking real bugs.
+    return false;
   }
 
   getCircuitStatus(): Record<string, unknown> {
@@ -208,7 +248,8 @@ export class LLMRouter {
       model: model.id,
       messages: request.messages,
       temperature: request.temperature ?? 0.2,
-      max_tokens: request.maxTokens ?? 8192,
+      max_tokens: request.maxTokens ?? model.maxOutputTokens,
+      response_format: { type: 'json_object' },
     });
 
     const choice = response.choices[0];
@@ -235,7 +276,7 @@ export class LLMRouter {
 
     const createParams = {
       model: model.id,
-      max_tokens: request.maxTokens ?? 8192,
+      max_tokens: request.maxTokens ?? model.maxOutputTokens,
       messages: messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
       ...(system !== undefined ? { system } : {}),
     } as const;

@@ -87,6 +87,6 @@ export class DevOpsAgent extends BaseAgent {
       relevanceScore: 0.7,
       tags: ['deployment'],
       metadata: { fileCount: files.length },
-    } as MemoryEntry];
+    } as unknown as MemoryEntry];
   }
 }

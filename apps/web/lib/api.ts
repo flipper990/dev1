@@ -135,6 +135,12 @@ export function openSessionSocket(
 ): WebSocket {
   const base = API_BASE.replace('http://', 'ws://').replace('https://', 'wss://');
   const socket = new WebSocket(`${base}/ws/session/${sessionId}`);
+  let finished = false;
+  const finish = (status: string) => {
+    if (finished) return;
+    finished = true;
+    onDone(status);
+  };
 
   socket.onmessage = (event) => {
     try {
@@ -150,9 +156,9 @@ export function openSessionSocket(
         // Map pipeline snapshot to a SessionProgress-like shape for display
         onProgress(payload.data);
       } else if ((payload.type === 'done' || payload.type === 'session.completed') && payload.data) {
-        onDone(payload.data.status ?? 'completed');
+        finish(payload.data.status ?? 'completed');
       } else if (payload.type === 'session.failed') {
-        onDone('failed');
+        finish('failed');
       } else if (payload.type === 'error') {
         onError(payload.message ?? 'WebSocket error');
       }
@@ -162,6 +168,12 @@ export function openSessionSocket(
   };
 
   socket.onerror = () => onError('WebSocket connection error');
+  // Graceful close handler: if the server closes the socket without an explicit
+  // completion message (e.g. network drop or backend restart) surface a
+  // terminal state to the UI so it doesn't hang in "generating..." forever.
+  socket.onclose = () => {
+    if (!finished) finish('disconnected');
+  };
 
   return socket;
 }

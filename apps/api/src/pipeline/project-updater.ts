@@ -48,7 +48,7 @@ export class ProjectUpdater {
     }
 
     const allPrompts = [...(existing.prompts ?? []), ...prompts];
-    const session = this.sessionManager.createSession(allPrompts, userId ?? 'system');
+    const session = this.sessionManager.create(sessionId, userId ?? 'system', allPrompts);
     if (preferences) session.artifacts.set('userPreferences', preferences);
 
     const reusable = await this.memoryStore.getGlobal({ queryText: allPrompts.join('\n'), limit: 5, includeGlobal: true });

@@ -13,7 +13,6 @@ import {
   type CachedStepResult,
   PIPELINE_STEPS,
 } from './pipeline-types';
-import { shouldSkipStep } from './agent-input-builder';
 import { executeStep, getStepCacheKey, writeStepCache } from './step-executor';
 
 // Re-export types so existing consumers of this module are unaffected.
@@ -206,17 +205,6 @@ export class PipelineOrchestrator {
     if (stepState.status === 'completed') {
       state.progress = Math.max(state.progress, (stepIndex + 1) / totalSteps);
       this.emit({ type: 'step:skipped', sessionId: session.id, stepId: step.id, agent: step.agent, reason: 'Seeded from existing project state' });
-      return;
-    }
-
-    const skipReason = shouldSkipStep(step.agent, state.artifacts);
-    if (skipReason) {
-      stepState.status = 'skipped';
-      stepState.error = skipReason;
-      state.optimization.skippedSteps++;
-      state.optimization.estimatedApiCallsSaved++;
-      this.emit({ type: 'step:skipped', sessionId: session.id, stepId: step.id, agent: step.agent, reason: skipReason });
-      state.progress = Math.max(state.progress, (stepIndex + 1) / totalSteps);
       return;
     }
 

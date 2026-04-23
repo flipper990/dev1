@@ -16,16 +16,16 @@ export interface PipelineStep {
   description: string;
 }
 
-/** The canonical 8-step fullstack generation pipeline. */
+/** The canonical 8-step fullstack generation pipeline. All steps are critical and always run in order. */
 export const PIPELINE_STEPS: PipelineStep[] = [
-  { id: 'plan',     name: 'Planning',     agent: 'planner',   critical: true,  description: 'Analyzing prompts and defining project scope' },
-  { id: 'design',   name: 'Architecture', agent: 'architect', critical: true,  description: 'Designing system architecture and tech stack' },
-  { id: 'code',     name: 'Development',  agent: 'developer', critical: true,  description: 'Writing source code for all components' },
-  { id: 'review',   name: 'Code Review',  agent: 'reviewer',  critical: false, description: 'Reviewing code quality and finding issues' },
-  { id: 'test',     name: 'Testing',      agent: 'tester',    critical: false, description: 'Generating test suites' },
-  { id: 'fix',      name: 'Bug Fixing',   agent: 'debugger',  critical: false, description: 'Fixing identified issues' },
-  { id: 'optimize', name: 'Optimization', agent: 'optimizer', critical: false, description: 'Applying performance and code quality optimizations' },
-  { id: 'deploy',   name: 'DevOps',       agent: 'devops',    critical: false, description: 'Preparing deployment configuration' },
+  { id: 'plan',     name: 'Planning',     agent: 'planner',   critical: true, description: 'Analyzing prompts and defining project scope' },
+  { id: 'design',   name: 'Architecture', agent: 'architect', critical: true, description: 'Designing system architecture and tech stack' },
+  { id: 'code',     name: 'Development',  agent: 'developer', critical: true, description: 'Writing source code for all components' },
+  { id: 'review',   name: 'Code Review',  agent: 'reviewer',  critical: true, description: 'Reviewing code quality and finding issues' },
+  { id: 'test',     name: 'Testing',      agent: 'tester',    critical: true, description: 'Generating test suites' },
+  { id: 'fix',      name: 'Bug Fixing',   agent: 'debugger',  critical: true, description: 'Fixing identified issues' },
+  { id: 'optimize', name: 'Optimization', agent: 'optimizer', critical: true, description: 'Applying performance and code quality optimizations' },
+  { id: 'deploy',   name: 'DevOps',       agent: 'devops',    critical: true, description: 'Preparing deployment configuration' },
 ];
 
 // ── Step State ──────────────────────────────────────────────

@@ -22,14 +22,14 @@ export const CLAUDE_SONNET: ModelConfig = {
 export const GPT_4O: ModelConfig = {
   provider: 'openai',
   model: 'gpt-4o',
-  maxTokens: 8192,
+  maxTokens: 16384,
   temperature: 0.3,
 };
 
 export const GPT_4O_MINI: ModelConfig = {
   provider: 'openai',
   model: 'gpt-4o-mini',
-  maxTokens: 4096,
+  maxTokens: 16384,
   temperature: 0.3,
 };
 

@@ -1,4 +1,7 @@
-import 'dotenv/config';
+import { config as _dotenv } from 'dotenv';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+_dotenv({ path: resolve(dirname(fileURLToPath(import.meta.url)), '../../../.env') });
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
@@ -96,7 +99,7 @@ export async function buildApp() {
       });
     }
 
-    logger.error('Unhandled error', { reqId, message: error.message, stack: error.stack });
+    logger.error('Unhandled error', { reqId, message: (error as Error).message, stack: (error as Error).stack });
     return reply.status(500).send({
       error: 'Internal server error',
       code: 'INTERNAL_ERROR',

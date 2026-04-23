@@ -97,6 +97,7 @@ export class ProjectGenerator {
       status: 'generating',
       files: [], tasks: [],
       totalTokens: 0, totalCostUsd: 0, durationMs: 0,
+      version: 1, versionHistory: [],
       createdAt: new Date().toISOString(),
     };
     await this.projectStore.save(project);

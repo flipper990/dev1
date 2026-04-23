@@ -73,6 +73,6 @@ export class ReviewerAgent extends BaseAgent {
       relevanceScore: 1.5,
       tags: ['error-handling', issue.category as string],
       metadata: { severity: issue.severity, category: issue.category },
-    })) as MemoryEntry[];
+    })) as unknown as MemoryEntry[];
   }
 }

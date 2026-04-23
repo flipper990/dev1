@@ -52,3 +52,75 @@ window.__mui=window.__mkStub('MUI');window.__s__mui_material=window.__mui;window
 window.__s_antd=window.__mkStub('Antd');
 </script>`;
 }
+
+/**
+ * Stubs for Next.js runtime helpers (next/link, next/router, next/head, etc.).
+ * These let preview-mode apps built with the Next.js pages router render as a
+ * simple SPA without the actual Next framework being present.
+ */
+export function buildNextStubs(usesNext: boolean): string {
+  if (!usesNext) return '';
+  return `<script>
+(function(){
+  var R=React;
+  // next/link — render as <a href=...>; intercept clicks so navigation updates URL hash only
+  function NextLink(p){var _p=Object.assign({},p,{href:typeof p.href==='string'?p.href:(p.href&&p.href.pathname)||'#'});delete _p.to;var onClick=p.onClick;_p.onClick=function(e){if(e&&e.preventDefault)e.preventDefault();try{window.history.pushState({},'',_p.href);}catch(_){}if(onClick)onClick(e);};return R.createElement('a',_p,p.children);}
+  window.__s_next_link=NextLink;window.__s_next_link.default=NextLink;
+  // next/router — router object with no-op methods
+  function __router(){return {push:function(u){try{window.history.pushState({},'',u);}catch(_){}return Promise.resolve(true);},replace:function(u){try{window.history.replaceState({},'',u);}catch(_){}return Promise.resolve(true);},back:function(){try{window.history.back();}catch(_){}},reload:function(){},prefetch:function(){return Promise.resolve();},events:{on:function(){},off:function(){},emit:function(){}},pathname:location.pathname||'/',route:location.pathname||'/',asPath:location.pathname||'/',query:{},isReady:true,isFallback:false,basePath:'',locale:'en'};}
+  window.__s_next_router={useRouter:__router,withRouter:function(C){return function(p){return R.createElement(C,Object.assign({router:__router()},p));};},default:__router()};
+  // next/navigation (App Router)
+  window.__s_next_navigation={useRouter:__router,usePathname:function(){return location.pathname||'/';},useSearchParams:function(){return new URLSearchParams(location.search||'');},useParams:function(){return{};},redirect:function(){},notFound:function(){}};
+  // next/head — render children into <head> would be nice, but null is safer
+  function NextHead(p){return null;}window.__s_next_head=NextHead;window.__s_next_head.default=NextHead;
+  // next/image — pass-through <img>
+  function NextImage(p){var _p=Object.assign({},p);delete _p.priority;delete _p.placeholder;delete _p.blurDataURL;delete _p.quality;delete _p.fill;return R.createElement('img',_p);}window.__s_next_image=NextImage;window.__s_next_image.default=NextImage;
+  // next/dynamic — synchronously return a loading placeholder; call loader and swap if sync
+  function NextDynamic(loader,opts){var Comp=function(p){var r=R.useState(null);try{var m=loader();if(m&&m.then){m.then(function(mod){r[1](function(){return mod&&mod.default?mod.default:mod;});});return (opts&&opts.loading?R.createElement(opts.loading):null);}if(m&&m.default)return R.createElement(m.default,p);}catch(e){}return null;};return Comp;}window.__s_next_dynamic=NextDynamic;window.__s_next_dynamic.default=NextDynamic;
+  // next/script — just render <script>
+  function NextScript(p){return null;}window.__s_next_script=NextScript;window.__s_next_script.default=NextScript;
+  // next/app — AppProps type only (stripped by TS); provide empty module
+  window.__s_next_app={};
+})();
+</script>`;
+}
+
+/**
+ * Stubs for Redux / Redux Toolkit / react-redux. Provider becomes a pass-through,
+ * useSelector returns undefined, useDispatch returns a no-op. Good enough to
+ * keep a preview alive without a real store.
+ */
+export function buildReduxStubs(usesRedux: boolean): string {
+  if (!usesRedux) return '';
+  return `<script>
+(function(){
+  var R=React;
+  // Minimal store that accepts any actions and always returns empty state
+  function makeStore(initialState){var state=initialState||{};var subs=[];return {getState:function(){return state;},dispatch:function(a){try{if(typeof a==='function')return a(this.dispatch,this.getState);}catch(_){}return a;},subscribe:function(fn){subs.push(fn);return function(){var i=subs.indexOf(fn);if(i>=0)subs.splice(i,1);};},replaceReducer:function(){}};}
+  // react-redux
+  window.__s_react_redux=(function(){
+    function Provider(p){return p.children;}
+    function useSelector(fn){try{return fn?fn({}):undefined;}catch(_){return undefined;}}
+    function useDispatch(){return function(){};}
+    function useStore(){return makeStore();}
+    function connect(){return function(C){return C;};}
+    var out={Provider:Provider,useSelector:useSelector,useDispatch:useDispatch,useStore:useStore,connect:connect,shallowEqual:function(a,b){return a===b;}};
+    out.default=out;return out;
+  })();
+  // @reduxjs/toolkit
+  window.__s__reduxjs_toolkit=(function(){
+    function configureStore(opts){var initial={};if(opts&&opts.reducer){if(typeof opts.reducer==='function')initial=opts.reducer(undefined,{type:'@@INIT'});else{for(var k in opts.reducer){try{initial[k]=opts.reducer[k](undefined,{type:'@@INIT'});}catch(_){initial[k]={};}}}}return makeStore(initial);}
+    function createSlice(opts){var name=opts&&opts.name||'slice';var initial=opts&&opts.initialState||{};var actions={};if(opts&&opts.reducers){for(var k in opts.reducers){(function(type){actions[type]=function(payload){return{type:name+'/'+type,payload:payload};};actions[type].type=name+'/'+type;actions[type].toString=function(){return name+'/'+type;};})(k);}}return {name:name,actions:actions,reducer:function(s,a){return s===undefined?initial:s;},caseReducers:opts&&opts.reducers||{}};}
+    function createAsyncThunk(type,payloadCreator){var t=function(arg){return function(dispatch){try{var p=payloadCreator(arg,{dispatch:dispatch,getState:function(){return{};},rejectWithValue:function(v){return v;}});return Promise.resolve(p).then(function(r){dispatch({type:type+'/fulfilled',payload:r});return{type:type+'/fulfilled',payload:r};}).catch(function(e){dispatch({type:type+'/rejected',error:e});return{type:type+'/rejected',error:e};});}catch(e){return Promise.resolve({type:type+'/rejected',error:e});}};};t.pending={type:type+'/pending'};t.fulfilled={type:type+'/fulfilled'};t.rejected={type:type+'/rejected'};t.typePrefix=type;return t;}
+    function createAction(type){var a=function(payload){return{type:type,payload:payload};};a.type=type;a.toString=function(){return type;};a.match=function(x){return x&&x.type===type;};return a;}
+    function createReducer(initial,b){return function(s,a){return s===undefined?initial:s;};}
+    function combineReducers(r){return function(s,a){s=s||{};var out={};for(var k in r){try{out[k]=r[k](s[k],a);}catch(_){out[k]=s[k]||{};}}return out;};}
+    function createSelector(){var fns=Array.prototype.slice.call(arguments);var last=fns.pop();return function(s){try{return last.apply(null,fns.map(function(f){return f(s);}));}catch(_){return undefined;}};}
+    var out={configureStore:configureStore,createSlice:createSlice,createAsyncThunk:createAsyncThunk,createAction:createAction,createReducer:createReducer,combineReducers:combineReducers,createSelector:createSelector,nanoid:function(){return Math.random().toString(36).slice(2,12);}};
+    out.default=out;return out;
+  })();
+  // redux (classic)
+  window.__s_redux=(function(){var out={createStore:function(reducer,preloaded){return makeStore(preloaded||(typeof reducer==='function'?reducer(undefined,{type:'@@INIT'}):{}));},combineReducers:window.__s__reduxjs_toolkit.combineReducers,applyMiddleware:function(){return function(cs){return cs;};},compose:function(){var fns=Array.prototype.slice.call(arguments);return function(x){return fns.reduceRight(function(acc,f){return f(acc);},x);};},bindActionCreators:function(ac,d){var o={};for(var k in ac){o[k]=function(){return d(ac[k].apply(null,arguments));};}return o;}};out.default=out;return out;})();
+})();
+</script>`;
+}

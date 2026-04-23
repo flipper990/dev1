@@ -123,19 +123,76 @@ function buildEnvExample(envVars: { name: string; description?: string; example?
   return lines.join('\n');
 }
 
+function detectTechStack(files: ProjectFile[]): { frontend?: string; backend?: string; database?: string; testing?: string } {
+  const out: { frontend?: string; backend?: string; database?: string; testing?: string } = {};
+  const all = files.map(f => `${f.path}\n${f.content}`).join('\n');
+  const has = (re: RegExp) => re.test(all);
+  const pathHas = (re: RegExp) => files.some(f => re.test(f.path));
+
+  // Frontend
+  if (has(/from\s+['"]next\/[\w/]+['"]/) || pathHas(/(?:^|\/)pages\/_app\.(?:j|t)sx?$/) || pathHas(/^next\.config\.(?:js|ts|mjs)$/))
+    out.frontend = 'Next.js + React';
+  else if (pathHas(/\.(?:tsx|jsx)$/) && has(/from\s+['"]react['"]/))
+    out.frontend = 'React';
+  else if (has(/<template[\s>]/) || has(/from\s+['"]vue['"]/))
+    out.frontend = 'Vue';
+  else if (has(/from\s+['"]@angular\//))
+    out.frontend = 'Angular';
+  else if (has(/from\s+['"]svelte['"]/))
+    out.frontend = 'Svelte';
+  else if (pathHas(/\.html?$/))
+    out.frontend = 'Plain HTML / CSS / JS';
+
+  // Backend
+  if (has(/from\s+['"]fastapi['"]|from\s+fastapi\b/))
+    out.backend = 'Python (FastAPI)';
+  else if (has(/from\s+['"]flask['"]|from\s+flask\b/))
+    out.backend = 'Python (Flask)';
+  else if (has(/from\s+['"]django['"]|from\s+django\b/))
+    out.backend = 'Python (Django)';
+  else if (has(/from\s+['"]@nestjs\//))
+    out.backend = 'NestJS';
+  else if (has(/from\s+['"]fastify['"]/))
+    out.backend = 'Node.js (Fastify)';
+  else if (has(/from\s+['"]express['"]|require\(['"]express['"]\)/))
+    out.backend = 'Node.js (Express)';
+  else if (has(/from\s+['"]koa['"]/))
+    out.backend = 'Node.js (Koa)';
+  else if (has(/from\s+['"]hono['"]/))
+    out.backend = 'Hono';
+  else if (has(/func\s+main\s*\(/) && pathHas(/\.go$/))
+    out.backend = 'Go';
+  else if (pathHas(/\.rs$/) && has(/fn\s+main\s*\(/))
+    out.backend = 'Rust';
+  else if (pathHas(/(?:^|\/)api\/[^/]+\.(?:ts|js)$/) || pathHas(/(?:^|\/)routes\/[^/]+\.(?:ts|js)$/))
+    out.backend = 'Node.js';
+
+  // Database
+  if (pathHas(/schema\.prisma$/)) out.database = 'PostgreSQL (via Prisma)';
+  else if (has(/from\s+['"]mongoose['"]/) || has(/\bmongodb\b/i)) out.database = 'MongoDB';
+  else if (has(/from\s+['"]sequelize['"]/) || has(/\bDataTypes\.\w+/)) out.database = 'SQL (via Sequelize)';
+  else if (has(/from\s+['"]typeorm['"]/)) out.database = 'SQL (via TypeORM)';
+  else if (has(/from\s+['"]pg['"]/) || has(/\bpostgres(?:ql)?\b/i)) out.database = 'PostgreSQL';
+  else if (has(/from\s+['"]sqlalchemy['"]/i)) out.database = 'SQL (via SQLAlchemy)';
+  else if (has(/from\s+['"]drizzle-orm['"]/)) out.database = 'SQL (via Drizzle)';
+
+  // Testing
+  if (has(/from\s+['"]vitest['"]/) || pathHas(/vitest\.config\./)) out.testing = 'Vitest';
+  else if (has(/from\s+['"]@playwright\/test['"]/)) out.testing = 'Playwright';
+  else if (has(/from\s+['"]pytest['"]|import\s+pytest\b/)) out.testing = 'pytest';
+  else if (pathHas(/\.(?:test|spec)\.[jt]sx?$/)) out.testing = 'Jest';
+
+  return out;
+}
+
 function buildReadme(project: ExportProject): string {
   const name = project.name ?? 'Generated Project';
   const prompts = project.prompts?.map((p) => `- ${p.text}`).join('\n') ?? `- ${project.prompt}`;
-  const hasBackend = project.files.some((f) =>
-    /\/(server|api|routes|controllers|handlers)\//i.test(f.path) ||
-    /server\.[jt]sx?$|app\.[jt]sx?$/.test(f.path),
-  );
-  const hasFrontend = project.files.some((f) =>
-    /\.(tsx|jsx)$/.test(f.path) || /(\/app\/|\/pages\/|\/components\/)/.test(f.path),
-  );
   const hasDocker = project.files.some((f) => f.path === 'Dockerfile' || f.path === 'docker-compose.yml');
   const hasPrisma = project.files.some((f) => /schema\.prisma$/.test(f.path));
   const hasMigrations = project.files.some((f) => /migrations?\//i.test(f.path));
+  const detected = detectTechStack(project.files);
+  const isPythonBackend = (detected.backend ?? '').startsWith('Python');
 
   const sections: string[] = [];
 
@@ -152,13 +209,15 @@ function buildReadme(project: ExportProject): string {
 
   const spec = project.spec as Record<string, Record<string, string>> | undefined;
   const ts = spec?.techStack;
-  if (ts) {
+  if (ts && Object.keys(ts).length > 0) {
     for (const [k, v] of Object.entries(ts)) {
       if (v) sections.push(`- **${k}**: ${v}`);
     }
   } else {
-    if (hasFrontend) sections.push('- **Frontend**: React');
-    if (hasBackend)  sections.push('- **Backend**: Node.js');
+    if (detected.frontend) sections.push(`- **Frontend**: ${detected.frontend}`);
+    if (detected.backend)  sections.push(`- **Backend**: ${detected.backend}`);
+    if (detected.database) sections.push(`- **Database**: ${detected.database}`);
+    if (detected.testing)  sections.push(`- **Testing**: ${detected.testing}`);
   }
   sections.push('');
 
@@ -166,30 +225,38 @@ function buildReadme(project: ExportProject): string {
   sections.push('');
   sections.push('### Prerequisites');
   sections.push('');
-  sections.push('- Node.js 18+');
-  sections.push('- npm or pnpm');
-  if (hasPrisma || hasMigrations) sections.push('- PostgreSQL (or the database listed in your .env)');
+  if (!isPythonBackend) sections.push('- Node.js 18+');
+  if (isPythonBackend) sections.push('- Python 3.10+');
+  sections.push(isPythonBackend ? '- pip' : '- npm or pnpm');
+  if (hasPrisma || hasMigrations || (detected.database ?? '').length > 0) sections.push('- A database matching your `.env` configuration');
   if (hasDocker) sections.push('- Docker & Docker Compose (optional — for containerised setup)');
   sections.push('');
   sections.push('### Installation');
   sections.push('');
   sections.push('```bash');
   sections.push('# 1. Install dependencies');
-  sections.push('npm install');
+  if (isPythonBackend) {
+    sections.push('pip install -r requirements.txt');
+  } else {
+    sections.push('npm install');
+  }
   sections.push('');
   sections.push('# 2. Copy environment variables');
   sections.push('cp .env.example .env');
   sections.push('# Edit .env with your real values');
   sections.push('');
 
+  let step = 3;
   if (hasPrisma) {
-    sections.push('# 3. Run database migrations');
+    sections.push(`# ${step}. Run database migrations`);
     sections.push('npx prisma migrate dev');
     sections.push('');
+    step++;
   }
 
-  sections.push(`# ${hasPrisma ? '4' : '3'}. Start the development server`);
-  sections.push('npm run dev');
+  sections.push(`# ${step}. Start the development server`);
+  if (isPythonBackend) sections.push('uvicorn main:app --reload');
+  else sections.push('npm run dev');
   sections.push('```');
   sections.push('');
 
@@ -260,7 +327,7 @@ function buildDirectoryTree(files: ProjectFile[]): string {
   const dirs = new Set<string>();
   for (const f of files) {
     const parts = f.path.split('/');
-    if (parts.length > 1) dirs.add(parts[0]);
+    if (parts.length > 1 && parts[0] !== undefined) dirs.add(parts[0]);
   }
   const lines: string[] = [];
   for (const dir of [...dirs].sort()) {
@@ -380,8 +447,9 @@ function crc32(buf: Buffer): number {
       crc32Table[i] = c;
     }
   }
+  const table = crc32Table;
   let crc = 0xFFFFFFFF;
-  for (let i = 0; i < buf.length; i++) crc = crc32Table[(crc ^ buf[i]) & 0xFF] ^ (crc >>> 8);
+  for (let i = 0; i < buf.length; i++) crc = (table![(crc ^ (buf[i] as number)) & 0xFF] as number) ^ (crc >>> 8);
   return (crc ^ 0xFFFFFFFF) >>> 0;
 }
 

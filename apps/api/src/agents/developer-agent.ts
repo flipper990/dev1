@@ -110,6 +110,6 @@ export class DeveloperAgent extends BaseAgent {
       relevanceScore: 1.0,
       tags: ['code-style', 'tech-stack', ...(hasFrontend ? ['ui-ux'] as const : [])],
       metadata: { fileCount: files.length, languages, hasFrontend, hasAPI, hasTests },
-    } as MemoryEntry];
+    } as unknown as MemoryEntry];
   }
 }

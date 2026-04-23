@@ -80,7 +80,7 @@ export class PlannerAgent extends BaseAgent {
       relevanceScore: 1.0,
       tags: ['architecture', 'tech-stack'],
       metadata: { stackHints: plan.stackHints, taskCount: plan.tasks.length },
-    } as MemoryEntry);
+    } as unknown as MemoryEntry);
 
     if (plan.constraints && plan.constraints.length > 0) {
       learnings.push({
@@ -90,11 +90,9 @@ export class PlannerAgent extends BaseAgent {
         relevanceScore: 0.8,
         tags: ['architecture'],
         metadata: { projectName: plan.projectName },
-      } as MemoryEntry);
+      } as unknown as MemoryEntry);
     }
 
     return learnings;
   }
 }
-
-import { extractJSON } from './utils.js';

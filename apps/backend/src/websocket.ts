@@ -58,7 +58,7 @@ export function registerWebSocket(app: FastifyInstance): void {
         logger.info('WebSocket disconnected', { sessionId });
       });
 
-      socket.on('error', (err) => {
+      socket.on('error', (err: Error) => {
         unsubscribe();
         logger.error('WebSocket error', { sessionId, error: err.message });
       });

@@ -66,6 +66,6 @@ export class DebuggerAgent extends BaseAgent {
       relevanceScore: 1.2,
       tags: ['error-handling'],
       metadata: { file: p.file },
-    })) as MemoryEntry[];
+    })) as unknown as MemoryEntry[];
   }
 }

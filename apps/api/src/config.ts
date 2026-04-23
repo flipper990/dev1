@@ -2,7 +2,10 @@
 // Application config — loads from env with defaults
 // ─────────────────────────────────────────────────────────────
 
-import 'dotenv/config';
+import { config as _dotenv } from 'dotenv';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+_dotenv({ path: resolve(dirname(fileURLToPath(import.meta.url)), '../../../.env') });
 
 export const config = {
   env: process.env.NODE_ENV ?? 'development',

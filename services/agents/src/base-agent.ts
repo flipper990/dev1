@@ -47,6 +47,8 @@ export abstract class BaseAgent<TInput = unknown, TOutput = unknown> {
   readonly role: AgentRole;
   protected readonly logger: Logger;
   private readonly systemPrompt: string;
+  /** Override in subclass to increase the LLM output budget for large responses. */
+  protected readonly maxOutputTokens: number = 8192;
 
   constructor(role: AgentRole, systemPrompt: string) {
     this.role = role;
@@ -71,6 +73,7 @@ export abstract class BaseAgent<TInput = unknown, TOutput = unknown> {
         { role: 'user', content: prompt },
       ],
       agentRole: this.role,
+      maxTokens: this.maxOutputTokens,
     });
 
     // Parse and validate output
@@ -133,25 +136,89 @@ export abstract class BaseAgent<TInput = unknown, TOutput = unknown> {
   // ── Helpers ──────────────────────────────────────────────────────────────
 
   protected extractJson<T>(text: string): T {
-    // Try direct parse first
     const trimmed = text.trim();
-    try {
-      return JSON.parse(trimmed) as T;
-    } catch { /* fall through */ }
 
-    // Try to extract from ```json ... ``` block
+    // 1. Direct parse
+    try { return JSON.parse(trimmed) as T; } catch { /* fall through */ }
+
+    // 2. Fenced code block: ```json ... ```
     const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (fenced?.[1]) {
-      return JSON.parse(fenced[1].trim()) as T;
+      try { return JSON.parse(fenced[1].trim()) as T; } catch { /* fall through */ }
     }
 
-    // Try first { ... } block
-    const braceStart = trimmed.indexOf('{');
-    const braceEnd = trimmed.lastIndexOf('}');
-    if (braceStart !== -1 && braceEnd > braceStart) {
-      return JSON.parse(trimmed.slice(braceStart, braceEnd + 1)) as T;
+    // 3. Partial fenced block (truncated — no closing ```)
+    const partialFence = trimmed.match(/```(?:json)?\s*([\s\S]*)$/);
+    if (partialFence?.[1]) {
+      const candidate = partialFence[1].trim();
+      const repaired = this._repairJson(candidate);
+      if (repaired !== null) return repaired as T;
     }
 
-    throw new Error(`Cannot extract JSON from response: ${trimmed.slice(0, 200)}`);
+    // 4. First complete { ... } or [ ... ] block
+    const objStart = trimmed.indexOf('{');
+    const objEnd   = trimmed.lastIndexOf('}');
+    if (objStart !== -1 && objEnd > objStart) {
+      try { return JSON.parse(trimmed.slice(objStart, objEnd + 1)) as T; } catch { /* fall through */ }
+    }
+
+    const arrStart = trimmed.indexOf('[');
+    const arrEnd   = trimmed.lastIndexOf(']');
+    if (arrStart !== -1 && arrEnd > arrStart) {
+      try { return JSON.parse(trimmed.slice(arrStart, arrEnd + 1)) as T; } catch { /* fall through */ }
+    }
+
+    // 5. Truncated JSON — attempt repair
+    const repaired = this._repairJson(trimmed);
+    if (repaired !== null) return repaired as T;
+
+    throw new Error(`Cannot extract JSON from LLM response: ${trimmed.slice(0, 300)}`);
+  }
+
+  /**
+   * Attempt to close a truncated JSON string by tracking bracket/brace depth.
+   * Returns parsed value on success, null on failure.
+   */
+  private _repairJson(text: string): unknown {
+    // Find the outermost opening delimiter
+    const firstBrace  = text.indexOf('{');
+    const firstBracket = text.indexOf('[');
+    if (firstBrace === -1 && firstBracket === -1) return null;
+
+    let start: number;
+    let closeChar: string;
+    if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+      start = firstBrace;  closeChar = '}';
+    } else {
+      start = firstBracket; closeChar = ']';
+    }
+
+    let fragment = text.slice(start);
+
+    // Remove trailing incomplete token (unfinished string, key, or value)
+    fragment = fragment
+      .replace(/,\s*$/, '')                    // trailing comma
+      .replace(/[,:]\s*"[^"]*$/, '')          // trailing incomplete string value
+      .replace(/:\s*[\w.+-]*$/, '')            // trailing incomplete number/bool
+      .replace(/,\s*"[^"]*$/, '')             // trailing incomplete key
+      .trim();
+
+    // Close any open arrays/objects
+    const stack: string[] = [];
+    let inString = false;
+    let escape = false;
+    for (const ch of fragment) {
+      if (escape) { escape = false; continue; }
+      if (ch === '\\' && inString) { escape = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === '{') stack.push('}');
+      else if (ch === '[') stack.push(']');
+      else if (ch === '}' || ch === ']') stack.pop();
+    }
+
+    // If still inside a string at end of fragment, close it before closing brackets
+    const closing = (inString ? '"' : '') + stack.reverse().join('');
+    try { return JSON.parse(fragment + closing); } catch { return null; }
   }
 }

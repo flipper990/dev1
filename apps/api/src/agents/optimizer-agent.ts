@@ -69,6 +69,6 @@ export class OptimizerAgent extends BaseAgent {
       relevanceScore: 1.0,
       tags: ['performance'],
       metadata: { categories: patches.map(p => p.category) },
-    } as MemoryEntry];
+    } as unknown as MemoryEntry];
   }
 }

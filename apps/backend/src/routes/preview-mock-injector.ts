@@ -23,7 +23,24 @@ export interface ProjectMeta {
  */
 export function buildMockInjector(meta: ProjectMeta): string {
   const apiRoutes = buildApiRouteTable(meta.apiContracts ?? []);
-  const projectName = meta.name.replace(/'/g, "\\'");
+  // Escape for inclusion inside a JS single-quoted string *and* an HTML <script>
+  // element — neutralize quotes, backslashes, newlines, and any sequence that
+  // could terminate the script tag early.
+  const projectName = meta.name
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/\r?\n/g, ' ');
+  // Escape characters that could break out of the <script> context. JSON.stringify
+  // produces a valid JS expression; we only need to neutralize </script>, HTML
+  // comments and U+2028/U+2029 line separators which are *not* escaped by JSON.
+  const safeJson = (value: unknown): string =>
+    JSON.stringify(value, null, 2)
+      .replace(/</g, '\\u003c')
+      .replace(/>/g, '\\u003e')
+      .replace(/\u2028/g, '\\u2028')
+      .replace(/\u2029/g, '\\u2029');
 
   return `<script id="__devteam_mock_layer">
 (function() {
@@ -42,7 +59,7 @@ var FAKE_USER = {
 var FAKE_TOKEN = 'preview.mock.token.not_real';
 
 // ── API route table (derived from the spec's apiContracts) ────────────────
-var API_ROUTES = ${JSON.stringify(apiRoutes, null, 2)};
+var API_ROUTES = ${safeJson(apiRoutes)};
 
 // ── Generic mock data generators ─────────────────────────────────────────
 function mockId() { return 'preview-' + Math.random().toString(36).slice(2, 10); }

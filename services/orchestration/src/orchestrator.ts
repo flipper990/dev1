@@ -7,10 +7,16 @@ import type {
 } from '@devteam/core';
 import {
   PlannerAgent,
+  ArchitectAgent,
   CoderAgent,
   ReviewerAgent,
+  DebuggerAgent,
   TesterAgent,
+  OptimizerAgent,
   DevOpsAgent,
+  IntentAnalyzerAgent,
+  UIUXAgent,
+  IntegrationAgent,
 } from '@devteam/agents';
 import type { AgentContext, AgentMemoryAdapter, AgentLLMAdapter } from '@devteam/agents';
 import { sessionManager } from './session-manager.js';
@@ -31,11 +37,17 @@ export interface OrchestratorDeps {
 
 export class Orchestrator {
   private readonly logger = new Logger('orchestrator');
-  private readonly planner = new PlannerAgent();
-  private readonly coder = new CoderAgent();
-  private readonly reviewer = new ReviewerAgent();
-  private readonly tester = new TesterAgent();
-  private readonly devops = new DevOpsAgent();
+  private readonly intent    = new IntentAnalyzerAgent();
+  private readonly planner   = new PlannerAgent();
+  private readonly architect = new ArchitectAgent();
+  private readonly uiux      = new UIUXAgent();
+  private readonly coder     = new CoderAgent();
+  private readonly integration = new IntegrationAgent();
+  private readonly reviewer  = new ReviewerAgent();
+  private readonly debugger  = new DebuggerAgent();
+  private readonly tester    = new TesterAgent();
+  private readonly optimizer = new OptimizerAgent();
+  private readonly devops    = new DevOpsAgent();
 
   constructor(private readonly deps: OrchestratorDeps) {}
 
@@ -70,7 +82,19 @@ export class Orchestrator {
     }
 
     const ctx: AgentContext = { sessionId, projectId, memory: this.deps.memory, llm: this.deps.llm };
-    const pipeline = buildInitialPipelineState(sessionId, projectId, ['planner', 'coder', 'reviewer', 'tester', 'devops']);
+    const pipeline = buildInitialPipelineState(sessionId, projectId, [
+      'intent_analyzer',
+      'planner',
+      'architect',
+      'ui_ux',
+      'coder',
+      'integration',
+      'reviewer',
+      'debugger',
+      'tester',
+      'optimizer',
+      'devops',
+    ]);
     const emit = (type: string, data: unknown) => this.emit(sessionId!, type, data);
 
     this.emit(sessionId, 'session.started', { sessionId, projectId });
@@ -82,31 +106,131 @@ export class Orchestrator {
     };
 
     try {
+      // ── Intent Analyzer ───────────────────────────────────────────────────
+      startPipelineStep(pipeline, 'intent_analyzer', sessionId, emit);
+      const intentResult = await runStep({
+        role: 'intent_analyzer',
+        input: { prompt: request.prompt, preferences: request.preferences },
+        ctx,
+        run: (i, c) => this.intent.run(i, c),
+      });
+      completePipelineStep(pipeline, 'intent_analyzer', intentResult, sessionId, emit);
+      const intent = intentResult.output;
+      const effectivePrompt = intent.refinedPrompt || request.prompt;
+
       // ── Plan ──────────────────────────────────────────────────────────────
       startPipelineStep(pipeline, 'planner', sessionId, emit);
-      const planResult = await runStep({ role: 'planner', input: { prompt: request.prompt, preferences: request.preferences }, ctx, run: (i, c) => this.planner.run(i, c) });
+      const planResult = await runStep({ role: 'planner', input: { prompt: effectivePrompt, preferences: request.preferences }, ctx, run: (i, c) => this.planner.run(i, c) });
       completePipelineStep(pipeline, 'planner', planResult, sessionId, emit);
       const plan = planResult.output;
       project.name = plan.projectName;
       project.artifacts.plan = plan.summary;
 
-      // ── Code ──────────────────────────────────────────────────────────────
+      // ── Architecture ──────────────────────────────────────────────────────
+      startPipelineStep(pipeline, 'architect', sessionId, emit);
+      const architectResult = await runStep({ role: 'architect', input: { plan }, ctx, run: (i, c) => this.architect.run(i, c) });
+      completePipelineStep(pipeline, 'architect', architectResult, sessionId, emit);
+      const architectureOverview = architectResult.skipped ? plan.architecture : architectResult.output.overview;
+      const apiEndpoints = architectResult.skipped ? [] : architectResult.output.apiEndpoints;
+      const dataModels   = architectResult.skipped ? [] : architectResult.output.dataModels;
+
+      // ── UI/UX ──────────────────────────────────────────────────────────────────────
+      startPipelineStep(pipeline, 'ui_ux', sessionId, emit);
+      const uiuxResult = await runStep({
+        role: 'ui_ux',
+        input: { plan, intent },
+        ctx,
+        run: (i, c) => this.uiux.run(i, c),
+        canSkip: () => intent.capabilities.hasFrontend === false
+          ? 'Project has no frontend — no design system needed'
+          : false,
+      });
+      completePipelineStep(pipeline, 'ui_ux', uiuxResult, sessionId, emit);
+      const designSystem   = uiuxResult.skipped ? undefined : uiuxResult.output.designSystem;
+      const layoutPatterns = uiuxResult.skipped ? []        : uiuxResult.output.layoutPatterns;
+      const componentsNeeded = uiuxResult.skipped ? []      : uiuxResult.output.componentsNeeded;
+      const styleFiles     = uiuxResult.skipped ? []        : uiuxResult.output.styleFiles;
+      if (styleFiles.length) {
+        project.artifacts.files = [...project.artifacts.files, ...styleFiles];
+      }
+
+      // ── Code ───────────────────────────────────────────────────────────────────────
       startPipelineStep(pipeline, 'coder', sessionId, emit);
-      const codeResult = await runStep({ role: 'coder', input: { plan }, ctx, run: (i, c) => this.coder.run(i, c) });
+      const codeResult = await runStep({
+        role: 'coder',
+        input: {
+          plan,
+          architecture: architectureOverview,
+          designSystem,
+          layoutPatterns,
+          componentsNeeded,
+          existingStyleFiles: styleFiles,
+        },
+        ctx,
+        run: (i, c) => this.coder.run(i, c),
+      });
       completePipelineStep(pipeline, 'coder', codeResult, sessionId, emit);
       const codeOutput = codeResult.output;
-      project.artifacts.files = codeOutput.files;
+      // Merge: coder output wins over pre-generated style files with the same path,
+      // but pre-generated style files that coder didn't touch stay in the bundle.
+      const coderPaths = new Set(codeOutput.files.map((f) => f.path));
+      const preservedStyleFiles = styleFiles.filter((f) => !coderPaths.has(f.path));
+      project.artifacts.files = [...codeOutput.files, ...preservedStyleFiles];
+
+      // ── Integration ───────────────────────────────────────────────────
+      startPipelineStep(pipeline, 'integration', sessionId, emit);
+      const integrationResult = await runStep({
+        role: 'integration',
+        input: {
+          files: project.artifacts.files,
+          apiEndpoints,
+          architecture: { overview: architectureOverview, dataModels },
+          intent,
+        },
+        ctx,
+        run: (i, c) => this.integration.run(i, c),
+        canSkip: () =>
+          !intent.capabilities.hasFrontend || !intent.capabilities.hasBackend
+            ? 'Integration needs both frontend and backend'
+            : false,
+      });
+      completePipelineStep(pipeline, 'integration', integrationResult, sessionId, emit);
+      if (!integrationResult.skipped && integrationResult.output.files.length > 0) {
+        const integPaths = new Set(integrationResult.output.files.map((f) => f.path));
+        const unchanged = project.artifacts.files.filter((f) => !integPaths.has(f.path));
+        project.artifacts.files = [...unchanged, ...integrationResult.output.files];
+      }
 
       // ── Review ────────────────────────────────────────────────────────────
       startPipelineStep(pipeline, 'reviewer', sessionId, emit);
       const reviewResult = await runStep({ role: 'reviewer', input: { files: codeOutput.files, plan: { summary: plan.summary, goals: plan.goals } }, ctx, run: (i, c) => this.reviewer.run(i, c) });
       completePipelineStep(pipeline, 'reviewer', reviewResult, sessionId, emit);
-      project.artifacts.reviewNotes = reviewResult.output.summary;
+      const reviewOutput = reviewResult.output;
+      project.artifacts.reviewNotes = reviewOutput.summary;
+
+      // ── Debug / Fix ───────────────────────────────────────────────────────
+      startPipelineStep(pipeline, 'debugger', sessionId, emit);
+      const debugResult = await runStep({
+        role: 'debugger',
+        input: { files: project.artifacts.files, reviewIssues: reviewOutput.issues ?? [], securityConcerns: reviewOutput.securityConcerns ?? [] },
+        ctx,
+        run: (i, c) => this.debugger.run(i, c),
+        canSkip: (input) => input.reviewIssues.filter(i => i.severity === 'critical' || i.severity === 'major').length === 0 && input.securityConcerns.length === 0
+          ? 'No critical/major issues or security concerns to fix'
+          : false,
+      });
+      completePipelineStep(pipeline, 'debugger', debugResult, sessionId, emit);
+      if (!debugResult.skipped) {
+        // Merge: replace only fixed files; keep the rest untouched
+        const fixedPaths = new Set(debugResult.output.files.map(f => f.path));
+        const unchanged = project.artifacts.files.filter(f => !fixedPaths.has(f.path));
+        project.artifacts.files = [...debugResult.output.files, ...unchanged];
+      }
 
       // ── Test ──────────────────────────────────────────────────────────────
       startPipelineStep(pipeline, 'tester', sessionId, emit);
       const testResult = await runStep({
-        role: 'tester', input: { files: codeOutput.files, plan }, ctx, run: (i, c) => this.tester.run(i, c),
+        role: 'tester', input: { files: project.artifacts.files, plan }, ctx, run: (i, c) => this.tester.run(i, c),
         canSkip: (input) => input.files.filter(f => !f.path.includes('test')).length === 0 ? 'No source files to test' : false,
       });
       completePipelineStep(pipeline, 'tester', testResult, sessionId, emit);
@@ -116,12 +240,37 @@ export class Orchestrator {
         project.artifacts.testSuite = testResult.output.summary;
       }
 
+      // ── Optimize ──────────────────────────────────────────────────────────
+      startPipelineStep(pipeline, 'optimizer', sessionId, emit);
+      const optimizeResult = await runStep({
+        role: 'optimizer',
+        input: { files: project.artifacts.files.filter(f => !f.path.includes('test')), performanceConcerns: reviewOutput.performanceConcerns ?? [] },
+        ctx,
+        run: (i, c) => this.optimizer.run(i, c),
+        canSkip: (input) => {
+          // Skip optimizer entirely for simple projects (landing pages, tiny CRUD).
+          if (intent.complexity === 'simple') return 'Simple project — skipping optimizer to save tokens';
+          if (input.performanceConcerns.length === 0) return 'No specific performance concerns identified';
+          return false;
+        },
+      });
+      completePipelineStep(pipeline, 'optimizer', optimizeResult, sessionId, emit);
+      if (!optimizeResult.skipped) {
+        // Replace source files with optimized versions; keep test files untouched
+        const optimizedPaths = new Set(optimizeResult.output.files.map(f => f.path));
+        const testFiles = project.artifacts.files.filter(f => f.path.includes('test') || !optimizedPaths.has(f.path));
+        project.artifacts.files = [...optimizeResult.output.files, ...testFiles];
+      }
+
       // ── DevOps ────────────────────────────────────────────────────────────
       startPipelineStep(pipeline, 'devops', sessionId, emit);
       const devopsResult = await runStep({ role: 'devops', input: { files: project.artifacts.files, projectName: project.name, preferences: request.preferences }, ctx, run: (i, c) => this.devops.run(i, c) });
       completePipelineStep(pipeline, 'devops', devopsResult, sessionId, emit);
       if (!devopsResult.skipped) {
-        project.artifacts.files = [...project.artifacts.files, ...devopsResult.output.deploymentFiles];
+        // Merge: devops files take precedence over any same-named files from coder
+        const devopsPaths = new Set(devopsResult.output.deploymentFiles.map(f => f.path));
+        const nonConflicting = project.artifacts.files.filter(f => !devopsPaths.has(f.path));
+        project.artifacts.files = [...nonConflicting, ...devopsResult.output.deploymentFiles];
         project.artifacts.deploymentConfig = devopsResult.output.summary;
       }
 
@@ -129,8 +278,8 @@ export class Orchestrator {
       finalizeState(pipeline, 'completed');
       project.status = 'completed';
       project.updatedAt = now();
-      project.costUsd = pipeline.totalCostUsd;
-      project.tokensUsed = pipeline.totalTokens;
+      project.costUsd = pipeline.totalCostUsd ?? 0;
+      project.tokensUsed = pipeline.totalTokens ?? 0;
       sessionManager.update(sessionId, { status: 'completed', pipeline });
       this.emit(sessionId, 'session.completed', { projectId });
       if (this.deps.onProjectSave) await this.deps.onProjectSave(project);
@@ -142,8 +291,10 @@ export class Orchestrator {
       project.updatedAt = now();
       sessionManager.update(sessionId, { status: 'failed', pipeline });
       const msg = error instanceof Error ? error.message : String(error);
+      project.error = msg;
       this.emit(sessionId, 'session.failed', { error: msg });
       this.logger.error('Pipeline failed', { sessionId, error: msg });
+      if (this.deps.onProjectSave) await this.deps.onProjectSave(project);
       throw error;
     }
   }

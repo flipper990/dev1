@@ -1,9 +1,12 @@
 // ─── Agent Roles ─────────────────────────────────────────────────────────────
 
 export type AgentRole =
+  | 'intent_analyzer'
   | 'planner'
   | 'architect'
+  | 'ui_ux'
   | 'coder'
+  | 'integration'
   | 'reviewer'
   | 'tester'
   | 'debugger'
@@ -103,6 +106,7 @@ export interface Project {
   updatedAt: string;
   costUsd?: number;
   tokensUsed?: number;
+  error?: string;
 }
 
 export interface ProjectPreferences {
@@ -145,6 +149,7 @@ export interface LLMModel {
   id: string;
   provider: LLMProvider;
   contextWindow: number;
+  maxOutputTokens: number;
   inputCostPer1kTokens: number;
   outputCostPer1kTokens: number;
   supportsStreaming: boolean;

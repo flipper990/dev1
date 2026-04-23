@@ -1,7 +1,7 @@
 // Update pipeline logic — extracted from Orchestrator.runUpdate().
 
-import { now, generateId } from '@devteam/core';
-import type { Project, PipelineState, ProjectFile, PromptHistoryEntry, ProjectVersion } from '@devteam/core';
+import { now } from '@devteam/core';
+import type { Project, PipelineState, ProjectFile } from '@devteam/core';
 import type { AgentContext } from '@devteam/agents';
 import type { PlannerAgent, CoderAgent, ReviewerAgent } from '@devteam/agents';
 import { sessionManager } from './session-manager.js';
@@ -81,34 +81,26 @@ export async function runProjectUpdate(
     });
     completePipelineStep(pipeline, 'reviewer', reviewResult, sessionId, onEvent);
 
-    // Save version snapshot before applying changes
-    const newVersion: ProjectVersion = {
-      id: generateId('ver'),
-      createdAt: now(),
-      promptText: newPrompt,
-      files: existingProject.artifacts.files,
-      summary: `Before: ${newPrompt}`,
-    };
-
-    const promptEntry: PromptHistoryEntry = {
-      text: newPrompt, createdAt: now(), sessionId, changedFiles: changedPaths,
-    };
-
     project.artifacts = {
       ...existingProject.artifacts,
       files: mergedFiles,
       plan: plan.summary,
       reviewNotes: reviewResult.output.summary,
     };
-    project.prompts = [
-      ...(existingProject.prompts ?? [{ text: existingProject.prompt, createdAt: existingProject.createdAt }]),
-      promptEntry,
-    ];
-    project.versions = [...(existingProject.versions ?? []), newVersion];
+    project.prompt = newPrompt;
     project.status = 'completed';
     project.updatedAt = now();
     project.costUsd = (existingProject.costUsd ?? 0) + (pipeline.totalCostUsd ?? 0);
     project.tokensUsed = (existingProject.tokensUsed ?? 0) + (pipeline.totalTokens ?? 0);
+
+    // Attach the changed file list to the most recent prompt history entry
+    // (the route handler already appended the prompt text pre-pipeline).
+    if (project.prompts && project.prompts.length > 0) {
+      const last = project.prompts[project.prompts.length - 1];
+      if (last && last.sessionId === sessionId) {
+        last.changedFiles = changedPaths;
+      }
+    }
 
     finalizeState(pipeline, 'completed');
     sessionManager.update(sessionId, { status: 'completed', pipeline });

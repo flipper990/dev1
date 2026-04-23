@@ -85,9 +85,12 @@ export const config = {
     togetherApiKey: optional('TOGETHER_API_KEY', ''),
 
     modelsByRole: {
+      intent_analyzer: optional('MODEL_INTENT_ANALYZER', 'gpt-4o-mini'),
       planner: optional('MODEL_PLANNER', 'gpt-4o'),
       architect: optional('MODEL_ARCHITECT', 'gpt-4o'),
+      ui_ux: optional('MODEL_UI_UX', 'gpt-4o'),
       coder: optional('MODEL_CODER', 'gpt-4o'),
+      integration: optional('MODEL_INTEGRATION', 'gpt-4o-mini'),
       reviewer: optional('MODEL_REVIEWER', 'claude-3-5-sonnet-20241022'),
       tester: optional('MODEL_TESTER', 'gpt-4o-mini'),
       debugger: optional('MODEL_DEBUGGER', 'gpt-4o-mini'),

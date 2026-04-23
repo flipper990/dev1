@@ -50,16 +50,16 @@ export async function buildApp() {
   // Wire learning engine into agent hooks (observe task start/end)
   for (const agent of Object.values(agents)) {
     agent.setHooks({
-      beforeExecute: async (_ctx, task) => {
-        learningEngine.observeTaskStart(task, agent._lastLoadedMemories);
-        return task;
+      beforeExecute: async (_ctx: unknown, task: unknown) => {
+        learningEngine.observeTaskStart(task as import('@agent-core/types.js').Task, agent._lastLoadedMemories);
+        return task as never;
       },
-      afterExecute: async (_ctx, task) => {
-        await learningEngine.observeTaskEnd(task);
-        return task;
+      afterExecute: async (_ctx: unknown, task: unknown) => {
+        await learningEngine.observeTaskEnd(task as import('@agent-core/types.js').Task);
+        return task as never;
       },
-      onError: async (_ctx, task, _error) => {
-        await learningEngine.observeTaskEnd(task);
+      onError: async (_ctx: unknown, task: unknown, _error: unknown) => {
+        await learningEngine.observeTaskEnd(task as import('@agent-core/types.js').Task);
       },
     });
   }
@@ -142,7 +142,7 @@ export async function buildApp() {
 
   // ── Global error handler ────────────────────────────
 
-  app.setErrorHandler((error, request, reply) => {
+  app.setErrorHandler((error: import('fastify').FastifyError, request, reply) => {
     const reqId = request.id;
 
     // Zod validation errors
@@ -182,8 +182,8 @@ export async function buildApp() {
 
   // ── Register routes ─────────────────────────────────
 
-  registerRoutes(app, { generator, projectStore, sessionManager, memoryStore, llm, logger });
-  registerWebSocket(app, { sessionManager, logger });
+  registerRoutes(app as unknown as import('fastify').FastifyInstance, { generator, projectStore, sessionManager, memoryStore, llm, logger });
+  registerWebSocket(app as unknown as import('fastify').FastifyInstance, { sessionManager, logger });
 
   // ── Cleanup interval ────────────────────────────────
 

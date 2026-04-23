@@ -82,7 +82,7 @@ export class ArchitectAgent extends BaseAgent {
         relevanceScore: 1.1,
         tags: ['architecture', 'tech-stack'],
         metadata: { techStack: ts, fileCount: spec.fileTree.length },
-      } as MemoryEntry);
+      } as unknown as MemoryEntry);
     }
 
     // DB schema pattern
@@ -95,7 +95,7 @@ export class ArchitectAgent extends BaseAgent {
         relevanceScore: 0.9,
         tags: ['database', 'architecture'],
         metadata: { tableNames: tables.map(t => t.name) },
-      } as MemoryEntry);
+      } as unknown as MemoryEntry);
     }
 
     // API shape pattern
@@ -108,7 +108,7 @@ export class ArchitectAgent extends BaseAgent {
         relevanceScore: 0.8,
         tags: ['api-design', 'architecture'],
         metadata: { endpointCount: spec.apiContracts.length },
-      } as MemoryEntry);
+      } as unknown as MemoryEntry);
     }
 
     return learnings;

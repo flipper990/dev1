@@ -77,6 +77,6 @@ export class TesterAgent extends BaseAgent {
       relevanceScore: 0.8,
       tags: ['testing'],
       metadata: { testCount: testFiles.length },
-    } as MemoryEntry];
+    } as unknown as MemoryEntry];
   }
 }

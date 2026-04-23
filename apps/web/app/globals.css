@@ -19,16 +19,22 @@
   --muted-2: #475569;
   --accent:      #3B82F6;
   --accent-dim:  rgba(59,130,246,0.12);
-  --agent-planner:  #FBBF24;
-  --agent-coder:    #60A5FA;
-  --agent-reviewer: #C084FC;
-  --agent-tester:   #4ADE80;
-  --agent-devops:   #FB7185;
-  --agent-planner-bg:  rgba(251,191,36,0.10);
-  --agent-coder-bg:    rgba(96,165,250,0.10);
-  --agent-reviewer-bg: rgba(192,132,252,0.10);
-  --agent-tester-bg:   rgba(74,222,128,0.10);
-  --agent-devops-bg:   rgba(251,113,133,0.10);
+  --agent-planner:   #FBBF24;
+  --agent-architect: #38BDF8;
+  --agent-developer: #60A5FA;
+  --agent-reviewer:  #C084FC;
+  --agent-tester:    #4ADE80;
+  --agent-debugger:  #F97316;
+  --agent-optimizer: #A78BFA;
+  --agent-devops:    #FB7185;
+  --agent-planner-bg:   rgba(251,191,36,0.10);
+  --agent-architect-bg: rgba(56,189,248,0.10);
+  --agent-developer-bg: rgba(96,165,250,0.10);
+  --agent-reviewer-bg:  rgba(192,132,252,0.10);
+  --agent-tester-bg:    rgba(74,222,128,0.10);
+  --agent-debugger-bg:  rgba(249,115,22,0.10);
+  --agent-optimizer-bg: rgba(167,139,250,0.10);
+  --agent-devops-bg:    rgba(251,113,133,0.10);
   --success: #22C55E;
   --warning: #F59E0B;
   --error:   #EF4444;
@@ -149,6 +155,7 @@ input, textarea { font-family: inherit; color: var(--text); }
 .pipeline-connector--done { background: var(--node-color,var(--border)); }
 .pipeline-connector--active::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, var(--node-color,var(--accent)), transparent); animation: pipe-flow 1.2s linear infinite; }
 @keyframes pipe-flow { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } }
+@keyframes pipe-flow-v { 0% { transform: translateY(-100%); } 100% { transform: translateY(200%); } }
 .pipeline-detail { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.6rem 0.75rem; }
 .pipeline-detail__row { display: flex; justify-content: space-between; font-size: 0.76rem; gap: 0.5rem; align-items: center; }
 .pipeline-detail__name { font-weight: 600; color: var(--text); }

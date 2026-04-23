@@ -1,5 +1,5 @@
 ﻿import type { FastifyInstance } from 'fastify';
-import { ValidationError } from '@devteam/core';
+import { ValidationError, now } from '@devteam/core';
 import type { CreateProjectRequest } from '@devteam/core';
 import { Orchestrator, sessionManager } from '@devteam/orchestration';
 import { globalMemoryStore } from '@devteam/memory';
@@ -22,8 +22,9 @@ const orchestrator = new Orchestrator({
     const files = project.artifacts?.files ?? [];
     if (files.length > 0 && dockerService.isAvailable()) {
       setImmediate(() => {
-        dockerService['_pendingLaunch'] = dockerService['_pendingLaunch'] ?? new Set();
-        (dockerService['_pendingLaunch'] as Set<string>).add(project.id);
+        const docker = dockerService as unknown as { _pendingLaunch?: Set<string> };
+        docker._pendingLaunch = docker._pendingLaunch ?? new Set();
+        docker._pendingLaunch.add(project.id);
       });
     }
   },
@@ -42,6 +43,8 @@ export async function projectRoutes(app: FastifyInstance) {
       throw new ValidationError('prompt must not exceed 10,000 characters');
     }
     const { project, sessionId, projectId } = orchestrator.startAsync({ prompt: prompt.trim(), preferences });
+    // Pre-save so GET /:id works while the pipeline is running
+    await projectStore.save(project);
     return reply.status(202).send({ project, pipeline: { sessionId, projectId } });
   });
 
@@ -89,19 +92,55 @@ export async function projectRoutes(app: FastifyInstance) {
 
     const isTestFile = (p: string) =>
       p.endsWith('.test.js') || p.endsWith('.test.jsx') || p.endsWith('.test.ts') || p.endsWith('.test.tsx') ||
-      p.endsWith('.spec.js') || p.endsWith('.spec.ts') || p.includes('setupTests') || p.includes('__tests__');
+      p.endsWith('.spec.js') || p.endsWith('.spec.ts') || p.endsWith('.spec.jsx') || p.endsWith('.spec.tsx') ||
+      p.endsWith('.cy.js') || p.endsWith('.cy.ts') || p.endsWith('.cy.jsx') || p.endsWith('.cy.tsx') ||
+      p.includes('setupTests') || p.includes('__tests__') ||
+      /(?:^|\/)(?:tests?|__tests__|cypress|e2e|playwright)\//.test(p) ||
+      /\.config\.(?:js|ts|cjs|mjs)$/.test(p);
+
+    /** Detect server-side Node.js / Express code that must never run in the browser preview. */
+    const isServerSideFile = (filePath: string, content: string): boolean => {
+      const p = filePath;
+      // Path-based: unambiguous backend top-level folders
+      if (/(?:^|\/)(?:backend|server|prisma)\//i.test(p)) return true;
+      // Path-based: typical backend directory / entry-point patterns
+      if (/(?:^|\/)(server|app)\.[jt]sx?$/.test(p)) return true;
+      if (/(?:^|\/)(routes|controllers|middleware|handlers|models|schemas|migrations|seeders)\//.test(p)) return true;
+      // Content-based: server framework imports
+      if (/from\s+['"](?:express|fastify|koa|hapi|@hapi\/|restify|@nestjs\/)/.test(content)) return true;
+      if (/require\s*\(\s*['"](?:express|fastify|koa|hapi)['"]/.test(content)) return true;
+      // ORM / DB imports — strictly server-side
+      if (/from\s+['"](?:sequelize|mongoose|typeorm|prisma|@prisma\/|knex|pg|mysql2?|sqlite3|better-sqlite3|mongodb|ioredis|redis)['"]/.test(content)) return true;
+      // Node built-ins only usable server-side
+      if (/from\s+['"](?:fs|path|crypto|child_process|http|https|os|stream|net|dgram|cluster|worker_threads)['"]/.test(content)) return true;
+      if (/require\s*\(\s*['"](?:fs|path|crypto|child_process)['"]/.test(content)) return true;
+      // Express/Fastify request-response patterns
+      if (/\b(?:req|request)\.(?:body|params|query|headers|session|file|files)\b/.test(content)) return true;
+      if (/\b(?:res|response)\.(?:json|send|status|redirect|render|cookie)\s*\(/.test(content)) return true;
+      if (/\bapp\.(?:listen|use|get|post|put|patch|delete)\s*\(/.test(content)) return true;
+      if (/\bRouter\s*\(\s*\)/.test(content) || /express\.Router/.test(content)) return true;
+      if (/NextFunction/.test(content)) return true;
+      // Sequelize/Mongoose usage patterns
+      if (/\bsequelize\.(?:define|query|authenticate|sync)\s*\(/.test(content)) return true;
+      if (/\bmongoose\.(?:Schema|model|connect)\s*\(/.test(content)) return true;
+      if (/\bDataTypes\.\w+/.test(content)) return true;
+      if (/extends\s+Model\b/.test(content)) return true;
+      return false;
+    };
 
     const htmlFiles = files.filter(f => normalizeFilePath(f.path).endsWith('.html'));
     const cssFiles  = files.filter(f => normalizeFilePath(f.path).endsWith('.css'));
     const jsxFiles  = files.filter(f => {
       const p = normalizeFilePath(f.path);
-      return (p.endsWith('.js') || p.endsWith('.jsx') || p.endsWith('.ts') || p.endsWith('.tsx')) && !isTestFile(p);
+      return (p.endsWith('.js') || p.endsWith('.jsx') || p.endsWith('.ts') || p.endsWith('.tsx'))
+        && !isTestFile(p)
+        && !isServerSideFile(p, f.content);
     });
 
     const isReact = jsxFiles.some(f => /from ['"]react['"]/.test(f.content) || /require\(['"]react['"]\)/.test(f.content));
 
     // Build project meta for mock layer (uses spec's apiContracts + envVars if available)
-    const spec = project.artifacts?.spec as Record<string, unknown> | undefined;
+    const spec = (project.artifacts as unknown as { spec?: Record<string, unknown> })?.spec;
     const mockMeta = {
       id: project.id,
       name: project.name ?? 'Preview',
@@ -121,6 +160,13 @@ export async function projectRoutes(app: FastifyInstance) {
       return reply.header('Content-Type', 'text/html; charset=utf-8').send(html);
     }
 
+    // Always clean up pendingLaunch Set entry on the non-React path too to
+    // avoid it growing unbounded across many HTML-only previews.
+    {
+      const pending = (dockerService as unknown as { _pendingLaunch?: Set<string> })._pendingLaunch;
+      pending?.delete(project.id);
+    }
+
     if (htmlFiles.length === 0) {
       const fileList = files.map(f => `<li><code>${normalizeFilePath(f.path)}</code> (${f.content.length} B)</li>`).join('\n');
       const fallbackHtml = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Preview</title><style>body{font-family:system-ui,sans-serif;background:#0e1322;color:#d4def7;padding:2rem}h2{color:#33e6be}li{margin:.4rem 0}code{background:rgba(255,255,255,.1);padding:.1rem .3rem;border-radius:4px;font-size:.9em}p{color:#8fa1c7}</style></head><body><h2>Generated Project: ${project.name ?? project.id}</h2><p>No HTML entry point found. Files generated:</p><ul>${fileList}</ul></body></html>`;
@@ -128,7 +174,7 @@ export async function projectRoutes(app: FastifyInstance) {
     }
 
     const entryHtml = htmlFiles.find(f => normalizeFilePath(f.path).endsWith('index.html')) ?? htmlFiles[0];
-    let doc = entryHtml.content;
+    let doc = entryHtml!.content;
     const cssBlock = cssFiles.map(f => `<style>/* ${normalizeFilePath(f.path)} */\n${f.content}\n</style>`).join('\n');
     const jsBlock  = jsxFiles.map(f => `<script>/* ${normalizeFilePath(f.path)} */\n${f.content}\n</script>`).join('\n');
     doc = doc.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, '');
@@ -150,7 +196,7 @@ export async function projectRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: 'Project is not yet complete — cannot export while generating.' });
     }
 
-    const spec = project.artifacts?.spec as Record<string, unknown> | undefined;
+    const spec = (project.artifacts as unknown as { spec?: Record<string, unknown> })?.spec;
     const files = (project.artifacts?.files ?? []) as { path: string; content: string }[];
 
     const exportProject = {
@@ -197,8 +243,30 @@ export async function projectRoutes(app: FastifyInstance) {
     if (!prompt || typeof prompt !== 'string' || prompt.trim().length < 3) throw new ValidationError('prompt must be at least 3 characters');
     if (prompt.length > 10_000) throw new ValidationError('prompt must not exceed 10,000 characters');
     const existingProject = await projectStore.get(req.params.id);
-    const { sessionId } = orchestrator.startUpdateAsync(existingProject, prompt.trim());
-    return reply.status(202).send({ project: { ...existingProject, sessionId, status: 'running' }, pipeline: { sessionId, projectId: existingProject.id } });
+    // Reject concurrent updates: a pipeline is already running for this project.
+    // This prevents two pipelines racing to write the same artifacts.
+    if (existingProject.status === 'running') {
+      return reply.status(409).send({
+        error: 'Project is currently being generated or updated. Please wait for the current run to finish.',
+        statusCode: 409,
+        currentSessionId: existingProject.sessionId,
+      });
+    }
+    const trimmed = prompt.trim();
+    const { sessionId } = orchestrator.startUpdateAsync(existingProject, trimmed);
+    // Seed prompt history eagerly so the history endpoint shows the new prompt
+    // even before the update pipeline finishes.
+    const priorPrompts = existingProject.prompts ?? [
+      { text: existingProject.prompt, createdAt: existingProject.createdAt },
+    ];
+    const updatedProject = {
+      ...existingProject,
+      sessionId,
+      status: 'running' as const,
+      prompts: [...priorPrompts, { text: trimmed, createdAt: now(), sessionId }],
+    };
+    await projectStore.save(updatedProject);
+    return reply.status(202).send({ project: updatedProject, pipeline: { sessionId, projectId: existingProject.id } });
   });
 
   app.get<{ Params: { id: string } }>('/:id/prompts', async (req, reply) => {

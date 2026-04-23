@@ -8,19 +8,22 @@ A production-ready monorepo for generating software with a coordinated team of A
 devteam/
 ├── core/                        # Shared types, config, logger, errors, utilities
 ├── services/
-│   ├── agents/                  # Base agent class + 5 specialized agents
-│   ├── orchestration/           # Pipeline orchestrator, session manager
+│   ├── agents/                  # Base agent class + 11 specialized agents
+│   ├── orchestration/           # 11-stage pipeline orchestrator, session manager
 │   ├── memory/                  # Per-agent + global memory store
-│   └── api-routing/             # Multi-model LLM router, circuit breaker, cost tracker
+│   └── api-routing/             # Multi-model LLM router, retry + circuit breaker + cost tracker
 ├── apps/
 │   ├── backend/                 # Fastify API server (port 3001)
-│   └── frontend/                # Next.js dashboard (port 3000)
+│   └── web/                     # Next.js 15 dashboard (port 3000)
 ├── infrastructure/
 │   ├── docker/                  # Dockerfiles (backend + frontend)
 │   ├── scripts/                 # deploy.sh + deploy.ps1
 │   └── ci/                      # GitHub Actions workflow
+├── packages/
+│   └── agent-core/              # Legacy pre-services agent registry
 ├── tests/
-│   └── unit/                    # Unit tests (agents, memory, core utils)
+│   └── unit/                    # Unit tests (orphaned workspace — see ARCHITECTURE.md §13)
+├── apps/backend/test-system.cjs # Live 26-check end-to-end smoke test (authoritative)
 ├── docker-compose.yml           # Production compose
 ├── docker-compose.dev.yml       # Development compose
 └── .env.example                 # Environment variable template
@@ -29,10 +32,13 @@ devteam/
 ## Agent Pipeline
 
 ```
-Prompt → Planner → Coder → Reviewer → Tester → DevOps → Output
+prompt → intent_analyzer → planner → architect → ui_ux → coder → integration
+         → reviewer → debugger → tester → optimizer → devops → output
 ```
 
-Each step uses the LLM router (OpenAI / Anthropic with automatic fallback), stores results in memory, and emits real-time events over WebSocket.
+11 stages, each driven by an LLM call through the API router (OpenAI / Anthropic with retry, fallback, and circuit breaker). `ui_ux`, `integration`, `debugger`, `tester`, `optimizer` are conditionally skipped based on project complexity and prior-agent signals — see `ARCHITECTURE.md` §2 for the routing rules.
+
+Every step emits `step.started` / `step.completed` / `step.skipped` events over WebSocket for the frontend to render live.
 
 ## Prerequisites
 
@@ -127,21 +133,25 @@ npm test --workspace=@devteam/tests -- --coverage
 
 ## Extending Agents
 
-1. Create a new class extending `BaseAgent<TInput, TOutput>` in `services/agents/src/agents/`
-2. Implement `buildPrompt()` and `parseOutput()`
-3. Add it to `services/agents/src/index.ts`
-4. Wire it into `services/orchestration/src/orchestrator.ts`
+1. Add the role literal to `AgentRole` in `core/src/types.ts`
+2. Add a model mapping in `core/src/config.ts` `modelsByRole`
+3. Create a new class extending `BaseAgent<TInput, TOutput>` in `services/agents/src/agents/`
+4. Implement `buildPrompt()` and `parseOutput()`
+5. Export it from `services/agents/src/index.ts`
+6. Instantiate + wire it into `services/orchestration/src/orchestrator.ts` (add to `buildInitialPipelineState`, call `runStep(...)`, merge output into `project.artifacts`)
+7. Rebuild: `npm run build --workspace=@devteam/core && npm run build --workspace=@devteam/agents && npm run build --workspace=@devteam/orchestration`
+8. Run `node apps/backend/test-system.cjs` to confirm no regression
 
 ```typescript
 import { BaseAgent } from '../base-agent.js';
 
 export class MyAgent extends BaseAgent<MyInput, MyOutput> {
   constructor() {
-    super('optimizer', 'You are an expert optimizer...');
+    super('my_role', 'You are an expert ...');
   }
 
   protected buildPrompt(input: MyInput): string {
-    return `Optimize this: ${JSON.stringify(input)}`;
+    return `Do the thing: ${JSON.stringify(input)}`;
   }
 
   protected parseOutput(raw: string): MyOutput {
@@ -149,6 +159,8 @@ export class MyAgent extends BaseAgent<MyInput, MyOutput> {
   }
 }
 ```
+
+See `ARCHITECTURE.md` §14 for a worked example.
 
 ## Architecture Decisions
 

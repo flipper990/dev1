@@ -5,9 +5,10 @@ import {
   readdirSync,
   existsSync,
   unlinkSync,
+  renameSync,
 } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
-import { config, Logger, generateId, now, NotFoundError } from '@devteam/core';
+import { config, Logger, generateId, now, NotFoundError, ValidationError } from '@devteam/core';
 import type { Project } from '@devteam/core';
 
 // ─── Project Store ────────────────────────────────────────────────────────────
@@ -23,7 +24,20 @@ export class ProjectStore {
 
   async save(project: Project): Promise<Project> {
     const path = this.projectPath(project.id);
-    writeFileSync(path, JSON.stringify(project, null, 2));
+    // Atomic write: write to temp file then rename to avoid partial/corrupt
+    // state if a concurrent save or process crash happens mid-write.
+    const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+    writeFileSync(tmp, JSON.stringify(project, null, 2));
+    try {
+      // fs.renameSync is atomic on the same filesystem on all major platforms.
+      renameSync(tmp, path);
+    } catch (err) {
+      // Fallback: direct write, then clean up temp.
+      try { writeFileSync(path, JSON.stringify(project, null, 2)); } finally {
+        try { unlinkSync(tmp); } catch { /* ignore */ }
+      }
+      this.logger.warn('Atomic rename failed, fell back to direct write', { projectId: project.id, error: (err as Error).message });
+    }
     this.exportProjectFiles(project);
     return project;
   }
@@ -31,7 +45,13 @@ export class ProjectStore {
   async get(id: string): Promise<Project> {
     const path = this.projectPath(id);
     if (!existsSync(path)) throw new NotFoundError('Project', id);
-    return JSON.parse(readFileSync(path, 'utf8')) as Project;
+    try {
+      return JSON.parse(readFileSync(path, 'utf8')) as Project;
+    } catch (err) {
+      // Corrupted JSON — treat as missing rather than crashing the whole endpoint.
+      this.logger.error('Failed to parse project file', { projectId: id, error: (err as Error).message });
+      throw new NotFoundError('Project', id);
+    }
   }
 
   async list(limit = 20, offset = 0): Promise<{ projects: Project[]; total: number }> {
@@ -62,8 +82,9 @@ export class ProjectStore {
   }
 
   private projectPath(id: string): string {
-    // Prevent path traversal
-    if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error(`Invalid project ID: ${id}`);
+    // Prevent path traversal. Use a proper 400-level error so Fastify's error
+    // handler returns a ValidationError instead of a generic 500.
+    if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new ValidationError(`Invalid project ID: ${id}`);
     return join(this.dir, `${id}.json`);
   }
 

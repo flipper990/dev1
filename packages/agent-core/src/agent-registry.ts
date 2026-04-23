@@ -26,7 +26,7 @@ const MEMORY = {
 
 // ── Agent Definitions ───────────────────────────────────────
 
-export const AGENT_DEFINITIONS: Record<AgentRole, AgentDefinition> = {
+export const AGENT_DEFINITIONS: Partial<Record<AgentRole, AgentDefinition>> = {
 
   // ────────────────────────────────────────────────
   // 1. PLANNER

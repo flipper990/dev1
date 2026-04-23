@@ -114,6 +114,8 @@ export class ProjectUpdater {
       existing.spec = pipelineState.artifacts.get('architect') as Record<string, unknown> | undefined ?? existing.spec;
       existing.plan = pipelineState.artifacts.get('planner') as Record<string, unknown> | undefined ?? existing.plan;
       existing.qaReport = pipelineState.artifacts.get('reviewer') as Record<string, unknown> | undefined;
+      existing.expandedSpec = pipelineState.artifacts.get('intent_expander') as Record<string, unknown> | undefined ?? existing.expandedSpec;
+      existing.qualityReport = pipelineState.artifacts.get('quality_enforcer') as Record<string, unknown> | undefined;
       existing.tasks = taskSummaries;
       existing.totalTokens = (existing.totalTokens ?? 0) + versionMeta.totalTokens;
       existing.totalCostUsd = (existing.totalCostUsd ?? 0) + versionMeta.totalCostUsd;

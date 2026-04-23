@@ -39,17 +39,19 @@ DEVteam is not a codegen wrapper around a single model. It is an orchestrated te
 ## How it works
 
 1. **You submit a prompt** ("Build a marketplace for freelance designers with auth, Stripe, and a dashboard").
-2. **Intent analyzer** extracts project type, complexity, features, capabilities (`hasFrontend`, `hasBackend`, `hasAuth`, `hasPayments`, …), and a refined prompt.
-3. **Planner** selects the stack and writes goals, milestones, risks.
-4. **Architect** produces folder structure, component list, API endpoints, data models, styling approach.
-5. **UI/UX agent** emits a concrete design system + Tailwind config + `globals.css` (skipped for backend-only projects).
-6. **Coder** writes every source file.
-7. **Integration agent** wires frontend ↔ backend: fetch clients, shared types, CORS, env vars.
-8. **Reviewer** scores the codebase and flags bugs, security, performance.
-9. **Debugger** applies fixes for critical/major issues (skipped when none).
-10. **Tester** generates unit and integration tests.
-11. **Optimizer** improves perf, readability, a11y, SEO (skipped on simple projects).
-12. **DevOps agent** adds Dockerfile, compose file, CI workflow, deploy scripts, `.env.example`.
+2. **Intent expander** (new, April 2026) rewrites the vague prompt into a detailed product specification — features (core/standard/stretch), UI expectations (pages, components, empty/loading/error states, a11y, design language), quality standards. The expanded prompt is what every downstream agent sees; the original is used only as a fallback.
+3. **Intent analyzer** extracts project type, complexity, features, capabilities (`hasFrontend`, `hasBackend`, `hasAuth`, `hasPayments`, …), and a refined prompt.
+4. **Planner** selects the stack and writes goals, milestones, risks.
+5. **Architect** produces folder structure, component list, API endpoints, data models, styling approach.
+6. **UI/UX agent** emits a concrete design system + Tailwind config + `globals.css` (skipped for backend-only projects).
+7. **Coder** writes every source file.
+8. **Integration agent** wires frontend ↔ backend: fetch clients, shared types, CORS, env vars.
+9. **Reviewer** scores the codebase and flags bugs, security, performance.
+10. **Debugger** applies fixes for critical/major issues (skipped when none).
+11. **Tester** generates unit and integration tests.
+12. **Quality enforcer** (new, April 2026) scores UI / functional / code / consistency quality on a 0–100 rubric. On any dimension below 80 it emits concrete patches and missing components (e.g. empty states) before the optimizer runs.
+13. **Optimizer** improves perf, readability, a11y, SEO (skipped on simple projects).
+14. **DevOps agent** adds Dockerfile, compose file, CI workflow, deploy scripts, `.env.example`.
 
 While the pipeline runs, you watch every step live. When it completes you can:
 

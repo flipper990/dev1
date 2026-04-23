@@ -1,6 +1,50 @@
 # DEVteam — Platform Architecture
 
-> Accurate as of the 11-agent pipeline landing (April 2026). This document describes the system **as actually implemented**, not as originally envisioned. See README.md for setup.
+> Accurate as of the intent-expansion + quality-enforcement update (April 2026). This document describes the system **as actually implemented**, not as originally envisioned. See README.md for setup.
+
+---
+
+## 0. Recent changes — Intent expansion & quality enforcement
+
+Two agents were added to bookend the pipeline in `packages/agent-core` / `apps/api/src/agents/`:
+
+### `intent_expander` (new first stage)
+
+Runs **before** `planner`. Takes the raw user prompts (which may be vague) and produces a detailed product specification:
+
+- `productName`, `productCategory`, `oneLiner`, `targetUsers[]`
+- `expandedPrompts[]` — ≥400-word elaborated prompt; `expandedPrompts[0]` is the single source of truth every downstream agent consumes.
+- `features` (`core` / `standard` / `stretch`), `uiExpectations` (pages, components, nav, empty/loading/error states, responsive, a11y, design language), `qualityStandards` (performance, security, codeQuality, testing, errorHandling, uxPolish)
+- `constraints`, `nonGoals`, `assumptions`
+
+Routing guarantee — implemented in [agent-input-builder.ts](packages/agent-core/src/agent-input-builder.ts): **`intent_expander` is the only agent that sees `session.prompts`.** Every other agent receives the expanded prompts plus `expandedSpec` in its input; this is the enforced contract for "downstream agents use the expanded prompt, not the original".
+
+### `quality_enforcer` (new stage after `debugger`)
+
+Scores the post-debugger codebase across four dimensions (0–100, pass ≥ 80):
+
+- `uiQuality` · `functionalQuality` · `codeQuality` · `consistency`
+
+Outputs `verdict` (`pass` | `needs-improvement`), `findings[]`, `patches[]` (edits to existing files), `newFiles[]` (missing components such as empty states), and a `summary`. Contract: if any per-dimension score < 80 the verdict **must** be `needs-improvement` and the agent must emit at least one patch or newFile per failing dimension (validated in [quality-enforcer-agent.ts](apps/api/src/agents/quality-enforcer-agent.ts)).
+
+### File-merge order
+
+[project-assembler.ts](apps/api/src/pipeline/project-assembler.ts) now merges in this order:
+
+```
+developer.files → devops.files → tester.testFiles →
+debugger.patches → reviewer.patches →
+quality_enforcer.newFiles → quality_enforcer.patches →
+optimizer.patches
+```
+
+### Persisted artifacts
+
+`ProjectRecord` (in [project-store.ts](apps/api/src/storage/project-store.ts)) gains `expandedSpec?` and `qualityReport?`. Both generator and updater populate them ([project-generator.ts](apps/api/src/pipeline/project-generator.ts), [project-updater.ts](apps/api/src/pipeline/project-updater.ts)).
+
+### Skip rules
+
+`quality_enforcer` skips when no developer files exist (same rule as `optimizer`).
 
 ---
 

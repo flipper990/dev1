@@ -15,16 +15,20 @@ import { TesterAgent } from './tester-agent.js';
 import { DebuggerAgent } from './debugger-agent.js';
 import { DevOpsAgent } from './devops-agent.js';
 import { OptimizerAgent } from './optimizer-agent.js';
+import { IntentExpanderAgent } from './intent-expander-agent.js';
+import { QualityEnforcerAgent } from './quality-enforcer-agent.js';
 
 const AGENT_CLASSES: Record<AgentRole, new (...args: ConstructorParameters<typeof BaseAgent>) => BaseAgent> = {
-  planner:   PlannerAgent,
-  architect: ArchitectAgent,
-  developer: DeveloperAgent,
-  reviewer:  ReviewerAgent,
-  tester:    TesterAgent,
-  debugger:  DebuggerAgent,
-  devops:    DevOpsAgent,
-  optimizer: OptimizerAgent,
+  intent_expander:  IntentExpanderAgent,
+  planner:          PlannerAgent,
+  architect:        ArchitectAgent,
+  developer:        DeveloperAgent,
+  reviewer:         ReviewerAgent,
+  tester:           TesterAgent,
+  debugger:         DebuggerAgent,
+  devops:           DevOpsAgent,
+  optimizer:        OptimizerAgent,
+  quality_enforcer: QualityEnforcerAgent,
 };
 
 export interface AgentFactoryOptions {
@@ -94,5 +98,6 @@ export function createAgent(
   if (!AgentClass) throw new Error(`No implementation for agent role: ${role}`);
 
   const definition = AGENT_DEFINITIONS[role];
+  if (!definition) throw new Error(`No definition for agent role: ${role}`);
   return new AgentClass(definition, llm, memory, bus, logger, config);
 }

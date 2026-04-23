@@ -68,14 +68,16 @@ export type TaskCategory =
 
 /** Maps agent roles to task categories for routing. */
 export const ROLE_TO_CATEGORY: Record<AgentRole, TaskCategory> = {
-  planner:   'planning',
-  architect: 'reasoning',
-  developer: 'code-generation',
-  reviewer:  'code-review',
-  tester:    'testing',
-  debugger:  'reasoning',
-  devops:    'infrastructure',
-  optimizer: 'code-review',
+  intent_expander:  'planning',
+  planner:          'planning',
+  architect:        'reasoning',
+  developer:        'code-generation',
+  reviewer:         'code-review',
+  tester:           'testing',
+  debugger:         'reasoning',
+  devops:           'infrastructure',
+  optimizer:        'code-review',
+  quality_enforcer: 'code-review',
 };
 
 // â”€â”€ Routing Rule â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

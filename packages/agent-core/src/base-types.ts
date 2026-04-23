@@ -2,6 +2,7 @@
 // Imported by memory-types.ts and types.ts to avoid circular imports.
 
 export type AgentRole =
+  | 'intent_expander'
   | 'planner'
   | 'architect'
   | 'developer'
@@ -9,7 +10,8 @@ export type AgentRole =
   | 'tester'
   | 'debugger'
   | 'devops'
-  | 'optimizer';
+  | 'optimizer'
+  | 'quality_enforcer';
 
 export type AgentStatus = 'idle' | 'busy' | 'error' | 'terminated';
 

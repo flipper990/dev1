@@ -70,7 +70,7 @@ export class PipelineOrchestrator {
         status: 'pending',
         agent: s.agent,
         attempt: 0,
-        maxAttempts: AGENT_DEFINITIONS[s.agent].retryPolicy.maxAttempts,
+        maxAttempts: AGENT_DEFINITIONS[s.agent]!.retryPolicy.maxAttempts,
         durationMs: 0,
       })),
       artifacts: new Map(),
@@ -107,7 +107,7 @@ export class PipelineOrchestrator {
       );
 
       const allDepsResolved = (role: AgentRole): boolean => {
-        const deps = AGENT_DEFINITIONS[role].dependencies as AgentRole[];
+        const deps = AGENT_DEFINITIONS[role]!.dependencies as AgentRole[];
         return deps.every(dep => {
           const idx = stepByAgent.get(dep);
           if (idx === undefined) return true;

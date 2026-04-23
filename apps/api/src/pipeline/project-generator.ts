@@ -124,6 +124,8 @@ export class ProjectGenerator {
       project.spec = pipelineState.artifacts.get('architect') as Record<string, unknown> | undefined;
       project.plan = pipelineState.artifacts.get('planner') as Record<string, unknown> | undefined;
       project.qaReport = pipelineState.artifacts.get('reviewer') as Record<string, unknown> | undefined;
+      project.expandedSpec = pipelineState.artifacts.get('intent_expander') as Record<string, unknown> | undefined;
+      project.qualityReport = pipelineState.artifacts.get('quality_enforcer') as Record<string, unknown> | undefined;
       project.tasks = taskSummaries;
       project.totalTokens = taskSummaries.reduce((sum, t) => sum + t.tokensUsed, 0);
       project.totalCostUsd = taskSummaries.reduce((sum, t) => sum + t.costUsd, 0);

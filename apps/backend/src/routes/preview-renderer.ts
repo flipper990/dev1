@@ -212,6 +212,12 @@ export function processComponent(code: string, usedCdnLibs: CdnLib[]): string {
   // Use var for stubs to avoid duplicate const declarations across files
   code = code.replace(/\bconst([ \t]*(\{[^}\n]+\}|\w+)[ \t]*=[ \t]*(React|ReactDOM|ReactRouterDOM|styled|window\.))/g, 'var$1');
 
+  // All files are concatenated into a single eval() scope. `const`/`let` at module
+  // top-level collide across files (e.g. every Redux slice declares `const initialState`).
+  // Convert top-level `const`/`let` to `var` so redeclarations silently overwrite instead
+  // of throwing "Identifier X has already been declared".
+  code = code.replace(/^(const|let)(\s+)/gm, 'var$2');
+
   return code;
 }
 

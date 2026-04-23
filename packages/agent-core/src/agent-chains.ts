@@ -34,16 +34,29 @@ export class ChainBuilder {
   }
 }
 
-/** Full generation chain: plan → architect → develop → devops → review → test → debug → optimize */
+/** Full generation chain: expand → plan → architect → develop → devops → review → test → debug → quality → optimize */
 export function fullGenerationChain(): ChainStep[] {
   return new ChainBuilder()
-    .step('planner')
+    .step('intent_expander')
+    .stepWithTransform('planner', (input, outputs) => {
+      const expanded = outputs.get('intent_expander') as any;
+      const expandedPrompts: string[] = Array.isArray(expanded?.expandedPrompts)
+        ? expanded.expandedPrompts.filter((p: unknown) => typeof p === 'string' && p.length > 0)
+        : [];
+      return {
+        prompts: expandedPrompts.length > 0 ? expandedPrompts : (input.prompts ?? []),
+        expandedSpec: expanded ?? {},
+        userPreferences: input.userPreferences ?? {},
+      };
+    })
     .stepWithTransform('architect', (input, outputs) => ({
       plan: outputs.get('planner') ?? {},
+      expandedSpec: outputs.get('intent_expander') ?? {},
       userPreferences: input.userPreferences ?? {},
     }))
     .stepWithTransform('developer', (_input, outputs) => ({
       spec: outputs.get('architect') ?? {},
+      expandedSpec: outputs.get('intent_expander') ?? {},
       fileAssignment: (outputs.get('architect') as any)?.fileTree ?? [],
     }))
     .stepWithTransform('devops', (_input, outputs) => ({
@@ -52,12 +65,14 @@ export function fullGenerationChain(): ChainStep[] {
     }), { onError: 'skip' })
     .stepWithTransform('reviewer', (_input, outputs) => ({
       spec: outputs.get('architect') ?? {},
+      expandedSpec: outputs.get('intent_expander') ?? {},
       files: (outputs.get('developer') as any)?.files ?? [],
     }))
     .stepWithTransform('tester', (_input, outputs) => ({
       files: (outputs.get('developer') as any)?.files ?? [],
       apiContracts: (outputs.get('architect') as any)?.apiContracts ?? [],
       spec: outputs.get('architect') ?? {},
+      expandedSpec: outputs.get('intent_expander') ?? {},
     }), { onError: 'skip' })
     .stepIf(
       (outputs) => {
@@ -70,14 +85,24 @@ export function fullGenerationChain(): ChainStep[] {
           issues: (outputs.get('reviewer') as any)?.issues ?? [],
           affectedFiles: (outputs.get('developer') as any)?.files ?? [],
           spec: outputs.get('architect') ?? {},
+          expandedSpec: outputs.get('intent_expander') ?? {},
         }),
         onError: 'continue',
       },
     )
+    .stepWithTransform('quality_enforcer', (_input, outputs) => ({
+      expandedSpec: outputs.get('intent_expander') ?? {},
+      spec: outputs.get('architect') ?? {},
+      files: (outputs.get('developer') as any)?.files ?? [],
+      reviewReport: outputs.get('reviewer') ?? {},
+      unresolvedIssues: (outputs.get('debugger') as any)?.unresolved ?? [],
+    }), { onError: 'continue' })
     .stepWithTransform('optimizer', (_input, outputs) => ({
       files: (outputs.get('developer') as any)?.files ?? [],
       spec: outputs.get('architect') ?? {},
+      expandedSpec: outputs.get('intent_expander') ?? {},
       qaReport: outputs.get('reviewer') ?? {},
+      qualityReport: outputs.get('quality_enforcer') ?? {},
     }), { onError: 'skip' })
     .build();
 }

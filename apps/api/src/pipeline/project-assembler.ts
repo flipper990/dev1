@@ -33,6 +33,17 @@ export function assembleProject(
   const reviewerOutput = artifacts.get('reviewer') as { patches?: Patch[] } | undefined;
   if (reviewerOutput?.patches) applyPatches(fileMap, reviewerOutput.patches, 'reviewer', logger);
 
+  // Quality enforcer may emit both patches (improve existing files) and newFiles
+  // (e.g. previously-missing EmptyState component). Apply both.
+  const qualityOutput = artifacts.get('quality_enforcer') as
+    { patches?: Patch[]; newFiles?: ProjectFile[] } | undefined;
+  if (qualityOutput?.newFiles) {
+    for (const file of qualityOutput.newFiles) {
+      if (!fileMap.has(file.path)) fileMap.set(file.path, { ...file });
+    }
+  }
+  if (qualityOutput?.patches) applyPatches(fileMap, qualityOutput.patches, 'quality_enforcer', logger);
+
   const optimizerOutput = artifacts.get('optimizer') as { patches?: Patch[] } | undefined;
   if (optimizerOutput?.patches) applyPatches(fileMap, optimizerOutput.patches, 'optimizer', logger);
 

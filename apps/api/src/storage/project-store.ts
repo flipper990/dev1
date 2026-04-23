@@ -60,6 +60,10 @@ export interface ProjectRecord {
   spec?: Record<string, unknown>;
   plan?: Record<string, unknown>;
   qaReport?: Record<string, unknown>;
+  /** Intent-expansion output: features, UI expectations, quality standards. */
+  expandedSpec?: Record<string, unknown>;
+  /** Quality-enforcer output: scores, verdict, findings, patches summary. */
+  qualityReport?: Record<string, unknown>;
   tasks: TaskSummary[];
   totalTokens: number;
   totalCostUsd: number;

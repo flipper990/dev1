@@ -37,6 +37,23 @@ export function getMergedFiles(
   )?.patches ?? [];
   applyPatches(debugPatches);
 
+  // Quality-enforcer patches always apply — they are the final quality gate and must
+  // land before downstream consumers (optimizer, devops) see the codebase.
+  const qualityPatches = (artifacts.get('quality_enforcer') as
+    { patches?: Array<{ file: string; oldContent: string; newContent: string }> } | undefined
+  )?.patches ?? [];
+  applyPatches(qualityPatches);
+
+  // Quality-enforcer can also create entirely new files (e.g. a missing EmptyState component).
+  const qualityNewFiles = (artifacts.get('quality_enforcer') as
+    { newFiles?: Array<{ path: string; content: string; language?: string }> } | undefined
+  )?.newFiles ?? [];
+  for (const nf of qualityNewFiles) {
+    if (nf && typeof nf.path === 'string' && typeof nf.content === 'string' && !fileMap.has(nf.path)) {
+      fileMap.set(nf.path, { path: nf.path, content: nf.content, language: nf.language });
+    }
+  }
+
   if (applyOptimizer) {
     const optPatches = (artifacts.get('optimizer') as
       { patches?: Array<{ file: string; oldContent: string; newContent: string }> } | undefined
@@ -79,6 +96,13 @@ export function shouldSkipStep(
     }
   }
 
+  if (role === 'quality_enforcer') {
+    const files = (artifacts.get('developer') as { files?: unknown[] } | undefined)?.files ?? [];
+    if (!Array.isArray(files) || files.length === 0) {
+      return 'No generated files to evaluate; skipping quality enforcer';
+    }
+  }
+
   if (role === 'devops') {
     const mergedPaths = new Set(getMergedFiles(artifacts, true).map(f => f.path));
     if (mergedPaths.has('Dockerfile') && mergedPaths.has('docker-compose.yml') && mergedPaths.has('.env.example')) {
@@ -102,15 +126,34 @@ export function buildAgentInput(
 ): Record<string, unknown> {
   const input: Record<string, unknown> = {};
 
+  // ── Expanded-prompt resolution ─────────────────────────────────
+  // Every downstream agent MUST see the intent_expander's expanded prompts, not
+  // the original user input. Original prompts are only used as a fallback when
+  // the expander has not run yet (e.g. intent_expander itself, or resume/update).
+  const expanded = artifacts.get('intent_expander') as Record<string, unknown> | undefined;
+  const expandedPrompts = Array.isArray(expanded?.expandedPrompts)
+    ? (expanded!.expandedPrompts as string[]).filter((p) => typeof p === 'string' && p.length > 0)
+    : [];
+  const effectivePrompts = expandedPrompts.length > 0 ? expandedPrompts : session.prompts;
+
   switch (role) {
-    case 'planner':
+    case 'intent_expander':
+      // The expander is the only agent that sees the raw user prompts.
       input.prompts = session.prompts;
+      input.userPreferences = session.artifacts.get('userPreferences') ?? {};
+      input.globalMemoryHints = session.artifacts.get('globalMemoryHints') ?? [];
+      break;
+
+    case 'planner':
+      input.prompts = effectivePrompts;
+      input.expandedSpec = expanded ?? {};
       input.userPreferences = session.artifacts.get('userPreferences') ?? {};
       input.globalMemoryHints = session.artifacts.get('globalMemoryHints') ?? [];
       break;
 
     case 'architect':
       input.plan = artifacts.get('planner') ?? {};
+      input.expandedSpec = expanded ?? {};
       input.userPreferences = session.artifacts.get('userPreferences') ?? {};
       input.globalMemoryHints = session.artifacts.get('globalMemoryHints') ?? [];
       break;
@@ -118,9 +161,10 @@ export function buildAgentInput(
     case 'developer': {
       const archArtifact = artifacts.get('architect') as { fileTree?: string[] } | undefined;
       const fileTree: string[] = Array.isArray(archArtifact?.fileTree) ? archArtifact!.fileTree : [];
-      const devConcurrency = AGENT_DEFINITIONS['developer'].maxConcurrency ?? 1;
+      const devConcurrency = AGENT_DEFINITIONS['developer']!.maxConcurrency ?? 1;
       const chunkSize = Math.max(1, Math.ceil(fileTree.length / devConcurrency));
       input.spec = artifacts.get('architect') ?? {};
+      input.expandedSpec = expanded ?? {};
       input.fileAssignment = fileTree;
       input.fileChunkSize = chunkSize;
       const priorDev = artifacts.get('developer') as { files?: Array<{ path: string; content: string }> } | undefined;
@@ -132,6 +176,7 @@ export function buildAgentInput(
 
     case 'reviewer':
       input.spec = artifacts.get('architect') ?? {};
+      input.expandedSpec = expanded ?? {};
       input.files = (artifacts.get('developer') as any)?.files ?? [];
       break;
 
@@ -139,6 +184,7 @@ export function buildAgentInput(
       input.files = (artifacts.get('developer') as any)?.files ?? [];
       input.apiContracts = (artifacts.get('architect') as any)?.apiContracts ?? [];
       input.spec = artifacts.get('architect') ?? {};
+      input.expandedSpec = expanded ?? {};
       input.reviewIssues = (artifacts.get('reviewer') as any)?.issues ?? [];
       break;
 
@@ -161,19 +207,32 @@ export function buildAgentInput(
         ? { coverage: testerArtifact.coverage ?? {}, testFileCount: testerArtifact.testFiles?.length ?? 0 }
         : null;
       input.spec = artifacts.get('architect') ?? {};
+      input.expandedSpec = expanded ?? {};
       break;
     }
+
+    case 'quality_enforcer':
+      // Feed merged-post-debugger files so quality decisions account for prior fixes.
+      input.expandedSpec = expanded ?? {};
+      input.spec = artifacts.get('architect') ?? {};
+      input.files = getMergedFiles(artifacts, false);
+      input.reviewReport = artifacts.get('reviewer') ?? {};
+      input.unresolvedIssues = (artifacts.get('debugger') as any)?.unresolved ?? [];
+      break;
 
     case 'optimizer':
       input.files = getMergedFiles(artifacts);
       input.spec = artifacts.get('architect') ?? {};
+      input.expandedSpec = expanded ?? {};
       input.qaReport = artifacts.get('reviewer') ?? {};
+      input.qualityReport = artifacts.get('quality_enforcer') ?? {};
       input.unresolvedIssues = (artifacts.get('debugger') as any)?.unresolved ?? [];
       break;
 
     case 'devops': {
       const archSpec = artifacts.get('architect') as { fileTree?: string[] } | undefined;
       input.spec = archSpec ?? {};
+      input.expandedSpec = expanded ?? {};
       input.fileTree = archSpec?.fileTree ?? [];
       input.generatedFiles = getMergedFiles(artifacts, true)
         .map(f => ({ path: f.path, language: f.language }));

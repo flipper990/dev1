@@ -223,6 +223,7 @@ The canonical agent framework lives in [packages/agent-core](packages/agent-core
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) §2 –10-stage agent pipeline” and §14 “Extending the system” for a worked example.
 
+Testing CodeRabbit
 ---
 
 ## License

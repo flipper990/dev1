@@ -46,7 +46,9 @@ export interface ValidationIssue {
     | 'empty-output'       // agent returned nothing useful
     | 'ui-broken'          // UI output is unusable
     | 'schema-drift'       // backend/frontend data model mismatch
-    | 'code-quality';      // reviewer issues above threshold
+    | 'code-quality'       // reviewer issues above threshold
+    | 'logical-inconsistency' // spec internally inconsistent (e.g. dangling ref)
+    | 'contract-violation'; // agent broke its declared output contract
   severity: ValidationSeverity;
   /** Field path that triggered the issue, when applicable. */
   path?: string;
@@ -56,7 +58,7 @@ export interface ValidationIssue {
 
 export interface RepairChange {
   path: string;
-  action: 'filled-default' | 'coerced-shape' | 'removed-invalid' | 'aligned-schema';
+  action: 'filled-default' | 'coerced-shape' | 'removed-invalid' | 'aligned-schema' | 'defaulted' | 'deduped';
   detail: string;
 }
 
@@ -214,7 +216,7 @@ function validateSemantic(
       semanticDeveloper(next, issues, repairs, state);
       break;
     case 'reviewer':
-      semanticReviewer(next, issues, repairs);
+      semanticReviewer(next, issues, repairs, state);
       break;
     case 'tester':
       semanticTester(next, issues, repairs);
@@ -298,6 +300,135 @@ function semanticArchitect(
     return true;
   });
   out['fileTree'] = clean;
+
+  // ── Strict contract: apiContracts, frontendPages, components, dataFlowMap, dependencyList ──
+
+  // apiContracts — every one must have method + path; synthesize id from method+path if missing; dedup by id.
+  const apiContracts = arr<Record<string, unknown>>(out['apiContracts']);
+  if (apiContracts.length === 0) {
+    issues.push(makeIssue(
+      'architect.no-api-contracts',
+      'Architect produced zero apiContracts. Every backend route the frontend needs must be declared.',
+      'empty-output',
+      'error',
+      { path: 'apiContracts', fixableBy: 'architect' },
+    ));
+  }
+  const seenIds = new Set<string>();
+  const cleanApi: Record<string, unknown>[] = [];
+  for (let i = 0; i < apiContracts.length; i++) {
+    const c = apiContracts[i];
+    if (!isStr(c['method']) || !isStr(c['path'])) {
+      repairs.push({ path: `apiContracts[${i}]`, action: 'removed-invalid', detail: 'Contract missing method or path.' });
+      continue;
+    }
+    let id = isStr(c['id']) ? c['id'] : `${String(c['method']).toLowerCase()}:${c['path']}`;
+    if (seenIds.has(id)) {
+      repairs.push({ path: `apiContracts[${i}].id`, action: 'deduped', detail: `Duplicate id "${id}" — suffixed with index.` });
+      id = `${id}#${i}`;
+    }
+    seenIds.add(id);
+    c['id'] = id;
+    if (!c['requestSchema'])  { c['requestSchema']  = {}; repairs.push({ path: `apiContracts[${i}].requestSchema`,  action: 'defaulted', detail: 'Empty object.' }); }
+    if (!c['responseSchema']) { c['responseSchema'] = {}; repairs.push({ path: `apiContracts[${i}].responseSchema`, action: 'defaulted', detail: 'Empty object.' }); }
+    if (!Array.isArray(c['errorResponses'])) {
+      c['errorResponses'] = [
+        { status: 400, body: { error: 'string', message: 'string' } },
+        { status: 500, body: { error: 'string', message: 'string' } },
+      ];
+      repairs.push({ path: `apiContracts[${i}].errorResponses`, action: 'defaulted', detail: 'Inserted 400/500 baseline.' });
+    }
+    cleanApi.push(c);
+  }
+  out['apiContracts'] = cleanApi;
+
+  // frontendPages — non-empty, dataDeps resolve to an existing apiId or are mocked.
+  const pages = arr<Record<string, unknown>>(out['frontendPages']);
+  if (pages.length === 0) {
+    issues.push(makeIssue(
+      'architect.no-frontend-pages',
+      'Architect produced zero frontendPages. Every app route must be declared with its data dependencies.',
+      'empty-output',
+      'error',
+      { path: 'frontendPages', fixableBy: 'architect' },
+    ));
+  }
+  for (let i = 0; i < pages.length; i++) {
+    const p = pages[i];
+    const deps = arr<Record<string, unknown>>(p['dataDeps']);
+    for (let j = 0; j < deps.length; j++) {
+      const d = deps[j];
+      const apiId  = d['apiId'];
+      const mocked = d['mocked'] === true;
+      if (!mocked && isStr(apiId) && !seenIds.has(apiId)) {
+        issues.push(makeIssue(
+          'architect.dangling-api-ref',
+          `frontendPages[${i}].dataDeps[${j}] references apiId "${apiId}" which is not in apiContracts.`,
+          'logical-inconsistency',
+          'error',
+          { path: `frontendPages[${i}].dataDeps[${j}].apiId`, fixableBy: 'architect' },
+        ));
+      }
+      if (!mocked && !isStr(apiId)) {
+        // Auto-repair: if no apiId and not explicitly mocked, flip to mocked with a reason so it doesn't silently break.
+        d['mocked'] = true;
+        d['reason'] = d['reason'] ?? 'Auto-marked mocked — no apiId was provided.';
+        repairs.push({
+          path: `frontendPages[${i}].dataDeps[${j}]`,
+          action: 'defaulted',
+          detail: 'No apiId + no mocked flag → marked mocked:true with reason.',
+        });
+      }
+    }
+  }
+
+  // components — must have name + path; drop invalid.
+  const components = arr<Record<string, unknown>>(out['components']);
+  const seenComp = new Set<string>();
+  const cleanComp: Record<string, unknown>[] = [];
+  for (let i = 0; i < components.length; i++) {
+    const c = components[i];
+    if (!isStr(c['name']) || !isStr(c['path'])) {
+      repairs.push({ path: `components[${i}]`, action: 'removed-invalid', detail: 'Component missing name or path.' });
+      continue;
+    }
+    if (seenComp.has(c['name'] as string)) {
+      repairs.push({ path: `components[${i}]`, action: 'removed-invalid', detail: `Duplicate component name "${c['name']}".` });
+      continue;
+    }
+    seenComp.add(c['name'] as string);
+    cleanComp.push(c);
+  }
+  out['components'] = cleanComp;
+
+  // dataFlowMap — every entry must reference a real apiId.
+  const flow = arr<Record<string, unknown>>(out['dataFlowMap']);
+  const cleanFlow: Record<string, unknown>[] = [];
+  for (let i = 0; i < flow.length; i++) {
+    const f = flow[i];
+    const to = obj(f['to']);
+    const apiId = to['apiId'];
+    if (!isStr(apiId) || !seenIds.has(apiId)) {
+      repairs.push({ path: `dataFlowMap[${i}]`, action: 'removed-invalid', detail: `Flow references unknown apiId "${String(apiId)}".` });
+      continue;
+    }
+    cleanFlow.push(f);
+  }
+  out['dataFlowMap'] = cleanFlow;
+
+  // dependencyList — must be an object with at least a frontend or backend array; no empty-name entries.
+  const depList = obj(out['dependencyList']);
+  for (const bucket of ['frontend', 'backend', 'dev'] as const) {
+    const list = arr<Record<string, unknown>>(depList[bucket]);
+    depList[bucket] = list.filter((d, idx) => {
+      if (!isStr(d['name'])) {
+        repairs.push({ path: `dependencyList.${bucket}[${idx}]`, action: 'removed-invalid', detail: 'Dependency missing name.' });
+        return false;
+      }
+      return true;
+    });
+  }
+  out['dependencyList'] = depList;
 }
 
 function semanticDeveloper(
@@ -356,10 +487,120 @@ function semanticDeveloper(
       ));
     }
   }
+
+  // ── Strict implementation contract (apiContracts / frontendPages / components must each be covered) ──
+  if (archArtifact) {
+    const genPaths     = clean.map((f) => String(f['path']));
+    const genContent   = clean.map((f) => String(f['content'] ?? ''));
+    const allContent   = genContent.join('\n');
+    const pathSet      = new Set(genPaths);
+
+    // 1. API contracts — every contract's path should appear in some backend file's content.
+    const contracts = arr<Record<string, unknown>>(archArtifact['apiContracts']);
+    const missingContracts: string[] = [];
+    for (const c of contracts) {
+      const method = String(c['method'] ?? '').toUpperCase();
+      const p      = String(c['path'] ?? '');
+      if (!p) continue;
+      const idLabel = isStr(c['id']) ? c['id'] : `${method} ${p}`;
+      // Match if the path literal appears anywhere in any file, or a route file exists whose
+      // content mentions both the method and the path.
+      const hit = allContent.includes(p) || allContent.includes(`"${p}"`) || allContent.includes(`'${p}'`);
+      if (!hit) missingContracts.push(idLabel);
+    }
+    if (missingContracts.length > 0) {
+      issues.push(makeIssue(
+        'developer.missing-api-contracts',
+        `Developer did not implement ${missingContracts.length} apiContract(s): ${missingContracts.slice(0, 5).join(', ')}${missingContracts.length > 5 ? ', …' : ''}. The debugger must add the missing route handlers.`,
+        'cross-step',
+        'error',
+        { path: 'files', fixableBy: 'debugger' },
+      ));
+    }
+
+    // 2. Frontend pages — every page file path must exist in the generated set (or a close variant).
+    const pages = arr<Record<string, unknown>>(archArtifact['frontendPages']);
+    const missingPages: string[] = [];
+    for (const pg of pages) {
+      const file = String(pg['file'] ?? '');
+      const name = String(pg['name'] ?? file);
+      if (!file) continue;
+      if (!pathSet.has(file) && !genPaths.some((gp) => gp.endsWith(file) || file.endsWith(gp))) {
+        missingPages.push(name);
+      }
+    }
+    if (missingPages.length > 0) {
+      issues.push(makeIssue(
+        'developer.missing-pages',
+        `Developer did not implement ${missingPages.length} frontend page(s): ${missingPages.slice(0, 5).join(', ')}${missingPages.length > 5 ? ', …' : ''}.`,
+        'cross-step',
+        'error',
+        { path: 'files', fixableBy: 'debugger' },
+      ));
+    }
+
+    // 3. Components — every component file path must exist.
+    const components = arr<Record<string, unknown>>(archArtifact['components']);
+    const missingComponents: string[] = [];
+    for (const comp of components) {
+      const file = String(comp['path'] ?? '');
+      const name = String(comp['name'] ?? file);
+      if (!file) continue;
+      if (!pathSet.has(file) && !genPaths.some((gp) => gp.endsWith(file))) {
+        missingComponents.push(name);
+      }
+    }
+    if (missingComponents.length > 0) {
+      issues.push(makeIssue(
+        'developer.missing-components',
+        `Developer did not implement ${missingComponents.length} component(s): ${missingComponents.slice(0, 5).join(', ')}${missingComponents.length > 5 ? ', …' : ''}.`,
+        'cross-step',
+        'error',
+        { path: 'files', fixableBy: 'debugger' },
+      ));
+    }
+
+    // 4. Checklist file — required by the developer prompt; any "[ ]" box = failure.
+    const checklist = clean.find((f) => /IMPLEMENTATION_CHECKLIST\.md$/i.test(String(f['path'])));
+    if (!checklist) {
+      issues.push(makeIssue(
+        'developer.missing-checklist',
+        'Developer did not emit IMPLEMENTATION_CHECKLIST.md. The contract requires a machine-readable checklist as the last file.',
+        'contract-violation',
+        'error',
+        { path: 'files', fixableBy: 'debugger' },
+      ));
+    } else {
+      const body = String(checklist['content'] ?? '');
+      const uncheckedCount = (body.match(/^\s*-\s*\[\s\]/gmu) ?? []).length;
+      if (uncheckedCount > 0) {
+        issues.push(makeIssue(
+          'developer.unchecked-items',
+          `IMPLEMENTATION_CHECKLIST.md contains ${uncheckedCount} unchecked item(s). Per the contract, any "[ ]" box invalidates the output.`,
+          'contract-violation',
+          'error',
+          { path: 'IMPLEMENTATION_CHECKLIST.md', fixableBy: 'debugger' },
+        ));
+      }
+    }
+
+    // 5. Explicit failure file — if the developer emitted IMPLEMENTATION_BLOCKED.md, escalate to blocker.
+    const blocked = clean.find((f) => /IMPLEMENTATION_BLOCKED\.md$/i.test(String(f['path'])));
+    if (blocked) {
+      issues.push(makeIssue(
+        'developer.blocked',
+        `Developer emitted IMPLEMENTATION_BLOCKED.md — it could not implement part of the spec. Review the file and re-architect.`,
+        'contract-violation',
+        'blocker',
+        { path: 'IMPLEMENTATION_BLOCKED.md' },
+      ));
+    }
+  }
 }
 
 function semanticReviewer(
   out: Record<string, unknown>, issues: ValidationIssue[], _repairs: RepairChange[],
+  state: PipelineState,
 ): void {
   const reviewIssues = arr<Record<string, unknown>>(out['issues']);
   const score = isNum(out['score']) ? (out['score'] as number) : 100;
@@ -379,9 +620,167 @@ function semanticReviewer(
     ));
   }
 
-  // Coerce passable
-  if (!isBool(out['passable'])) {
-    out['passable'] = critical === 0 && errors < 5 && score >= 70;
+  // ── Deterministic full-stack completeness validation (LLM-free) ──
+  // Cross-references architect spec vs developer output. These checks run regardless of
+  // what the LLM reviewer said so the binary FAIL contract is honoured mechanically.
+  const arch = state.artifacts.get('architect');
+  const dev  = state.artifacts.get('developer');
+  const missingItems: string[] = arr<string>(out['missingItems']).filter((m) => typeof m === 'string');
+
+  if (arch && dev) {
+    const files = arr<Record<string, unknown>>(dev['files']);
+    const genPaths = files.map((f) => String(f['path'] ?? ''));
+    const allContent = files.map((f) => String(f['content'] ?? '')).join('\n');
+
+    // 1. apiContracts → backend route presence. Route literal must appear in some file.
+    const contracts = arr<Record<string, unknown>>(arch['apiContracts']);
+    let routeHits = 0;
+    for (const c of contracts) {
+      const p = String(c['path'] ?? '');
+      const id = isStr(c['id']) ? c['id'] : `${String(c['method'] ?? '').toUpperCase()} ${p}`;
+      if (!p) continue;
+      const hit = allContent.includes(`"${p}"`) || allContent.includes(`'${p}'`) || allContent.includes(`\`${p}\``);
+      if (hit) { routeHits++; } else {
+        missingItems.push(`missing route: ${id} — declared in apiContracts, not found in backend`);
+      }
+    }
+
+    // 6. Backend route count == 0 && apiContracts non-empty → FAIL
+    if (contracts.length > 0 && routeHits === 0) {
+      missingItems.push(`broken wiring: ${contracts.length} apiContracts declared but zero backend routes implemented`);
+    }
+    // 3. apiContracts count > implemented routes
+    if (contracts.length > routeHits) {
+      // already recorded per-contract above; no duplicate entry
+    }
+
+    // 2 + 7. Frontend fetch targets must exist in apiContracts (or be full URLs to external APIs).
+    const contractPaths = new Set(contracts.map((c) => String(c['path'] ?? '')).filter(Boolean));
+    const fetchRe = /(?:fetch|axios(?:\.(?:get|post|put|patch|delete))?|useSWR|useQuery(?:ies)?)\s*\(\s*[`'"]([^`'"\s]+)[`'"]/g;
+    const seenTargets = new Set<string>();
+    for (const f of files) {
+      const path = String(f['path'] ?? '');
+      if (!/\.(tsx?|jsx?|vue|svelte)$/.test(path)) continue;
+      if (!/(src\/app|src\/pages|src\/components|src\/routes\/pages|app\/|pages\/|components\/)/i.test(path) && !/\.(tsx|jsx)$/.test(path)) continue;
+      const content = String(f['content'] ?? '');
+      let m: RegExpExecArray | null;
+      fetchRe.lastIndex = 0;
+      while ((m = fetchRe.exec(content)) !== null) {
+        const target = m[1];
+        if (!target || seenTargets.has(target)) continue;
+        seenTargets.add(target);
+        // Ignore external URLs, template vars, env placeholders.
+        if (/^https?:\/\//.test(target))         continue;
+        if (target.includes('${') || target.includes('{{')) continue;
+        if (target.startsWith('/_next') || target.startsWith('/static')) continue;
+        // Check it resolves to an apiContract path (exact or parameterised).
+        const resolved = [...contractPaths].some((cp) => {
+          if (cp === target) return true;
+          // Parameterised match: /api/users/:id ~ /api/users/123
+          const re = new RegExp('^' + cp.replace(/:[a-zA-Z_][\w]*/g, '[^/]+') + '$');
+          return re.test(target);
+        });
+        if (!resolved) {
+          missingItems.push(`broken contract: ${path} fetches "${target}" but no matching apiContract exists`);
+        }
+      }
+    }
+
+    // 4. frontendPages data dependencies
+    const pages = arr<Record<string, unknown>>(arch['frontendPages']);
+    const apiIds = new Set(contracts.map((c) => String(c['id'] ?? '')).filter(Boolean));
+    for (const pg of pages) {
+      const pageFile = String(pg['file'] ?? '');
+      const pageName = String(pg['name'] ?? pageFile);
+      const deps = arr<Record<string, unknown>>(pg['dataDeps']);
+      for (const d of deps) {
+        if (d['mocked'] === true) continue;
+        const apiId = d['apiId'];
+        if (!isStr(apiId) || !apiIds.has(apiId)) {
+          missingItems.push(`missing data wiring: page ${pageName} declares dataDep "${String(apiId)}" but no matching apiContract`);
+        }
+      }
+      // page must be implemented
+      if (pageFile && !genPaths.some((gp) => gp === pageFile || gp.endsWith(pageFile))) {
+        missingItems.push(`missing page: ${pageName} (${pageFile}) — declared in frontendPages, not implemented`);
+      }
+    }
+
+    // 8. Components
+    const components = arr<Record<string, unknown>>(arch['components']);
+    for (const c of components) {
+      const file = String(c['path'] ?? '');
+      const name = String(c['name'] ?? file);
+      if (file && !genPaths.some((gp) => gp === file || gp.endsWith(file))) {
+        missingItems.push(`missing component: ${name} (${file})`);
+      }
+    }
+
+    // 5. package.json dependencies — flag obviously invented names.
+    const pkgFile = files.find((f) => /(^|\/)package\.json$/.test(String(f['path'] ?? '')));
+    if (pkgFile) {
+      try {
+        const pkg = JSON.parse(String(pkgFile['content'] ?? '{}'));
+        const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
+        const declaredDeps = new Set<string>();
+        const depList = obj(arch['dependencyList']);
+        for (const bucket of ['frontend', 'backend', 'dev'] as const) {
+          for (const d of arr<Record<string, unknown>>(depList[bucket])) {
+            if (isStr(d['name'])) declaredDeps.add(d['name']);
+          }
+        }
+        for (const name of Object.keys(deps)) {
+          // Phantom: looks invented — contains obvious placeholder markers.
+          if (/(^foo|^bar|^baz|placeholder|^my-|^todo|^example-|^fake-)/i.test(name)) {
+            missingItems.push(`missing dependency: package '${name}' in package.json is not a verified npm package`);
+          }
+          // Declared in architect's dependencyList? Only warn if it isn't — dependencyList is authoritative.
+          if (declaredDeps.size > 0 && !declaredDeps.has(name) && !/^@types\//.test(name)) {
+            // soft warning, do not add to missingItems to avoid noise
+          }
+        }
+      } catch {
+        missingItems.push('broken package.json: could not parse');
+      }
+    }
+
+    // 9. Checklist
+    const checklist = files.find((f) => /IMPLEMENTATION_CHECKLIST\.md$/i.test(String(f['path'] ?? '')));
+    if (!checklist) {
+      missingItems.push('missing IMPLEMENTATION_CHECKLIST.md');
+    } else {
+      const unchecked = (String(checklist['content'] ?? '').match(/^\s*-\s*\[\s\]/gmu) ?? []).length;
+      if (unchecked > 0) missingItems.push(`checklist has ${unchecked} unchecked item(s)`);
+    }
+
+    // 10. Blocked file
+    if (files.some((f) => /IMPLEMENTATION_BLOCKED\.md$/i.test(String(f['path'] ?? '')))) {
+      missingItems.push('IMPLEMENTATION_BLOCKED.md present — developer gave up on part of the spec');
+    }
+  }
+
+  // Dedupe and write back.
+  out['missingItems'] = [...new Set(missingItems)];
+
+  // Binary verdict — deterministic, overrides the LLM if it disagreed.
+  const mechanicalFail = (out['missingItems'] as string[]).length > 0;
+  if (mechanicalFail) {
+    out['validationResult'] = 'FAIL';
+    out['passable'] = false;
+    out['score'] = 0;
+    issues.push(makeIssue(
+      'reviewer.binary-fail',
+      `Full-stack QA: ${(out['missingItems'] as string[]).length} completeness failure(s). The debugger must resolve all missing items.`,
+      'contract-violation',
+      'error',
+      { fixableBy: 'debugger' },
+    ));
+  } else {
+    if (!isStr(out['validationResult'])) out['validationResult'] = 'PASS';
+    // Coerce passable from score/issues if the LLM omitted it.
+    if (!isBool(out['passable'])) {
+      out['passable'] = critical === 0 && errors < 5 && score >= 70;
+    }
   }
 }
 

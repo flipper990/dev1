@@ -70,11 +70,16 @@ YOU MUST:
     (CreatePostModal, ConfirmDeleteDialog, ImageLightbox, CommandPalette,
     UserMenuPopover) goes in components[] AND in the triggering page's
     modals[] array. Modals are NOT pages — do not give them a route.
-  ✓ USER FLOWS are mandatory. Define one flow per primary jobs-to-be-done
-    (e.g. "sign up", "create a post", "like and comment", "edit profile",
-    "search and open result"). Each flow lists ordered steps; each step
-    names the page, the user action, and (when relevant) the apiId hit and
-    the resulting UI change. Flows are how QA validates the build.
+  ✓ USER FLOWS are mandatory — at minimum ONE flow even for static / content
+    sites. For interactive products, define one flow per primary
+    jobs-to-be-done (e.g. "sign up", "create a post", "like and comment",
+    "edit profile", "search and open result"). For marketing landing pages,
+    docs sites, portfolios, etc., emit at least one "visitor flow" such as
+    "visitor lands on home → scrolls through hero/features/pricing → clicks
+    primary CTA → reaches signup/contact". NEVER emit an empty userFlows
+    array. Each flow lists ordered steps; each step names the page, the user
+    action, and (when relevant) the apiId hit and the resulting UI change.
+    Flows are how QA validates the build.
   ✓ Specify EXACT methods + paths in apiContracts. Builder will copy them verbatim.
   ✓ Specify a designSystem with concrete hex values, font families, spacing scale,
     radii, shadows, and a primitives list.
@@ -87,12 +92,16 @@ YOU MUST NEVER:
   ✗ Specify a component without giving it a file path.
   ✗ Reference a frontend dataDep that has no backing apiContract AND no mocked: true flag.
   ✗ Pick fictional npm packages.
-  ✗ Ship a featureSlice without at least one userFlow that exercises it end-to-end.
+  ✗ Ship an INTERACTIVE featureSlice (one with apiContracts, forms, or auth)
+    without at least one userFlow that exercises it end-to-end. Pure-content
+    slices (hero, features grid, pricing table, FAQ) may share a single
+    "visitor reads + clicks CTA" flow.
   ✗ Collapse multiple distinct screens into one page "with tabs" unless the
     product genuinely is a tabbed dashboard. List separate routes for separate
     jobs (login vs register, feed vs profile, list vs detail vs edit).
-  ✗ List fewer than: 1 user flow per featureSlice, AND 1 component per major
-    section of every page. Sparse specs produce sparse builds.
+  ✗ List fewer than: 1 user flow total (more for interactive products), AND
+    1 component per major section of every page. Sparse specs produce sparse
+    builds.
 
 OUTPUT FORMAT — respond with a SINGLE JSON object and NOTHING else:
 {

@@ -81,18 +81,15 @@ export class SpecAgent extends BaseAgent {
         throw new Error(`Validation: frontendPages '${path}'.interactions must be an array if present`);
       }
     }
-    // userFlows: at least one flow per featureSlice. Each flow needs ordered
-    // steps with a page reference so the builder can wire it end-to-end and
-    // QA can validate it.
+    // userFlows: at least one flow must exist so the builder has an end-to-end
+    // journey to wire and QA can validate something. We do NOT require one
+    // flow per featureSlice as a hard error — content-heavy pages (marketing
+    // landing pages, docs sites) legitimately have many "section" slices but
+    // a small number of real flows. The semantic validator emits a warning
+    // when flows.length < slices.length so it's still surfaced.
     if (!Array.isArray(output.userFlows) || output.userFlows.length === 0) {
       throw new Error(
-        'Validation: userFlows missing or empty — every spec must declare at least one end-to-end user flow per featureSlice',
-      );
-    }
-    const sliceCount = (output.featureSlices as unknown[]).length;
-    if ((output.userFlows as unknown[]).length < sliceCount) {
-      throw new Error(
-        `Validation: userFlows has ${(output.userFlows as unknown[]).length} entries but featureSlices has ${sliceCount} — at least one flow per slice is required`,
+        'Validation: userFlows missing or empty — every spec must declare at least one end-to-end user flow (e.g. "visitor reads landing page and clicks primary CTA")',
       );
     }
     for (const f of output.userFlows as Array<Record<string, unknown>>) {

@@ -17,11 +17,29 @@ export interface UpdateRequest {
   preferences?: Record<string, unknown>;
   /**
    * Scope hint for how much of the pipeline to re-run.
-   * - 'code'   â€” Only code/test/review/debug/optimize steps (reuse planner + architect).
-   * - 'design' â€” Re-run from architect onward (reuse planner only).
-   * - 'full'   â€” Re-run the complete pipeline (same as a fresh generate).
+   * - 'code'   — Reuse spec; re-run builder + qa + polish.
+   * - 'design' — Reuse spec; re-run builder + qa + polish (treated like 'code' in 4-agent pipeline).
+   * - 'full'   — Re-run the complete pipeline (spec → builder → qa → polish).
    */
   scope?: 'code' | 'design' | 'full';
+  /**
+   * Structured runtime-validator feedback. When set, the QA agent receives
+   * this as input.runtimeFeedback so it can treat live-preview failures as
+   * CRITICAL issues and patch them. Bypasses the need for the LLM to parse
+   * a prose prompt describing the runtime issues.
+   */
+  runtimeFeedback?: {
+    issues: { category: string; message: string; hint?: string; rootCause?: string }[];
+    log?: string;
+    bodySample?: string;
+    systemChecks?: {
+      frontend?: { ok: boolean; status?: number; note?: string };
+      backendHealth?: { ok: boolean; status?: number; note?: string };
+      database?: { ok: boolean; note?: string };
+      apiEndpoints?: Array<{ id: string; method: string; path: string; status?: number; ok: boolean; note?: string }>;
+      scenarios?: Array<{ name: string; ok: boolean; steps: Array<{ step: string; ok: boolean; note?: string }> }>;
+    };
+  };
 }
 
 export interface GenerateResult {

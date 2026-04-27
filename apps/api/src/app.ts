@@ -20,6 +20,10 @@ import { SessionManager } from './pipeline/session-manager.js';
 import { ProjectGenerator } from './pipeline/project-generator.js';
 import { registerRoutes } from './routes/api.js';
 import { registerWebSocket } from './routes/websocket.js';
+import { registerPreviewRoutes } from './routes/preview-routes.js';
+import { createDockerRunner } from './preview/docker-runner.js';
+import { PortAllocator } from './preview/port-allocator.js';
+import { PreviewManager } from './preview/preview-manager.js';
 
 export async function buildApp() {
   const logger = createLogger('server');
@@ -28,6 +32,7 @@ export async function buildApp() {
 
   const projectStore = new ProjectStore(config.storage.projectsDir, createLogger('project-store'));
   await projectStore.init();
+  await projectStore.reapStaleGenerating();
 
   const memoryStore = new FileMemoryStore(config.storage.memoryDir, createLogger('memory-store'));
   await memoryStore.init();
@@ -180,10 +185,33 @@ export async function buildApp() {
     });
   });
 
+  // ── Initialize preview runner ────────────────────────
+
+  const dockerRunner = createDockerRunner(createLogger('docker'));
+  const portAllocator = new PortAllocator();
+  const previewManager = new PreviewManager({
+    projectStore,
+    docker: dockerRunner,
+    ports: portAllocator,
+    logger: createLogger('preview'),
+  });
+  await previewManager.init();
+
+  // Wire the preview manager back into the generator so it can run
+  // post-build runtime validation + auto-fix iterations.
+  generator.setPreviewManager(previewManager, `http://127.0.0.1:${config.server.port}`);
+
   // ── Register routes ─────────────────────────────────
 
   registerRoutes(app as unknown as import('fastify').FastifyInstance, { generator, projectStore, sessionManager, memoryStore, llm, logger });
   registerWebSocket(app as unknown as import('fastify').FastifyInstance, { sessionManager, logger });
+  registerPreviewRoutes(app as unknown as import('fastify').FastifyInstance, {
+    preview: previewManager,
+    projectStore,
+    updater: generator.getUpdater(),
+    apiBaseUrl: `http://127.0.0.1:${config.server.port}`,
+    logger: createLogger('preview-routes'),
+  });
 
   // ── Cleanup interval ────────────────────────────────
 
@@ -207,9 +235,12 @@ export async function buildApp() {
     }
   }, 6 * 60 * 60 * 1000);
 
-  app.addHook('onClose', () => {
+  app.addHook('onClose', async () => {
     clearInterval(cleanupInterval);
     clearInterval(decayInterval);
+    await previewManager.shutdown().catch((err) => {
+      logger.error('Preview manager shutdown failed', { error: (err as Error).message });
+    });
   });
 
   return app;

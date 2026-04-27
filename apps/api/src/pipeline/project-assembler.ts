@@ -1,10 +1,23 @@
+// Project Assembler — merges agent artifacts into the final file set.
+//
+// Order of operations (4-agent pipeline):
+//   1. builder.files          ← starting point
+//   2. qa.newFiles            ← additions (missing components, etc.)
+//   3. qa.patches             ← in-place fixes
+//   4. polish.newFiles        ← prod artifacts (Dockerfile, README, …)
+//   5. polish.patches         ← UI/perf patches
+//   6. ensureDeploymentReadiness  ← baseline Dockerfile/.env if missing
+//   7. injectUIFoundation     ← cn.ts, Button, tailwind.config.ts if missing
+
 import type { AgentRole } from '../../../../packages/agent-core/src/types.js';
 import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import type { PipelineState } from '../../../../packages/agent-core/src/orchestrator.js';
 import type { TaskSummary } from '../storage/project-store.js';
 import type { ProjectFile, Patch, StepSummary } from './generator-types.js';
 import { ensureDeploymentReadiness } from './deployment-templates.js';
-import { injectUIFoundation } from './ui-foundation.js';
+import { ensureRunnableScaffold } from './runnable-scaffold.js';
+import { injectUIFoundation, sanitizeUIFoundation, enforceDesignSystem } from './ui-foundation.js';
+import { normalizePolishPaths } from '../../../../packages/agent-core/src/agent-input-builder.js';
 
 export function assembleProject(
   artifacts: Map<AgentRole, Record<string, unknown>>,
@@ -12,43 +25,46 @@ export function assembleProject(
 ): ProjectFile[] {
   const fileMap = new Map<string, ProjectFile>();
 
-  const devOutput = artifacts.get('developer') as { files?: ProjectFile[] } | undefined;
-  if (devOutput?.files) {
-    for (const file of devOutput.files) fileMap.set(file.path, { ...file });
+  // 1. Builder output is the starting point.
+  const builderOut = artifacts.get('builder') as { files?: ProjectFile[] } | undefined;
+  for (const file of builderOut?.files ?? []) fileMap.set(file.path, { ...file });
+
+  // 2-3. QA additions and patches. Normalize newFiles to match the builder's
+  // chosen layout (standalone vs monorepo) — QA can drift between styles.
+  const qaOut = artifacts.get('qa') as { patches?: Patch[]; newFiles?: ProjectFile[] } | undefined;
+  const qaNew = normalizePolishPaths(qaOut?.newFiles ?? [], fileMap) as ProjectFile[];
+  for (const file of qaNew) {
+    if (!fileMap.has(file.path)) fileMap.set(file.path, { ...file });
   }
+  if (qaOut?.patches) applyPatches(fileMap, qaOut.patches, 'qa', logger);
 
-  const devopsOutput = artifacts.get('devops') as { files?: ProjectFile[] } | undefined;
-  if (devopsOutput?.files) {
-    for (const file of devopsOutput.files) fileMap.set(file.path, { ...file });
+  // 4-5. Polish additions and patches. Same normalization — polish often
+  // emits apps/web/* even when builder used standalone, producing duplicates.
+  const polishOut = artifacts.get('polish') as { patches?: Patch[]; newFiles?: ProjectFile[] } | undefined;
+  const polishNew = normalizePolishPaths(polishOut?.newFiles ?? [], fileMap) as ProjectFile[];
+  for (const file of polishNew) {
+    if (!fileMap.has(file.path)) fileMap.set(file.path, { ...file });
   }
+  if (polishOut?.patches) applyPatches(fileMap, polishOut.patches, 'polish', logger);
 
-  const testerOutput = artifacts.get('tester') as { testFiles?: ProjectFile[] } | undefined;
-  if (testerOutput?.testFiles) {
-    for (const file of testerOutput.testFiles) fileMap.set(file.path, { ...file });
-  }
-
-  const debugOutput = artifacts.get('debugger') as { patches?: Patch[] } | undefined;
-  if (debugOutput?.patches) applyPatches(fileMap, debugOutput.patches, 'debugger', logger);
-
-  const reviewerOutput = artifacts.get('reviewer') as { patches?: Patch[] } | undefined;
-  if (reviewerOutput?.patches) applyPatches(fileMap, reviewerOutput.patches, 'reviewer', logger);
-
-  // Quality enforcer may emit both patches (improve existing files) and newFiles
-  // (e.g. previously-missing EmptyState component). Apply both.
-  const qualityOutput = artifacts.get('quality_enforcer') as
-    { patches?: Patch[]; newFiles?: ProjectFile[] } | undefined;
-  if (qualityOutput?.newFiles) {
-    for (const file of qualityOutput.newFiles) {
-      if (!fileMap.has(file.path)) fileMap.set(file.path, { ...file });
-    }
-  }
-  if (qualityOutput?.patches) applyPatches(fileMap, qualityOutput.patches, 'quality_enforcer', logger);
-
-  const optimizerOutput = artifacts.get('optimizer') as { patches?: Patch[] } | undefined;
-  if (optimizerOutput?.patches) applyPatches(fileMap, optimizerOutput.patches, 'optimizer', logger);
-
+  // 6-7. Baseline deployment + UI foundation guarantees.
+  ensureRunnableScaffold(fileMap);
   ensureDeploymentReadiness(fileMap, artifacts);
   injectUIFoundation(fileMap, artifacts);
+  // 8. Repair broken EXISTING tailwind.config / globals.css / design-tokens
+  //    files emitted by qa/polish (injectUIFoundation only fills gaps).
+  sanitizeUIFoundation(fileMap);
+  // 9. Rewrite invented className tokens (bg-cardBackground, text-textPrimary,
+  //    etc.) to canonical semantic equivalents so the rendered UI matches the
+  //    injected theme regardless of LLM drift.
+  const dsResult = enforceDesignSystem(
+    fileMap as unknown as Map<string, { path: string; content: string; language?: string }>,
+  );
+  if (dsResult.totalReplacements > 0) {
+    logger.info(
+      `enforceDesignSystem: rewrote ${dsResult.totalReplacements} invented className tokens across ${dsResult.filesChanged} file(s)`,
+    );
+  }
 
   return Array.from(fileMap.values());
 }
@@ -65,7 +81,12 @@ export function applyPatches(
       logger.warn(`${source} patch target not found: ${patch.file}`);
       continue;
     }
-    if (!patch.oldContent || !patch.newContent) continue;
+    if (typeof patch.newContent !== 'string') continue;
+    // Allow whole-file replacement when oldContent is empty.
+    if (!patch.oldContent) {
+      file.content = patch.newContent;
+      continue;
+    }
     if (file.content.includes(patch.oldContent)) {
       file.content = file.content.replace(patch.oldContent, patch.newContent);
     } else {

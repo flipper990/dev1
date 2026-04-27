@@ -72,6 +72,14 @@ export interface ProjectRecord {
     bars: Record<string, { passed: boolean; score: number; notes: string[] }>;
     blockers: { id: string; message: string; bar: string; file?: string }[];
   };
+  /** Runtime validation summary from the post-build preview-validator + auto-fix loop. */
+  runtimeValidation?: {
+    finalVerdict: 'pass' | 'fail';
+    iterations: number;
+    issues: { category: string; message: string; hint?: string }[];
+    totalDurationMs: number;
+    completedAt: string;
+  };
   tasks: TaskSummary[];
   totalTokens: number;
   totalCostUsd: number;
@@ -82,6 +90,8 @@ export interface ProjectRecord {
     pipelineCacheMisses: number;
     skippedSteps: number;
     estimatedApiCallsSaved: number;
+    /** Number of QA→Builder loop iterations executed (1 = no loop). */
+    qaIterations?: number;
   };
   durationMs: number;
   createdAt: string;
@@ -115,6 +125,37 @@ export class ProjectStore {
 
   async init(): Promise<void> {
     await mkdir(this.baseDir, { recursive: true });
+  }
+
+  /**
+   * Reap projects left in 'generating' state from a previous process. The API
+   * runs all pipelines in-memory, so any 'generating' project on disk at
+   * startup is by definition orphaned (its background task died with the
+   * previous process). Demote them to 'failed' so the UI doesn't show a
+   * permanent spinner. Returns the number of records reaped.
+   */
+  async reapStaleGenerating(): Promise<number> {
+    if (!existsSync(this.baseDir)) return 0;
+    const entries = await readdir(this.baseDir, { withFileTypes: true });
+    let reaped = 0;
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const metaPath = join(this.baseDir, entry.name, 'project.json');
+      if (!existsSync(metaPath)) continue;
+      try {
+        const raw = await readFile(metaPath, 'utf-8');
+        const project = JSON.parse(raw) as ProjectRecord;
+        if (project.status !== 'generating') continue;
+        project.status = 'failed';
+        project.completedAt = project.completedAt ?? new Date().toISOString();
+        await writeFile(metaPath, JSON.stringify(project, null, 2), 'utf-8');
+        reaped++;
+      } catch (err) {
+        this.logger.warn(`reapStaleGenerating: skipped ${entry.name}: ${(err as Error).message}`);
+      }
+    }
+    if (reaped > 0) this.logger.info(`Reaped ${reaped} orphaned 'generating' project(s) from previous run`);
+    return reaped;
   }
 
   /** Save or update a project record */

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch --ignore \"data/**\" --ignore \"./data/**\" --ignore \"**/data/**\" src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "lint": "eslint src/",

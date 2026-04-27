@@ -36,28 +36,45 @@ export class ProjectUpdater {
     this.logger = logger;
   }
 
-  async update(request: UpdateRequest): Promise<UpdateResult> {
-    const { projectId, prompts, userId, preferences, scope = 'code' } = request;
-    const sessionId = nanoid(16);
+  /**
+   * Allocate a sessionId synchronously so the HTTP caller can subscribe to
+   * the WS stream before the (long-running) update starts.
+   */
+  reserve(request: UpdateRequest): { projectId: string; sessionId: string; request: UpdateRequest } {
+    return { projectId: request.projectId, sessionId: nanoid(16), request };
+  }
+
+  async runReserved(reservation: { sessionId: string; request: UpdateRequest }): Promise<UpdateResult> {
+    return this.update(reservation.request, { sessionId: reservation.sessionId });
+  }
+
+  async update(request: UpdateRequest, reservedIds?: { sessionId: string }): Promise<UpdateResult> {
+    const { projectId, prompts, userId, preferences, scope = 'code', runtimeFeedback } = request;
+    const sessionId = reservedIds?.sessionId ?? nanoid(16);
 
     const existing = await this.projectStore.get(projectId);
     if (!existing) {
       return { projectId, sessionId, success: false, error: `Project ${projectId} not found` };
     }
     if (existing.status === 'generating') {
-      return { projectId, sessionId, success: false, error: 'Project is still generating; wait for it to complete before updating' };
+      // Runtime auto-fix runs DURING the generating window (the pipeline
+      // schedules it before flipping status), so allow it to bypass the
+      // human-update guard. Other callers must wait.
+      if (userId !== 'system-auto-fix') {
+        return { projectId, sessionId, success: false, error: 'Project is still generating; wait for it to complete before updating' };
+      }
     }
 
     const allPrompts = [...(existing.prompts ?? []), ...prompts];
     const session = this.sessionManager.create(sessionId, userId ?? 'system', allPrompts);
     if (preferences) session.artifacts.set('userPreferences', preferences);
+    if (runtimeFeedback) session.artifacts.set('runtimeFeedback', runtimeFeedback as unknown as Record<string, unknown>);
 
     const reusable = await this.memoryStore.getGlobal({ queryText: allPrompts.join('\n'), limit: 5, includeGlobal: true });
     if (reusable.length > 0) session.artifacts.set('globalMemoryHints', reusable.map(m => m.content));
 
     const seedArtifacts = new Map<AgentRole, Record<string, unknown>>();
-    if (scope !== 'full' && existing.plan) seedArtifacts.set('planner', existing.plan as Record<string, unknown>);
-    if (scope === 'code' && existing.spec) seedArtifacts.set('architect', existing.spec as Record<string, unknown>);
+    if (scope !== 'full' && existing.spec) seedArtifacts.set('spec', existing.spec as Record<string, unknown>);
     if (existing.files?.length) session.artifacts.set('existingFiles', existing.files);
 
     existing.status = 'generating';
@@ -112,7 +129,7 @@ export class ProjectUpdater {
       const newVersion = previousVersion + 1;
       const taskSummaries = buildTaskSummaries(pipelineState);
       const stepSummaries = buildStepSummaries(pipelineState);
-      const planOutput = pipelineState.artifacts.get('planner') as { projectName?: string } | undefined;
+      const specOut = pipelineState.artifacts.get('spec') as { productName?: string } | undefined;
 
       const versionMeta: VersionMeta = {
         version: newVersion,
@@ -124,15 +141,14 @@ export class ProjectUpdater {
         durationMs: pipelineState.durationMs,
       };
 
-      existing.name = planOutput?.projectName ?? existing.name;
+      existing.name = specOut?.productName ?? existing.name;
       existing.status = pipelineState.status === 'completed' && qa.report.passed ? 'completed' : 'failed';
       existing.prompts = allPrompts;
       existing.files = newFiles;
-      existing.spec = pipelineState.artifacts.get('architect') as Record<string, unknown> | undefined ?? existing.spec;
-      existing.plan = pipelineState.artifacts.get('planner') as Record<string, unknown> | undefined ?? existing.plan;
-      existing.qaReport = pipelineState.artifacts.get('reviewer') as Record<string, unknown> | undefined;
-      existing.expandedSpec = pipelineState.artifacts.get('intent_expander') as Record<string, unknown> | undefined ?? existing.expandedSpec;
-      existing.qualityReport = pipelineState.artifacts.get('quality_enforcer') as Record<string, unknown> | undefined;
+      existing.spec         = pipelineState.artifacts.get('spec') as Record<string, unknown> | undefined ?? existing.spec;
+      existing.expandedSpec = pipelineState.artifacts.get('spec') as Record<string, unknown> | undefined ?? existing.expandedSpec;
+      existing.qaReport     = pipelineState.artifacts.get('qa') as Record<string, unknown> | undefined;
+      existing.qualityReport = pipelineState.artifacts.get('polish') as Record<string, unknown> | undefined;
       existing.qaAssurance = {
         passed: qa.report.passed,
         score: qa.report.score,

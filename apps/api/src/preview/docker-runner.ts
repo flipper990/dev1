@@ -1,0 +1,311 @@
+// ─────────────────────────────────────────────────────────────
+// Docker runner — thin async wrapper around the docker CLI.
+// We deliberately avoid the dockerode npm package: it bundles
+// its own protocol implementation and adds 4 MB of deps. The
+// docker CLI is on the PATH for anyone running this and gives
+// us a stable contract.
+// ─────────────────────────────────────────────────────────────
+
+import { spawn, type ChildProcess } from 'node:child_process';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { request as httpRequest } from 'node:http';
+import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
+
+export interface SpawnResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+  /** Combined output, capped at maxLogBytes for log readability. */
+  combined: string;
+}
+
+const DEFAULT_MAX_LOG_BYTES = 64_000;
+
+/** Spawn a process and resolve with all captured output. */
+function runOnce(
+  cmd: string,
+  args: string[],
+  opts: { cwd?: string; timeoutMs?: number; maxLogBytes?: number } = {},
+): Promise<SpawnResult> {
+  return new Promise((resolve) => {
+    const max = opts.maxLogBytes ?? DEFAULT_MAX_LOG_BYTES;
+    let stdout = '';
+    let stderr = '';
+    let combined = '';
+    let timer: NodeJS.Timeout | null = null;
+    let timedOut = false;
+
+    const proc: ChildProcess = spawn(cmd, args, {
+      cwd: opts.cwd,
+      shell: false,
+      windowsHide: true,
+    });
+
+    const append = (target: 'stdout' | 'stderr', chunk: Buffer) => {
+      const str = chunk.toString('utf8');
+      if (target === 'stdout' && stdout.length < max) stdout += str.slice(0, max - stdout.length);
+      if (target === 'stderr' && stderr.length < max) stderr += str.slice(0, max - stderr.length);
+      if (combined.length < max) combined += str.slice(0, max - combined.length);
+    };
+
+    proc.stdout?.on('data', (c) => append('stdout', c));
+    proc.stderr?.on('data', (c) => append('stderr', c));
+
+    if (opts.timeoutMs) {
+      timer = setTimeout(() => {
+        timedOut = true;
+        try { proc.kill('SIGKILL'); } catch { /* best-effort */ }
+      }, opts.timeoutMs);
+    }
+
+    proc.on('close', (code) => {
+      if (timer) clearTimeout(timer);
+      if (timedOut) {
+        stderr += `\n[runner] killed after ${opts.timeoutMs}ms timeout`;
+        combined += `\n[runner] killed after ${opts.timeoutMs}ms timeout`;
+      }
+      resolve({ code: code ?? -1, stdout, stderr, combined });
+    });
+
+    proc.on('error', (err) => {
+      if (timer) clearTimeout(timer);
+      stderr += `\n[runner] spawn error: ${err.message}`;
+      combined += `\n[runner] spawn error: ${err.message}`;
+      resolve({ code: -1, stdout, stderr, combined });
+    });
+  });
+}
+
+export interface DockerBuildOptions {
+  contextDir: string;
+  dockerfileContents: string;
+  imageTag: string;
+  /** Extra files we want to ensure exist in the build context (path relative to contextDir → contents). */
+  ensureFiles?: Record<string, string>;
+  timeoutMs?: number;
+}
+
+export interface DockerRunOptions {
+  imageTag: string;
+  containerName: string;
+  hostPort: number;
+  containerPort: number;
+  /** Memory limit (e.g. '1g'). Optional. */
+  memory?: string;
+  /** CPU limit (e.g. '1'). Optional. */
+  cpus?: string;
+  /** Extra env vars. */
+  env?: Record<string, string>;
+}
+
+export interface DockerComposeUpOptions {
+  contextDir: string;
+  /** Compose project name — uniquely scopes networks/volumes/containers per preview. */
+  projectName: string;
+  /** Extra compose override file contents (e.g. port remapping). Written to contextDir. */
+  overrideContents?: string;
+  timeoutMs?: number;
+}
+
+export interface DockerRunner {
+  /** Returns true when `docker info` succeeds, otherwise false. */
+  isAvailable(): Promise<boolean>;
+  /** Build an image. Resolves with build log. */
+  build(opts: DockerBuildOptions): Promise<{ ok: boolean; log: string }>;
+  /** Run an image detached. Resolves with the container ID (long form). */
+  run(opts: DockerRunOptions): Promise<{ ok: boolean; containerId: string | null; log: string }>;
+  /** Best-effort stop + rm. Idempotent. */
+  stop(containerId: string): Promise<void>;
+  /** Read recent container logs (stdout+stderr). */
+  logs(containerId: string, opts?: { tail?: number }): Promise<string>;
+  /** Returns 'running' | 'exited' | 'missing'. */
+  inspectState(containerId: string): Promise<'running' | 'exited' | 'missing'>;
+  /** GET against http://127.0.0.1:hostPort{path} with a short timeout. */
+  httpProbe(hostPort: number, path: string, timeoutMs: number): Promise<{ ok: boolean; status: number | null }>;
+  /** Wait until httpProbe returns ok=true OR budget elapses. */
+  awaitHealthy(hostPort: number, path: string, budgetMs: number): Promise<{ ok: boolean; lastStatus: number | null }>;
+  /** Bring up a docker compose stack scoped by projectName. Returns build/up log. */
+  composeUp(opts: DockerComposeUpOptions): Promise<{ ok: boolean; log: string }>;
+  /** Tear down a compose stack (containers + volumes). Idempotent. */
+  composeDown(projectName: string, contextDir: string): Promise<void>;
+  /** Tail logs from a single compose service. */
+  composeLogs(projectName: string, contextDir: string, service: string, tail?: number): Promise<string>;
+}
+
+export function createDockerRunner(logger: Logger, dockerBin = 'docker'): DockerRunner {
+  return {
+    async isAvailable() {
+      const r = await runOnce(dockerBin, ['info', '--format', '{{.ServerVersion}}'], { timeoutMs: 5_000 });
+      return r.code === 0 && r.stdout.trim().length > 0;
+    },
+
+    async build(opts) {
+      // Write Dockerfile + ensureFiles into contextDir, then docker build.
+      const dockerfilePath = join(opts.contextDir, 'Dockerfile.preview');
+      try {
+        await writeFile(dockerfilePath, opts.dockerfileContents, 'utf8');
+        if (opts.ensureFiles) {
+          for (const [rel, contents] of Object.entries(opts.ensureFiles)) {
+            await writeFile(join(opts.contextDir, rel), contents, 'utf8');
+          }
+        }
+      } catch (err) {
+        return { ok: false, log: `[runner] failed to stage build context: ${(err as Error).message}` };
+      }
+
+      const args = [
+        'build',
+        '-f', dockerfilePath,
+        '-t', opts.imageTag,
+        '--progress', 'plain',
+        '--quiet=false',
+        opts.contextDir,
+      ];
+      logger.info('docker build starting', { imageTag: opts.imageTag });
+      const r = await runOnce(dockerBin, args, { timeoutMs: opts.timeoutMs ?? 240_000, maxLogBytes: 200_000 });
+      const ok = r.code === 0;
+      logger.info('docker build finished', { imageTag: opts.imageTag, ok, code: r.code });
+      return { ok, log: r.combined };
+    },
+
+    async run(opts) {
+      // Idempotent: if a container with this name already exists (e.g. left
+      // over from a previous API process crash / restart), remove it first.
+      // `docker rm -f` is safe to call against missing containers — it returns
+      // a non-zero exit code we ignore.
+      await runOnce(dockerBin, ['rm', '-f', opts.containerName], { timeoutMs: 8_000 });
+
+      // Detached, port-published, auto-removed on stop.
+      const args: string[] = [
+        'run',
+        '-d',
+        '--rm',
+        '--name', opts.containerName,
+        '-p', `${opts.hostPort}:${opts.containerPort}`,
+      ];
+      if (opts.memory) args.push('--memory', opts.memory);
+      if (opts.cpus)   args.push('--cpus',   opts.cpus);
+      for (const [k, v] of Object.entries(opts.env ?? {})) {
+        args.push('-e', `${k}=${v}`);
+      }
+      args.push(opts.imageTag);
+
+      const r = await runOnce(dockerBin, args, { timeoutMs: 30_000 });
+      if (r.code !== 0) {
+        return { ok: false, containerId: null, log: r.combined };
+      }
+      const id = r.stdout.trim().split(/\r?\n/).pop() ?? '';
+      return { ok: id.length > 0, containerId: id || null, log: r.combined };
+    },
+
+    async stop(containerId) {
+      // --time 2 = grace period before SIGKILL. Errors swallowed (idempotent).
+      await runOnce(dockerBin, ['stop', '--time', '2', containerId], { timeoutMs: 10_000 });
+      // --rm at run time removes the container automatically; this is belt-and-braces.
+      await runOnce(dockerBin, ['rm', '-f', containerId], { timeoutMs: 5_000 });
+    },
+
+    async logs(containerId, opts) {
+      const tail = opts?.tail ?? 200;
+      const r = await runOnce(dockerBin, ['logs', '--tail', String(tail), containerId], { timeoutMs: 5_000 });
+      return r.combined;
+    },
+
+    async inspectState(containerId) {
+      const r = await runOnce(dockerBin, ['inspect', '-f', '{{.State.Status}}', containerId], { timeoutMs: 5_000 });
+      if (r.code !== 0) return 'missing';
+      const status = r.stdout.trim();
+      if (status === 'running') return 'running';
+      if (status.length > 0)    return 'exited';
+      return 'missing';
+    },
+
+    httpProbe(hostPort, path, timeoutMs) {
+      return new Promise((resolve) => {
+        const req = httpRequest({
+          host: '127.0.0.1',
+          port: hostPort,
+          path,
+          method: 'GET',
+          timeout: timeoutMs,
+          headers: { 'User-Agent': 'devteam-preview-probe/1.0' },
+        }, (res) => {
+          // Drain quickly; we only care about the status.
+          res.resume();
+          // Treat 200-499 as "the server is responding". 5xx still counts as alive
+          // because some Next dev pages return 500 momentarily during compile, but
+          // we'd rather wait for a clean 2xx/3xx, so only those count as ok.
+          const code = res.statusCode ?? 0;
+          resolve({ ok: code >= 200 && code < 400, status: code });
+        });
+        req.on('error', () => resolve({ ok: false, status: null }));
+        req.on('timeout', () => { req.destroy(); resolve({ ok: false, status: null }); });
+        req.end();
+      });
+    },
+
+    async awaitHealthy(hostPort, path, budgetMs) {
+      const deadline = Date.now() + budgetMs;
+      let lastStatus: number | null = null;
+      // First few seconds: probe quickly. Then back off to once per 2s.
+      let delay = 500;
+      while (Date.now() < deadline) {
+        const probe = await this.httpProbe(hostPort, path, 3_000);
+        lastStatus = probe.status;
+        if (probe.ok) return { ok: true, lastStatus };
+        await new Promise((r) => setTimeout(r, delay));
+        if (delay < 2_000) delay = Math.min(delay * 1.5, 2_000);
+      }
+      return { ok: false, lastStatus };
+    },
+
+    async composeUp(opts) {
+      // Stage override file, if provided.
+      const overridePath = join(opts.contextDir, 'docker-compose.preview.override.yml');
+      try {
+        if (opts.overrideContents) {
+          await writeFile(overridePath, opts.overrideContents, 'utf8');
+        }
+      } catch (err) {
+        return { ok: false, log: `[runner] failed to stage compose override: ${(err as Error).message}` };
+      }
+      const args = [
+        'compose',
+        '-p', opts.projectName,
+        '-f', 'docker-compose.yml',
+      ];
+      if (opts.overrideContents) {
+        args.push('-f', 'docker-compose.preview.override.yml');
+      }
+      args.push('up', '-d', '--build', '--remove-orphans');
+
+      logger.info('docker compose up starting', { projectName: opts.projectName });
+      const r = await runOnce(dockerBin, args, {
+        cwd: opts.contextDir,
+        timeoutMs: opts.timeoutMs ?? 480_000,
+        maxLogBytes: 200_000,
+      });
+      const ok = r.code === 0;
+      logger.info('docker compose up finished', { projectName: opts.projectName, ok, code: r.code });
+      return { ok, log: r.combined };
+    },
+
+    async composeDown(projectName, contextDir) {
+      // -v removes named volumes (postgres data) so subsequent runs start clean.
+      await runOnce(dockerBin, ['compose', '-p', projectName, 'down', '-v', '--remove-orphans'], {
+        cwd: contextDir,
+        timeoutMs: 30_000,
+      });
+    },
+
+    async composeLogs(projectName, contextDir, service, tail = 200) {
+      const r = await runOnce(
+        dockerBin,
+        ['compose', '-p', projectName, 'logs', '--tail', String(tail), '--no-color', service],
+        { cwd: contextDir, timeoutMs: 8_000 },
+      );
+      return r.combined;
+    },
+  };
+}

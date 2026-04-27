@@ -70,6 +70,15 @@ export interface GeneratedProject {
   durationMs: number;
   createdAt: string;
   completedAt?: string;
+  /** Post-build runtime validation result. Populated asynchronously after
+   *  generation finishes; absent until the validator runs. */
+  runtimeValidation?: {
+    finalVerdict: 'pass' | 'fail';
+    iterations: number;
+    issues: { category: string; message: string; hint?: string }[];
+    totalDurationMs: number;
+    completedAt: string;
+  };
 }
 
 export interface ProjectFileEntry {

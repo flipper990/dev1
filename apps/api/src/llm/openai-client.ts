@@ -7,6 +7,15 @@ import type { LLMProvider } from '../../../../packages/agent-core/src/types.js';
 import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import type { LLMProviderClient, LLMRequestParams, LLMResponse } from './types.js';
 
+/**
+ * Hard upper bound on a single OpenAI HTTP call. Per-agent step timeouts
+ * (60-120s) live higher up; this is a SDK-level safety net so a stalled
+ * socket or paused stream cannot wedge the pipeline forever.
+ */
+const OPENAI_REQUEST_TIMEOUT_MS = 180_000; // 3 minutes
+/** Bound retry storms; the agent layer adds its own retries. */
+const OPENAI_SDK_MAX_RETRIES = 2;
+
 export class OpenAIClient implements LLMProviderClient {
   readonly providerId: LLMProvider = 'openai';
   readonly displayName = 'OpenAI';
@@ -15,7 +24,11 @@ export class OpenAIClient implements LLMProviderClient {
   private logger: Logger;
 
   constructor(apiKey: string, logger: Logger) {
-    this.client = new OpenAI({ apiKey });
+    this.client = new OpenAI({
+      apiKey,
+      timeout: OPENAI_REQUEST_TIMEOUT_MS,
+      maxRetries: OPENAI_SDK_MAX_RETRIES,
+    });
     this.logger = logger;
   }
 
@@ -27,18 +40,21 @@ export class OpenAIClient implements LLMProviderClient {
       maxTokens: model.maxTokens,
     });
 
-    const response = await this.client.chat.completions.create({
-      model: model.model,
-      max_tokens: model.maxTokens,
-      temperature: model.temperature,
-      messages: [
-        { role: 'system', content: system },
-        ...messages.map(m => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        })),
-      ],
-    });
+    const response = await this.client.chat.completions.create(
+      {
+        model: model.model,
+        max_tokens: model.maxTokens,
+        temperature: model.temperature,
+        messages: [
+          { role: 'system', content: system },
+          ...messages.map(m => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+          })),
+        ],
+      },
+      { timeout: OPENAI_REQUEST_TIMEOUT_MS },
+    );
 
     const content = response.choices[0]?.message?.content ?? '';
 
@@ -52,19 +68,22 @@ export class OpenAIClient implements LLMProviderClient {
   async *chatStream(params: LLMRequestParams): AsyncGenerator<string, void, unknown> {
     const { model, system, messages } = params;
 
-    const stream = await this.client.chat.completions.create({
-      model: model.model,
-      max_tokens: model.maxTokens,
-      temperature: model.temperature,
-      stream: true,
-      messages: [
-        { role: 'system', content: system },
-        ...messages.map(m => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        })),
-      ],
-    });
+    const stream = await this.client.chat.completions.create(
+      {
+        model: model.model,
+        max_tokens: model.maxTokens,
+        temperature: model.temperature,
+        stream: true,
+        messages: [
+          { role: 'system', content: system },
+          ...messages.map(m => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+          })),
+        ],
+      },
+      { timeout: OPENAI_REQUEST_TIMEOUT_MS },
+    );
 
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta?.content;

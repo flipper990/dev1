@@ -8,7 +8,7 @@ interface ChatInputProps {
 }
 
 export function ChatInput({ onSubmit, loading }: ChatInputProps) {
-  const [value, setValue] = useState('Build a full-stack internal developer portal with role-based access, audit logs, and deployment automation.');
+  const [value, setValue] = useState('');
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();

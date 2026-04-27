@@ -271,6 +271,87 @@ export async function getContainerInfo(projectId: string): Promise<{ available: 
   }
 }
 
+/* ── Docker preview API ────────────────────────────────────────
+ * Companion to apps/api/src/routes/preview-routes.ts. The API
+ * builds & runs each project as a real container on demand and
+ * reverse-proxies it under /preview/:id/. We treat it as best-
+ * effort: if any of these calls fail or Docker is unavailable,
+ * the UI falls back to the in-browser srcDoc preview.
+ * ───────────────────────────────────────────────────────────── */
+
+export type PreviewState = 'idle' | 'detecting' | 'building' | 'starting' | 'ready' | 'failed' | 'stopped';
+
+export interface PreviewStatus {
+  projectId: string;
+  state: PreviewState;
+  stack: 'nextjs' | 'vite-react' | 'plain-react' | 'node-express' | 'unknown' | null;
+  url: string | null;
+  hostPort: number | null;
+  error: string | null;
+  log: string;
+  uptimeMs: number;
+}
+
+/**
+ * Public absolute URL for the preview iframe.
+ *
+ * When the container's host port is known we point the iframe directly at
+ * `http://localhost:<hostPort>/`. This is critical for Next.js previews:
+ * Next emits absolute URLs like `/_next/static/css/app/layout.css`, and the
+ * api `/preview/<id>/*` reverse proxy can't rewrite them — so going through
+ * the proxy results in 404s for every CSS/JS asset (page renders unstyled).
+ * Loading directly from the host port lets those absolute paths resolve to
+ * the same origin the HTML came from. Falls back to the proxied path if no
+ * port is provided (backward-compatible callers).
+ */
+export function previewIframeUrl(projectId: string, hostPort?: number | null): string {
+  if (typeof hostPort === 'number' && hostPort > 0) {
+    // Use the same hostname the dashboard is loaded from — usually
+    // localhost, but works when the dev API is bound to a LAN IP.
+    const host = typeof window !== 'undefined' && window.location.hostname
+      ? window.location.hostname
+      : 'localhost';
+    return `http://${host}:${hostPort}/`;
+  }
+  return `${API_BASE}/preview/${projectId}/`;
+}
+
+export async function getPreviewHealth(): Promise<{ docker: boolean }> {
+  try {
+    // Server returns { dockerAvailable: boolean, running: [...] } — normalise
+    // to a stable shape for the UI.
+    const raw = await request<{ dockerAvailable?: boolean; docker?: boolean }>('/api/preview/health', { timeoutMs: 4_000 });
+    return { docker: !!(raw.dockerAvailable ?? raw.docker) };
+  } catch {
+    return { docker: false };
+  }
+}
+
+export async function getPreviewStatus(projectId: string): Promise<PreviewStatus> {
+  return request<PreviewStatus>(`/api/projects/${projectId}/preview/status`, { timeoutMs: 6_000 });
+}
+
+/**
+ * Kick off a build+run cycle. The backend blocks until the dev server reports
+ * healthy, which on a cold cache can take 60-180 s. We use a generous timeout
+ * but the caller should still show progress UI to the user.
+ */
+export async function startPreview(projectId: string): Promise<PreviewStatus> {
+  return request<PreviewStatus>(`/api/projects/${projectId}/preview/start`, {
+    method: 'POST',
+    body: '{}',
+    timeoutMs: 240_000,
+  });
+}
+
+export async function stopPreview(projectId: string): Promise<{ stopped: boolean }> {
+  return request<{ stopped: boolean }>(`/api/projects/${projectId}/preview/stop`, {
+    method: 'POST',
+    body: '{}',
+    timeoutMs: 15_000,
+  });
+}
+
 /**
  * Trigger a ZIP export download for the given project.
  * The backend strips all mock/preview-only code; what you get is production-ready.
@@ -310,7 +391,7 @@ export function openSessionSocket(
   onError: (message: string) => void,
 ): WebSocket {
   const base = API_BASE.replace('http://', 'ws://').replace('https://', 'wss://');
-  const socket = new WebSocket(`${base}/ws/session/${sessionId}`);
+  const socket = new WebSocket(`${base}/ws/sessions/${sessionId}/progress`);
   let finished = false;
   const finish = (status: string) => {
     if (finished) return;

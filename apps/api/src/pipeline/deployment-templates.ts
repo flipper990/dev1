@@ -8,7 +8,7 @@ export function ensureDeploymentReadiness(
   fileMap: Map<string, ProjectFile>,
   artifacts: Map<AgentRole, Record<string, unknown>>,
 ): void {
-  const spec = artifacts.get('architect') as { envVars?: EnvVarSpec[] } | undefined;
+  const spec = artifacts.get('spec') as { envVars?: EnvVarSpec[] } | undefined;
   const envVars = Array.isArray(spec?.envVars) ? spec.envVars : [];
 
   if (!fileMap.has('.env.example')) {

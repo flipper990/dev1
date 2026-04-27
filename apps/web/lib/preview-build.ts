@@ -261,6 +261,10 @@ const PRELUDE_GLOBALS = new Set<string>([
   'createSlice','configureStore','createAsyncThunk','createAction','createReducer','createSelector','nanoid',
   // common libs stubbed in prelude
   'axios','z','clsx','classnames','twMerge','cn','format','formatDistanceToNow','parseISO','io',
+  // framer-motion
+  'motion','AnimatePresence','useAnimation','useAnimationControls','useMotionValue','useTransform',
+  'useScroll','useSpring','useInView','useMotionTemplate','useReducedMotion','LayoutGroup','LazyMotion',
+  'domAnimation','domMax','m',
   '__makeIcon','__previewStore','__safeState','__wrapSafe','__universalStub',
   // JSX intrinsics (lowercase tags don't match our capital-letter regex anyway,
   // but Babel sometimes references these) + common React-internal names
@@ -795,6 +799,77 @@ function io() {
     disconnect: function () {}, close: function () {}, connect: function () { return this; }, connected: true
   };
 }
+
+/* framer-motion — strip animation props, render plain DOM elements. */
+var __FRAMER_PROPS = {
+  initial:1, animate:1, exit:1, transition:1, variants:1, custom:1, inherit:1,
+  whileHover:1, whileTap:1, whileDrag:1, whileFocus:1, whileInView:1, viewport:1,
+  layout:1, layoutId:1, layoutDependency:1, layoutScroll:1,
+  drag:1, dragConstraints:1, dragElastic:1, dragMomentum:1, dragSnapToOrigin:1, dragControls:1,
+  onHoverStart:1, onHoverEnd:1, onTap:1, onTapStart:1, onTapCancel:1,
+  onAnimationStart:1, onAnimationComplete:1, onUpdate:1, onDragStart:1, onDragEnd:1, onDrag:1
+};
+function __framerStripProps(props) {
+  if (!props) return props;
+  var clean = {};
+  for (var k in props) { if (!__FRAMER_PROPS[k]) clean[k] = props[k]; }
+  return clean;
+}
+function __framerComponent(tag) {
+  return React.forwardRef(function (props, ref) {
+    var clean = __framerStripProps(props);
+    clean.ref = ref;
+    return React.createElement(String(tag), clean, props && props.children);
+  });
+}
+var motion = (typeof Proxy === 'function')
+  ? new Proxy(function () {}, {
+      get: function (_t, key) {
+        if (typeof key === 'symbol') return undefined;
+        if (key === '__esModule') return true;
+        return __framerComponent(key);
+      },
+      apply: function (_t, _this, args) { return __framerComponent(args[0] || 'div'); }
+    })
+  : { div: __framerComponent('div'), span: __framerComponent('span'), button: __framerComponent('button'), section: __framerComponent('section'), article: __framerComponent('article'), header: __framerComponent('header'), footer: __framerComponent('footer'), nav: __framerComponent('nav'), ul: __framerComponent('ul'), li: __framerComponent('li'), a: __framerComponent('a'), p: __framerComponent('p'), img: __framerComponent('img'), form: __framerComponent('form'), input: __framerComponent('input') };
+var m = motion;
+function AnimatePresence(p) { return (p && p.children) || null; }
+function LayoutGroup(p) { return (p && p.children) || null; }
+function LazyMotion(p) { return (p && p.children) || null; }
+var domAnimation = {};
+var domMax = {};
+function useAnimation() {
+  return {
+    start: function () { return Promise.resolve(); },
+    stop:  function () {},
+    set:   function () {},
+    mount: function () { return function () {}; }
+  };
+}
+function useAnimationControls() { return useAnimation(); }
+function useMotionValue(initial) {
+  var current = initial;
+  return {
+    get: function () { return current; },
+    set: function (v) { current = v; },
+    on:  function () { return function () {}; },
+    onChange: function () { return function () {}; },
+    destroy: function () {}
+  };
+}
+function useTransform() { return useMotionValue(0); }
+function useMotionTemplate() { return useMotionValue(''); }
+function useScroll() {
+  return {
+    scrollX:         useMotionValue(0),
+    scrollY:         useMotionValue(0),
+    scrollXProgress: useMotionValue(0),
+    scrollYProgress: useMotionValue(0)
+  };
+}
+function useSpring(v) { return useMotionValue(typeof v === 'object' ? 0 : (v == null ? 0 : v)); }
+function useInView() { return true; }
+function useReducedMotion() { return false; }
 
 /* Generic icon catch-all — lucide-react, @heroicons/*, react-icons/*, react-feather */
 function __makeIcon(name) {

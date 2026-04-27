@@ -45,6 +45,11 @@ const FIX_ISSUES_PROMPT = [
 export default function DashboardPage() {
   const store = useStore();
   const socketRef = useRef<WebSocket | null>(null);
+  // Tracks the sessionId currently bound to socketRef so we don't reopen
+  // the WS on every project-list poll, and so we know when a different
+  // session (e.g. one started via curl/Invoke-RestMethod from a terminal,
+  // not from this dashboard) has appeared and needs to be attached.
+  const attachedSessionIdRef = useRef<string | null>(null);
 
   // Download state lives at the page level so the button in the center
   // panel and any other surface can share it.
@@ -78,6 +83,41 @@ export default function DashboardPage() {
     return () => { socketRef.current?.close(); };
   }, []);
 
+  // ── Auto-attach to externally-started runs ────────────────────────────────
+  // If a project shows up in the polled list with status='generating' and a
+  // sessionId we are NOT currently connected to, open a WS for it. This
+  // makes pipeline progress / agent activity / phase bars / live logs show
+  // up on the dashboard for projects created via curl, Invoke-RestMethod,
+  // or any other client that didn't open the WS itself.
+  //
+  // Preference order:
+  //   1. The currently-selected project, if it is generating.
+  //   2. Otherwise the most recent generating project (list is already
+  //      sorted desc by createdAt server-side).
+  // We only ever bind one socket, so a manual create/update flow (which
+  // calls openSocket directly) is never overridden by this effect.
+  useEffect(() => {
+    const generating = store.projects.filter(
+      (p) => p.status === 'generating' && typeof p.sessionId === 'string' && p.sessionId.length > 0,
+    );
+    if (generating.length === 0) return;
+
+    const selected = generating.find((p) => p.id === store.selectedProjectId);
+    const target = selected ?? generating[0];
+    const sessionId = target.sessionId as string;
+    if (attachedSessionIdRef.current === sessionId) return;
+    if (socketRef.current && socketRef.current.readyState < 2) return;
+
+    // Adopt this run for the dashboard. Mirrors what handleCreate does
+    // for a dashboard-initiated project.
+    store.setSelectedProjectId(target.id);
+    store.setProjectMode('create');
+    store.setRightPanelTab('agents');
+    store.setIsGenerating(true);
+    store.pushLog('pipeline', `Attaching to external run: ${target.name}`);
+    openSocket(sessionId, target.name);
+  }, [store.projects, store.selectedProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   // Dedicated component mounted at the bottom of this tree handles all
   // shortcuts + exposes the "?" help overlay.
@@ -87,6 +127,7 @@ export default function DashboardPage() {
     if (socketRef.current && socketRef.current.readyState < 2) {
       socketRef.current.close();
     }
+    attachedSessionIdRef.current = sessionId;
 
     const socket = openSessionSocket(
       sessionId,
@@ -104,6 +145,9 @@ export default function DashboardPage() {
         store.pushLog('pipeline', `Session ended: ${status}`);
         store.setIsGenerating(false);
         store.setWsConnected(false);
+        if (attachedSessionIdRef.current === sessionId) {
+          attachedSessionIdRef.current = null;
+        }
         if (status === 'completed') {
           store.addToast({ type: 'success', title: 'Build complete', message: projectName });
           // After a successful run we are implicitly in edit mode for follow-ups.

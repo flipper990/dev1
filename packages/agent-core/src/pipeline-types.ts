@@ -1,5 +1,12 @@
 // ─────────────────────────────────────────────────────────────
-// Pipeline type definitions and the canonical step schedule
+// Pipeline type definitions and the canonical 4-step schedule.
+//
+// April 2026 — simplified pipeline:
+//   spec → builder → qa → polish
+//
+// The QA→Builder loop (when verdict = 'needs-improvement') is implemented
+// outside the orchestrator in apps/api/src/pipeline/project-generator.ts;
+// each iteration reuses the same step ids.
 // ─────────────────────────────────────────────────────────────
 
 import type { AgentRole, Task } from './types';
@@ -16,18 +23,12 @@ export interface PipelineStep {
   description: string;
 }
 
-/** The canonical fullstack generation pipeline. All steps are critical and run in dependency order. */
+/** The canonical 4-stage pipeline. */
 export const PIPELINE_STEPS: PipelineStep[] = [
-  { id: 'expand',   name: 'Intent Expansion', agent: 'intent_expander',  critical: true, description: 'Expanding prompts into detailed product specification' },
-  { id: 'plan',     name: 'Planning',         agent: 'planner',          critical: true, description: 'Analyzing expanded spec and defining project scope' },
-  { id: 'design',   name: 'Architecture',     agent: 'architect',        critical: true, description: 'Designing system architecture and tech stack' },
-  { id: 'code',     name: 'Development',      agent: 'developer',        critical: true, description: 'Writing source code for all components' },
-  { id: 'review',   name: 'Code Review',      agent: 'reviewer',         critical: true, description: 'Reviewing code quality and finding issues' },
-  { id: 'test',     name: 'Testing',          agent: 'tester',           critical: true, description: 'Generating test suites' },
-  { id: 'fix',      name: 'Bug Fixing',       agent: 'debugger',         critical: true, description: 'Fixing identified issues' },
-  { id: 'quality',  name: 'Quality Gate',     agent: 'quality_enforcer', critical: true, description: 'Enforcing UI and functional quality standards' },
-  { id: 'optimize', name: 'Optimization',     agent: 'optimizer',        critical: true, description: 'Applying performance and code quality optimizations' },
-  { id: 'deploy',   name: 'DevOps',           agent: 'devops',           critical: true, description: 'Preparing deployment configuration' },
+  { id: 'spec',    name: 'Specification', agent: 'spec',    critical: true,  description: 'Expanding intent → plan → architecture into one product specification' },
+  { id: 'build',   name: 'Build',         agent: 'builder', critical: true,  description: 'Generating the fullstack application (frontend + backend)' },
+  { id: 'qa',      name: 'QA',            agent: 'qa',      critical: true,  description: 'Reviewing for bugs, missing logic, inconsistencies — auto-fixing what it can' },
+  { id: 'polish',  name: 'Polish',        agent: 'polish',  critical: false, description: 'UI/UX polish, performance, and production-readiness pass' },
 ];
 
 // ── Step State ──────────────────────────────────────────────
@@ -49,6 +50,8 @@ export interface StepState {
   validationVerdict?: 'ok' | 'repaired' | 'deferred' | 'blocked';
   /** Count of auto-repairs applied to this step's output. */
   repairCount?: number;
+  /** QA→Builder loop iteration (1 = initial pass, 2+ = re-builds). */
+  iteration?: number;
 }
 
 // ── Pipeline State ──────────────────────────────────────────
@@ -56,18 +59,12 @@ export interface StepState {
 export interface PipelineState {
   sessionId: string;
   status: 'running' | 'completed' | 'failed' | 'cancelled';
-  /**
-   * Index of the highest-indexed step that has started or completed.
-   * In parallel mode multiple steps advance this simultaneously; use
-   * `steps` for per-step status detail rather than relying on this field.
-   */
   currentStepIndex: number;
   steps: StepState[];
   artifacts: Map<AgentRole, Record<string, unknown>>;
   tasks: Task[];
   startedAt: Date;
   durationMs: number;
-  /** Fraction complete (0–1). Updated whenever a step finishes. */
   progress: number;
   optimization: {
     cacheHits: number;
@@ -76,6 +73,8 @@ export interface PipelineState {
     executedSteps: number;
     estimatedApiCallsSaved: number;
   };
+  /** QA→Builder loop iterations actually executed (1 = no loop, 2+ = looped). */
+  qaIterations?: number;
   error?: string;
 }
 
@@ -97,6 +96,7 @@ export type PipelineEvent =
   | { type: 'step:blocked';       sessionId: string; stepId: string; agent: AgentRole; reason: string }
   | { type: 'step:failed';        sessionId: string; stepId: string; agent: AgentRole; error: string; critical: boolean }
   | { type: 'step:skipped';       sessionId: string; stepId: string; agent: AgentRole; reason: string }
+  | { type: 'qa:loop';            sessionId: string; iteration: number; reason: string }
   | { type: 'pipeline:completed'; sessionId: string; durationMs: number; stepsCompleted: number; stepsFailed: number; stepsSkipped: number }
   | { type: 'pipeline:failed';    sessionId: string; error: string; failedStep: string; durationMs: number };
 

@@ -45,9 +45,22 @@ export const PREVIEW_MOCK_SCRIPT = `<script id="__devteam_preview_mock">
     id: 'preview-user-1',
     email: 'preview@devteam.local',
     name: 'Preview User',
+    firstName: 'Preview',
+    lastName: 'User',
+    username: 'preview_user',
+    displayName: 'Preview User',
     role: 'admin',
+    roles: ['admin', 'user'],
+    permissions: ['read', 'write', 'admin'],
+    isAdmin: true,
+    isAuthenticated: true,
+    emailVerified: true,
     avatar: null,
-    createdAt: new Date(Date.now() - 86400000 * 7).toISOString()
+    avatarUrl: null,
+    image: null,
+    bio: 'Preview account — mock data only.',
+    createdAt: new Date(Date.now() - 86400000 * 7).toISOString(),
+    updatedAt: new Date().toISOString()
   };
   var FAKE_TOKEN = 'preview.mock.token.not_real';
 
@@ -287,7 +300,26 @@ export const PREVIEW_MOCK_SCRIPT = `<script id="__devteam_preview_mock">
     NoopWS.CONNECTING = 0; NoopWS.OPEN = 1; NoopWS.CLOSING = 2; NoopWS.CLOSED = 3;
     window.WebSocket = NoopWS;
   } catch (_) {}
-
+  // ─── EventSource (Server-Sent Events) stub ────────────────────────────
+  // Apps that subscribe to SSE for live updates would otherwise spam network
+  // errors and silently never fire onmessage — a common blank-screen cause for
+  // dashboard-style apps.
+  try {
+    var NoopES = function (url) {
+      this.url = url;
+      this.readyState = 1;
+      this.withCredentials = false;
+      this.onopen = null; this.onmessage = null; this.onerror = null;
+      var self = this;
+      setTimeout(function () { if (self.onopen) try { self.onopen({ target: self }); } catch (_) {} }, 0);
+    };
+    NoopES.prototype.addEventListener = function () {};
+    NoopES.prototype.removeEventListener = function () {};
+    NoopES.prototype.dispatchEvent = function () { return true; };
+    NoopES.prototype.close = function () { this.readyState = 2; };
+    NoopES.CONNECTING = 0; NoopES.OPEN = 1; NoopES.CLOSED = 2;
+    window.EventSource = NoopES;
+  } catch (_) {}
   // ─── Console bridge → parent window (best-effort) ─────────────────────────
   var levels = ['log', 'info', 'warn', 'error'];
   for (var i = 0; i < levels.length; i++) {

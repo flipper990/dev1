@@ -1,34 +1,26 @@
 ﻿// -----------------------------------------------------------------
-// Production prompt templates for all 8 agents
+// Production prompt templates for the 4-agent simplified pipeline.
 // Each prompt lives in its own file under ./prompts/
+// All prompts share a common preamble (persona + global rules +
+// known-issues memory) defined in ./prompts/shared.
 // -----------------------------------------------------------------
 
-import { plannerPrompt } from './prompts/planner';
-import { architectPrompt } from './prompts/architect';
-import { developerPrompt } from './prompts/developer';
-import { reviewerPrompt } from './prompts/reviewer';
-import { testerPrompt } from './prompts/tester';
-import { debuggerPrompt } from './prompts/debugger';
-import { devopsPrompt } from './prompts/devops';
-import { optimizerPrompt } from './prompts/optimizer';
-import { intentExpanderPrompt } from './prompts/intent-expander';
-import { qualityEnforcerPrompt } from './prompts/quality-enforcer';
+import { specPrompt }    from './prompts/spec';
+import { builderPrompt } from './prompts/builder';
+import { qaPrompt }      from './prompts/qa';
+import { polishPrompt }  from './prompts/polish';
 
 export const PROMPTS = {
-  intent_expander:  intentExpanderPrompt,
-  planner:          plannerPrompt,
-  architect:        architectPrompt,
-  developer:        developerPrompt,
-  reviewer:         reviewerPrompt,
-  tester:           testerPrompt,
-  debugger:         debuggerPrompt,
-  devops:           devopsPrompt,
-  optimizer:        optimizerPrompt,
-  quality_enforcer: qualityEnforcerPrompt,
+  spec:    specPrompt,
+  builder: builderPrompt,
+  qa:      qaPrompt,
+  polish:  polishPrompt,
 };
 
+export { specPrompt, builderPrompt, qaPrompt, polishPrompt };
 export {
-  plannerPrompt, architectPrompt, developerPrompt, reviewerPrompt,
-  testerPrompt, debuggerPrompt, devopsPrompt, optimizerPrompt,
-  intentExpanderPrompt, qualityEnforcerPrompt,
-};
+  AGENT_PERSONA,
+  GLOBAL_RULES,
+  KNOWN_ISSUES_MEMORY,
+  SHARED_PREAMBLE,
+} from './prompts/shared';

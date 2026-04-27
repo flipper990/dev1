@@ -175,10 +175,7 @@ export class PromptManager {
   // ── Private ───────────────────────────────────────────
 
   private loadDefaults(): void {
-    const roles: AgentRole[] = [
-      'planner', 'architect', 'developer', 'reviewer',
-      'tester', 'debugger', 'devops', 'optimizer',
-    ];
+    const roles: AgentRole[] = ['spec', 'builder', 'qa', 'polish'];
 
     for (const role of roles) {
       const prompt = PROMPTS[role];

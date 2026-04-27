@@ -5,37 +5,26 @@ import { useStore } from '../lib/store';
 import { cn } from '../lib/cn';
 import type { PipelineStep, StepStatus } from '../types/dashboard';
 
-// ── All 8 agents in exact pipeline execution order ───────────
-const PIPELINE_ORDER = [
-  'planner', 'architect', 'developer', 'reviewer',
-  'tester', 'debugger', 'optimizer', 'devops',
-] as const;
+// ── 4 agents in pipeline execution order ────────────────────────────
+const PIPELINE_ORDER = ['spec', 'builder', 'qa', 'polish'] as const;
 
 type AgentRole = typeof PIPELINE_ORDER[number];
 
 const AGENT_CONFIG: Record<AgentRole, { label: string; description: string; color: string; bg: string; emoji: string }> = {
-  planner:   { label: 'Planner',    description: 'Analysing prompts & scope',           color: '#FBBF24', bg: 'rgba(251,191,36,0.12)',   emoji: '🗺️' },
-  architect: { label: 'Architect',  description: 'Designing system architecture',        color: '#38BDF8', bg: 'rgba(56,189,248,0.12)',   emoji: '�️' },
-  developer: { label: 'Developer',  description: 'Writing source code',                  color: '#60A5FA', bg: 'rgba(96,165,250,0.12)',   emoji: '💻' },
-  reviewer:  { label: 'Reviewer',   description: 'Reviewing code quality & security',    color: '#C084FC', bg: 'rgba(192,132,252,0.12)',  emoji: '🔍' },
-  tester:    { label: 'Tester',     description: 'Generating test suites',               color: '#4ADE80', bg: 'rgba(74,222,128,0.12)',   emoji: '🧪' },
-  debugger:  { label: 'Debugger',   description: 'Fixing identified issues',             color: '#F97316', bg: 'rgba(249,115,22,0.12)',   emoji: '🐛' },
-  optimizer: { label: 'Optimizer',  description: 'Performance & code optimisation',      color: '#A78BFA', bg: 'rgba(167,139,250,0.12)',  emoji: '⚡' },
-  devops:    { label: 'DevOps',     description: 'Preparing deployment configuration',   color: '#FB7185', bg: 'rgba(251,113,133,0.12)',  emoji: '🚀' },
+  spec:    { label: 'Spec',    description: 'Intent → plan → architecture → specification', color: '#FBBF24', bg: 'rgba(251,191,36,0.12)',  emoji: '📝' },
+  builder: { label: 'Builder', description: 'Generating fullstack code',                       color: '#60A5FA', bg: 'rgba(96,165,250,0.12)',  emoji: '🔨' },
+  qa:      { label: 'QA',      description: 'Reviewing & fixing (loops back if needed)',       color: '#C084FC', bg: 'rgba(192,132,252,0.12)', emoji: '🔍' },
+  polish:  { label: 'Polish',  description: 'UI/UX, perf, production readiness',               color: '#A78BFA', bg: 'rgba(167,139,250,0.12)', emoji: '✨' },
 };
 
-/** Map any agent string coming from the backend onto one of our 8 known keys. */
+/** Map any agent string coming from the backend onto one of our 4 known keys. */
 function resolveRole(raw: string | undefined | null): AgentRole {
   const n = (raw ?? '').toLowerCase();
-  if (n.includes('plan'))                                          return 'planner';
-  if (n.includes('arch'))                                          return 'architect';
-  if ((n.includes('dev') || n.includes('code') || n.includes('coder')) && !n.includes('devop') && !n.includes('debug')) return 'developer';
-  if (n.includes('review') || n.includes('quality'))              return 'reviewer';
-  if (n.includes('test') || n.includes('qa'))                     return 'tester';
-  if (n.includes('debug') || n.includes('fix'))                   return 'debugger';
-  if (n.includes('optim'))                                         return 'optimizer';
-  if (n.includes('devop') || n.includes('deploy') || n.includes('infra')) return 'devops';
-  return 'planner';
+  if (n.includes('spec') || n.includes('plan') || n.includes('arch') || n.includes('intent')) return 'spec';
+  if (n.includes('build') || n.includes('dev') || n.includes('code')) return 'builder';
+  if (n.includes('qa') || n.includes('review') || n.includes('test') || n.includes('debug') || n.includes('quality')) return 'qa';
+  if (n.includes('polish') || n.includes('optim') || n.includes('devop') || n.includes('deploy') || n.includes('ui')) return 'polish';
+  return 'spec';
 }
 
 function fmt(ms: number): string {

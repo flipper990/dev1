@@ -1,5 +1,9 @@
 // Pre-built chain definitions and ChainBuilder fluent API.
-// The AgentRunner.runChain() method accepts the ChainStep[] arrays built here.
+// AgentRunner.runChain() consumes the ChainStep[] arrays built here.
+//
+// 4-agent pipeline: spec → builder → qa → polish
+// Re-build loop (qa → builder again on 'needs-improvement') is implemented
+// outside ChainBuilder by the project-generator.
 
 import type { AgentRole, ChainStep } from './types';
 
@@ -34,107 +38,54 @@ export class ChainBuilder {
   }
 }
 
-/** Full generation chain: expand → plan → architect → develop → devops → review → test → debug → quality → optimize */
+/** Full generation chain: spec → builder → qa → polish (linear, no loop here). */
 export function fullGenerationChain(): ChainStep[] {
   return new ChainBuilder()
-    .step('intent_expander')
-    .stepWithTransform('planner', (input, outputs) => {
-      const expanded = outputs.get('intent_expander') as any;
-      const expandedPrompts: string[] = Array.isArray(expanded?.expandedPrompts)
-        ? expanded.expandedPrompts.filter((p: unknown) => typeof p === 'string' && p.length > 0)
-        : [];
-      return {
-        prompts: expandedPrompts.length > 0 ? expandedPrompts : (input.prompts ?? []),
-        expandedSpec: expanded ?? {},
-        userPreferences: input.userPreferences ?? {},
-      };
-    })
-    .stepWithTransform('architect', (input, outputs) => ({
-      plan: outputs.get('planner') ?? {},
-      expandedSpec: outputs.get('intent_expander') ?? {},
+    .step('spec')
+    .stepWithTransform('builder', (input, outputs) => ({
+      spec: outputs.get('spec') ?? {},
+      iteration: 1,
       userPreferences: input.userPreferences ?? {},
     }))
-    .stepWithTransform('developer', (_input, outputs) => ({
-      spec: outputs.get('architect') ?? {},
-      expandedSpec: outputs.get('intent_expander') ?? {},
-      fileAssignment: (outputs.get('architect') as any)?.fileTree ?? [],
+    .stepWithTransform('qa', (_input, outputs) => ({
+      spec: outputs.get('spec') ?? {},
+      files: (outputs.get('builder') as any)?.files ?? [],
     }))
-    .stepWithTransform('devops', (_input, outputs) => ({
-      spec: outputs.get('architect') ?? {},
-      fileTree: (outputs.get('architect') as any)?.fileTree ?? [],
-    }), { onError: 'skip' })
-    .stepWithTransform('reviewer', (_input, outputs) => ({
-      spec: outputs.get('architect') ?? {},
-      expandedSpec: outputs.get('intent_expander') ?? {},
-      files: (outputs.get('developer') as any)?.files ?? [],
-    }))
-    .stepWithTransform('tester', (_input, outputs) => ({
-      files: (outputs.get('developer') as any)?.files ?? [],
-      apiContracts: (outputs.get('architect') as any)?.apiContracts ?? [],
-      spec: outputs.get('architect') ?? {},
-      expandedSpec: outputs.get('intent_expander') ?? {},
-    }), { onError: 'skip' })
-    .stepIf(
-      (outputs) => {
-        const review = outputs.get('reviewer') as any;
-        return review?.issues?.length > 0;
-      },
-      'debugger',
-      {
-        inputTransform: (_input, outputs) => ({
-          issues: (outputs.get('reviewer') as any)?.issues ?? [],
-          affectedFiles: (outputs.get('developer') as any)?.files ?? [],
-          spec: outputs.get('architect') ?? {},
-          expandedSpec: outputs.get('intent_expander') ?? {},
-        }),
-        onError: 'continue',
-      },
-    )
-    .stepWithTransform('quality_enforcer', (_input, outputs) => ({
-      expandedSpec: outputs.get('intent_expander') ?? {},
-      spec: outputs.get('architect') ?? {},
-      files: (outputs.get('developer') as any)?.files ?? [],
-      reviewReport: outputs.get('reviewer') ?? {},
-      unresolvedIssues: (outputs.get('debugger') as any)?.unresolved ?? [],
-    }), { onError: 'continue' })
-    .stepWithTransform('optimizer', (_input, outputs) => ({
-      files: (outputs.get('developer') as any)?.files ?? [],
-      spec: outputs.get('architect') ?? {},
-      expandedSpec: outputs.get('intent_expander') ?? {},
-      qaReport: outputs.get('reviewer') ?? {},
-      qualityReport: outputs.get('quality_enforcer') ?? {},
+    .stepWithTransform('polish', (_input, outputs) => ({
+      spec: outputs.get('spec') ?? {},
+      files: (outputs.get('builder') as any)?.files ?? [],
     }), { onError: 'skip' })
     .build();
 }
 
-/** Quick review: develop → review only */
+/** Quick review: builder → qa only. */
 export function quickReviewChain(): ChainStep[] {
   return new ChainBuilder()
-    .step('developer')
-    .stepWithTransform('reviewer', (_input, outputs) => ({
+    .step('builder')
+    .stepWithTransform('qa', (_input, outputs) => ({
       spec: {},
-      files: (outputs.get('developer') as any)?.files ?? [],
+      files: (outputs.get('builder') as any)?.files ?? [],
     }))
     .build();
 }
 
-/** Fix and optimize: review → debug (conditional) → optimize */
+/** Fix and polish: qa → polish (conditional). */
 export function fixAndOptimizeChain(): ChainStep[] {
   return new ChainBuilder()
-    .step('reviewer')
+    .step('qa')
     .stepIf(
       (outputs) => {
-        const review = outputs.get('reviewer') as any;
-        return review?.issues?.some((i: any) => i.severity === 'critical' || i.severity === 'high');
+        const qa = outputs.get('qa') as any;
+        return qa?.verdict !== 'needs-improvement';
       },
-      'debugger',
+      'polish',
       {
         inputTransform: (input, outputs) => ({
-          issues: (outputs.get('reviewer') as any)?.issues ?? [],
-          affectedFiles: input.files ?? [],
+          spec: input.spec ?? {},
+          files: input.files ?? (outputs.get('qa') as any)?.files ?? [],
         }),
+        onError: 'skip',
       },
     )
-    .step('optimizer', { onError: 'skip' })
     .build();
 }

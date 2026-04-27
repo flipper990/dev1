@@ -7,6 +7,10 @@ import type { LLMProvider } from '../../../../packages/agent-core/src/types.js';
 import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import type { LLMProviderClient, LLMRequestParams, LLMResponse } from './types.js';
 
+/** Hard upper bound on a single Anthropic HTTP call (matches OpenAI client). */
+const ANTHROPIC_REQUEST_TIMEOUT_MS = 180_000;
+const ANTHROPIC_SDK_MAX_RETRIES = 2;
+
 export class AnthropicClient implements LLMProviderClient {
   readonly providerId: LLMProvider = 'anthropic';
   readonly displayName = 'Anthropic Claude';
@@ -15,7 +19,11 @@ export class AnthropicClient implements LLMProviderClient {
   private logger: Logger;
 
   constructor(apiKey: string, logger: Logger) {
-    this.client = new Anthropic({ apiKey });
+    this.client = new Anthropic({
+      apiKey,
+      timeout: ANTHROPIC_REQUEST_TIMEOUT_MS,
+      maxRetries: ANTHROPIC_SDK_MAX_RETRIES,
+    });
     this.logger = logger;
   }
 
@@ -27,16 +35,19 @@ export class AnthropicClient implements LLMProviderClient {
       maxTokens: model.maxTokens,
     });
 
-    const response = await this.client.messages.create({
-      model: model.model,
-      max_tokens: model.maxTokens,
-      temperature: model.temperature,
-      system,
-      messages: messages.map(m => ({
-        role: m.role,
-        content: m.content,
-      })),
-    });
+    const response = await this.client.messages.create(
+      {
+        model: model.model,
+        max_tokens: model.maxTokens,
+        temperature: model.temperature,
+        system,
+        messages: messages.map(m => ({
+          role: m.role,
+          content: m.content,
+        })),
+      },
+      { timeout: ANTHROPIC_REQUEST_TIMEOUT_MS },
+    );
 
     const textBlock = response.content.find(b => b.type === 'text');
     const content = textBlock?.type === 'text' ? textBlock.text : '';

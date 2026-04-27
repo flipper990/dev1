@@ -25,12 +25,14 @@ import { Component, useCallback, useEffect, useState } from 'react';
 import {
   Monitor, Tablet, Smartphone,
   RefreshCw, AlertTriangle, RotateCcw, Globe, Download, Loader2, CheckCircle2, ShieldCheck,
+  Container, ExternalLink,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../lib/store';
 import { cn } from '../lib/cn';
 import { exportProject } from '../lib/api';
 import { usePreviewHtml } from '../hooks/usePreviewHtml';
+import { useDockerPreview } from '../hooks/useDockerPreview';
 
 type Viewport = 'desktop' | 'tablet' | 'mobile';
 
@@ -81,7 +83,17 @@ export function LivePreview() {
   // "completed" since the mock layer + fallbacks cope with partial codebases.
   const enabled = !!selectedProjectId && projectStatus === 'completed';
 
-  const preview = usePreviewHtml(selectedProjectId, project?.name ?? 'Project', { enabled });
+  // Try to run the project as a real Docker container first. Falls back to
+  // the in-browser srcDoc preview when Docker is unavailable or the build
+  // fails. The Docker hook also issues a `stop` when this component unmounts
+  // or the project deselects, so we don't leak containers.
+  const docker = useDockerPreview(selectedProjectId, enabled);
+  const useDocker = docker.phase === 'ready' || docker.phase === 'starting' || docker.phase === 'checking';
+  const dockerFailed = docker.phase === 'failed' || docker.phase === 'unavailable';
+
+  // Fallback srcDoc preview — only build it when Docker isn't going to work,
+  // otherwise we waste cycles fetching every file in the project.
+  const preview = usePreviewHtml(selectedProjectId, project?.name ?? 'Project', { enabled: enabled && dockerFailed });
 
   // Force a fresh iframe mount every time the builder produces a new HTML doc.
   useEffect(() => {
@@ -124,10 +136,13 @@ export function LivePreview() {
   }, [selectedProjectId, project, addToast]);
 
   const handleRefresh = useCallback(() => {
+    if (useDocker || dockerFailed) {
+      docker.refresh();
+    }
     preview.refresh();
     setIframeKey((k) => k + 1);
     setLoading(true);
-  }, [preview]);
+  }, [docker, useDocker, dockerFailed, preview]);
 
   const pct         = progress?.progress ?? 0;
   const currentStep = progress?.currentStep?.name ?? null;
@@ -143,8 +158,17 @@ export function LivePreview() {
           {/* Sandbox indicator — emphasises "frontend-only, no network" */}
           {enabled && (
             <div className="flex items-center gap-1.5 bg-white/[0.04] border border-white/[0.06] rounded px-2 py-1 text-[10px] text-[#64748B] flex-shrink-0">
-              <ShieldCheck size={10} className="text-[#22C55E]" />
-              <span className="font-mono uppercase tracking-wider">Sandboxed · mocks on</span>
+              {docker.phase === 'ready' ? (
+                <>
+                  <Container size={10} className="text-[#22C55E]" />
+                  <span className="font-mono uppercase tracking-wider">Container · live</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck size={10} className="text-[#22C55E]" />
+                  <span className="font-mono uppercase tracking-wider">Sandboxed · mocks on</span>
+                </>
+              )}
             </div>
           )}
 
@@ -248,21 +272,116 @@ export function LivePreview() {
           </div>
         )}
 
+        {/* Docker preview: starting (build + boot) */}
+        {enabled && useDocker && docker.phase !== 'ready' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center">
+            <Loader2 size={28} className="animate-spin text-[#3B82F6]" />
+            <div>
+              <p className="text-[13px] font-semibold text-[#F1F5F9] flex items-center justify-center gap-2">
+                <Container size={14} className="text-[#3B82F6]" />
+                {docker.phase === 'checking' ? 'Checking Docker…' : 'Booting container'}
+              </p>
+              <p className="text-[11px] text-[#64748B] mt-1 font-mono">
+                {docker.status?.state === 'building' && 'Building image (npm install)…'}
+                {docker.status?.state === 'starting' && 'Starting dev server…'}
+                {docker.status?.state === 'detecting' && 'Detecting framework…'}
+                {!docker.status?.state && 'First build can take 60-180s'}
+                {docker.status?.stack && ` · ${docker.status.stack}`}
+              </p>
+            </div>
+            <div className="w-48 h-1 bg-white/[0.06] rounded-full overflow-hidden">
+              <div className="h-full w-1/3" style={{ background: 'linear-gradient(90deg, #3B82F6, #818CF8)', animation: 'load-sweep 1.5s ease-in-out infinite' }} />
+            </div>
+          </div>
+        )}
+
+        {/* Docker preview: ready — real running app via reverse proxy */}
+        {enabled && useDocker && docker.phase === 'ready' && docker.url && (
+          <motion.div
+            className="relative flex flex-col overflow-hidden"
+            style={{ width: '100%', height: '100%', maxWidth: vp.maxW ?? '100%' }}
+            animate={{ maxWidth: vp.maxW ?? '100%' }}
+            transition={{ duration: 0.2 }}
+          >
+            {viewport !== 'desktop' && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-[#1c1c1e] border-b border-white/10 flex-shrink-0">
+                <div className="flex gap-1">
+                  <span className="w-2 h-2 rounded-full bg-[#ff5f57]" />
+                  <span className="w-2 h-2 rounded-full bg-[#ffbd2e]" />
+                  <span className="w-2 h-2 rounded-full bg-[#28c840]" />
+                </div>
+                <div className="flex-1 h-4 bg-white/[0.08] rounded" />
+                <a
+                  href={docker.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[10px] text-[#64748B] hover:text-[#F1F5F9] flex items-center gap-1"
+                  title="Open in new tab"
+                >
+                  <ExternalLink size={11} />
+                </a>
+              </div>
+            )}
+            {loading && (
+              <div className="absolute top-0 left-0 right-0 h-0.5 z-10 overflow-hidden">
+                <div className="h-full w-1/3" style={{ background: 'linear-gradient(90deg, #22C55E, #3B82F6)', animation: 'load-sweep 1.5s ease-in-out infinite' }} />
+              </div>
+            )}
+            {project?.runtimeValidation?.finalVerdict === 'fail' && (
+              <div className="flex items-start gap-2 px-3 py-2 bg-[#F59E0B]/10 border-b border-[#F59E0B]/30 text-[11px] text-[#FCD34D] flex-shrink-0">
+                <AlertTriangle size={13} className="mt-0.5 flex-shrink-0 text-[#F59E0B]" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold">
+                    Runtime check found {project.runtimeValidation.issues.length}{' '}
+                    issue{project.runtimeValidation.issues.length === 1 ? '' : 's'} after{' '}
+                    {project.runtimeValidation.iterations} auto-fix attempt
+                    {project.runtimeValidation.iterations === 1 ? '' : 's'}.
+                  </p>
+                  {project.runtimeValidation.issues.slice(0, 2).map((iss, i) => (
+                    <p key={i} className="font-mono opacity-80 truncate">
+                      [{iss.category}] {iss.message}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+            <PreviewErrorBoundary onRetry={handleRefresh}>
+              <iframe
+                key={`docker-${iframeKey}`}
+                src={docker.url}
+                className="flex-1 w-full border-0 bg-white block"
+                title="Docker preview"
+                // Real app, real network. We don't sandbox this iframe because
+                // the contained app needs HMR, fetch to its own API, etc.
+                referrerPolicy="no-referrer"
+                onLoad={() => setLoading(false)}
+              />
+            </PreviewErrorBoundary>
+          </motion.div>
+        )}
+
+        {/* Docker failed → degrade to in-browser srcDoc preview below.   */}
+        {/* The remainder of this section is the original srcDoc preview, */}
+        {/* gated on dockerFailed so we don't double-render.              */}
+
         {/* Loading state (fetching + building HTML) */}
-        {enabled && preview.status === 'loading' && (
+        {enabled && dockerFailed && preview.status === 'loading' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-[#64748B] text-[12px]">
             <Loader2 size={20} className="animate-spin text-[#3B82F6]" />
             <span>Building preview…</span>
+            <span className="text-[10px] font-mono opacity-60">
+              {docker.phase === 'unavailable' ? 'Docker unavailable — using sandbox preview' : 'Container failed — using sandbox preview'}
+            </span>
           </div>
         )}
 
         {/* Host-side error fallback (builder couldn't even produce HTML) */}
-        {enabled && preview.status === 'error' && (
+        {enabled && dockerFailed && preview.status === 'error' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
             <AlertTriangle size={28} className="text-[#F59E0B]" />
             <div>
               <p className="text-[13px] font-semibold text-[#F1F5F9]">Could not build preview</p>
-              <p className="text-[11px] text-[#64748B] mt-1 font-mono break-all max-w-md">{preview.error ?? 'Unknown failure'}</p>
+              <p className="text-[11px] text-[#64748B] mt-1 font-mono break-all max-w-md">{preview.error ?? docker.error ?? 'Unknown failure'}</p>
             </div>
             <button onClick={handleRefresh} className="flex items-center gap-2 bg-[#3B82F6]/20 border border-[#3B82F6]/30 text-[#60A5FA] rounded-lg px-4 py-2 text-[12px] font-semibold hover:bg-[#3B82F6]/30">
               <RotateCcw size={13} /> Retry
@@ -270,8 +389,8 @@ export function LivePreview() {
           </div>
         )}
 
-        {/* Device frame + iframe (srcDoc) */}
-        {enabled && (preview.status === 'ready' || preview.status === 'empty') && (
+        {/* Device frame + iframe (srcDoc) — only when Docker has failed */}
+        {enabled && dockerFailed && (preview.status === 'ready' || preview.status === 'empty') && (
           <motion.div
             className="relative flex flex-col overflow-hidden"
             style={{ width: '100%', height: '100%', maxWidth: vp.maxW ?? '100%' }}

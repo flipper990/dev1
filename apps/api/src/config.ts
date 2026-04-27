@@ -31,8 +31,12 @@ export const config = {
   },
 
   storage: {
-    projectsDir: process.env.PROJECTS_DIR ?? './data/projects',
-    memoryDir: process.env.MEMORY_DIR ?? './data/memory',
+    // Resolve to repo-root /data/* using absolute paths so storage is stable
+    // regardless of cwd (turbo / direct npm run dev / VS Code task), and so
+    // it sits OUTSIDE apps/api/ — avoiding tsx-watch reloads triggered by
+    // pipeline writes during a long generation.
+    projectsDir: process.env.PROJECTS_DIR ?? resolve(dirname(fileURLToPath(import.meta.url)), '../../../data/projects'),
+    memoryDir: process.env.MEMORY_DIR ?? resolve(dirname(fileURLToPath(import.meta.url)), '../../../data/memory'),
   },
 
   rateLimit: {

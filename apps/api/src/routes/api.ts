@@ -1,7 +1,7 @@
 // API Routes — REST endpoints for project generation.
 // LLM routes live in ./llm-routes.ts; versioning routes in ./version-routes.ts.
 
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { ProjectGenerator } from '../pipeline/project-generator.js';
 import type { ProjectStore } from '../storage/project-store.js';
@@ -33,34 +33,55 @@ export function registerRoutes(
 
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
 
-  app.post('/api/projects/generate', async (request, reply) => {
-    const parsed = GenerateSchema.safeParse(request.body);
+  const GenerateOrPromptSchema = z.union([
+    GenerateSchema,
+    z.object({
+      prompt: z.string().min(1).max(5000),
+      userId: z.string().optional(),
+      preferences: z.record(z.unknown()).optional(),
+      scope: z.enum(['code', 'design', 'full']).optional(),
+    }),
+  ]);
+
+  const handleGenerate = async (request: FastifyRequest, reply: FastifyReply) => {
+    const parsed = GenerateOrPromptSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({
         error: 'Invalid request',
         details: parsed.error.issues.map(i => ({ path: i.path.join('.'), message: i.message })),
       });
     }
-
-    const result = await generator.generate(parsed.data);
-    if (!result.success) {
-      const isCapacity = result.error?.includes('capacity');
-      return reply.status(isCapacity ? 503 : 500).send({
-        error: isCapacity ? 'Service Unavailable' : 'Generation failed',
-        message: result.error, projectId: result.projectId, sessionId: result.sessionId,
-      });
+    const data = parsed.data as { prompt?: string; prompts?: string[]; userId?: string; preferences?: Record<string, unknown>; scope?: 'code' | 'design' | 'full' };
+    const prompts = data.prompts ?? (data.prompt ? [data.prompt] : []);
+    if (prompts.length === 0) {
+      return reply.status(400).send({ error: 'At least one prompt is required' });
     }
 
-    return reply.status(201).send({
-      projectId: result.projectId, sessionId: result.sessionId, cached: result.cached ?? false,
-      project: {
-        id: result.project!.id, name: result.project!.name, status: result.project!.status,
-        fileCount: result.project!.files.length, totalTokens: result.project!.totalTokens,
-        totalCostUsd: result.project!.totalCostUsd, durationMs: result.project!.durationMs,
-      },
-      steps: result.steps, optimization: result.optimization,
+    // Reserve IDs up-front so we can respond immediately and the WS client can
+    // subscribe before the pipeline starts emitting events.
+    const reservation = generator.reserve({
+      prompts,
+      userId: data.userId,
+      preferences: data.preferences,
     });
-  });
+
+    // Kick off the pipeline in the background. Errors are surfaced to the
+    // session/WS stream by the generator itself; we never want this promise
+    // to crash the process.
+    void generator.runReserved(reservation).catch((err) => {
+      request.log.error({ err, projectId: reservation.projectId }, 'Background generation failed');
+    });
+
+    return reply.status(202).send({
+      projectId: reservation.projectId,
+      sessionId: reservation.sessionId,
+      project:  { id: reservation.projectId, name: reservation.projectName, status: 'generating', fileCount: 0, totalTokens: 0, totalCostUsd: 0, durationMs: 0 },
+      pipeline: { sessionId: reservation.sessionId },
+    });
+  };
+
+  app.post('/api/projects/generate', handleGenerate);
+  app.post('/api/projects', handleGenerate);
 
   app.get('/api/projects/:id', async (request, reply) => {
     const { id } = request.params as { id: string };

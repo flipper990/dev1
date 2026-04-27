@@ -537,11 +537,16 @@ export function runQualityAssurance(
     ...findPlaceholders(repairedFiles),
     ...checkPreviewRenderability(repairedFiles),
   ];
-  // Keep non-code findings from round 1 (UI, layout, e2e don't change
-  // from auto-repair beyond what we've already marked as autoFixed).
-  const uiLayoutE2E = findings.filter(
-    (f) => f.bar === 'ui-modern' || f.bar === 'layout-structure' || f.bar === 'functional-e2e',
-  );
+  // Re-run UI/layout/e2e checks against repaired files too. Auto-repair
+  // (or upstream scaffold) can satisfy these — for example, layout.missing-app-layout
+  // gets fixed by injecting layout.tsx, and the page-routing check should
+  // see whatever pages are present after assembleProject completes. Without
+  // re-running, stale round-1 findings produce false negatives.
+  const uiLayoutE2E = [
+    ...checkUIQuality(repairedFiles),
+    ...checkLayoutStructure(repairedFiles),
+    ...checkFunctionalE2E(repairedFiles),
+  ];
 
   const finalFindings = [...postRepair, ...uiLayoutE2E];
 

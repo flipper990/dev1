@@ -6,10 +6,7 @@ import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 
 export type StoreKey = AgentRole | 'global';
 
-export const ALL_ROLES: StoreKey[] = [
-  'planner', 'architect', 'developer', 'reviewer',
-  'tester', 'debugger', 'devops', 'optimizer', 'global',
-];
+export const ALL_ROLES: StoreKey[] = ['spec', 'builder', 'qa', 'polish', 'global'];
 
 export interface DiskLoadResult {
   cache: Map<StoreKey, MemoryEntry[]>;

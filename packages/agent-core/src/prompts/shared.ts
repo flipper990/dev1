@@ -197,9 +197,33 @@ BANNED PATTERNS — failing any of these is treated as a critical QA issue:
     use it; you do NOT write your own <button className="bg-blue-500…">.
   ✗ Bare <div> page chrome. Sidebars, topbars, panels, modals must come from
     AppShell / Card / Dialog — not hand-rolled.
-  ✗ Hardcoded image paths to assets you don't generate. Use a placeholder
-    service ('https://picsum.photos/seed/<slug>/800/600') or an inline
-    SVG/CSS-only illustration when no real asset exists.
+  ✗ Hardcoded image paths to assets you don't generate. Broken image icons
+    are a critical QA failure (zero tolerance). Choose ONE per <img>:
+
+    a) PLACEHOLDER SERVICE — preferred. Use a deterministic seed so the same
+       image renders consistently across re-renders:
+         <img src="https://picsum.photos/seed/<unique-slug>/<w>/<h>"
+              alt="<descriptive>"
+              className="rounded-lg object-cover" width={W} height={H} />
+       For avatars: 'https://i.pravatar.cc/150?u=<userId>' or
+         'https://api.dicebear.com/7.x/initials/svg?seed=<name>'.
+       For logos: 'https://api.dicebear.com/7.x/shapes/svg?seed=<name>'.
+       Allowed hosts ONLY: picsum.photos, placehold.co, images.unsplash.com,
+         ui-avatars.com, api.dicebear.com, i.pravatar.cc,
+         avatars.githubusercontent.com.
+       (next.config images.remotePatterns is auto-injected for these hosts.)
+
+    b) INLINE SVG / CSS-ONLY illustration — for hero shapes, abstract
+       backgrounds, icon-art. Lucide icons (lucide-react) for UI iconography.
+
+    c) REAL LOCAL FILE — only if you ALSO emit the file under public/. Do
+       NOT reference '/images/hero.jpg' unless 'public/images/hero.jpg' is
+       in your output files[]. Local svg illustrations are fine — emit them.
+
+    Forbidden: example.com, your-cdn.com, your-domain.com, cdn.example.*,
+      placeholder paths like '/path/to/image.jpg', empty src="", or <img>
+      with no src attribute at all. The mechanical QA preflight WILL catch
+      these and downgrade the verdict.
 
 DARK MODE — the injected globals.css ships both :root and .dark variable
 blocks; the <html> element gets className="dark" by default. Always use

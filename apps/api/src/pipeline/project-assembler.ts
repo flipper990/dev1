@@ -16,7 +16,7 @@ import type { TaskSummary } from '../storage/project-store.js';
 import type { ProjectFile, Patch, StepSummary } from './generator-types.js';
 import { ensureDeploymentReadiness } from './deployment-templates.js';
 import { ensureRunnableScaffold } from './runnable-scaffold.js';
-import { injectUIFoundation, sanitizeUIFoundation, enforceDesignSystem } from './ui-foundation.js';
+import { injectUIFoundation, sanitizeUIFoundation, enforceDesignSystem, enforceImageAssets, ensureNextImageRemotePatterns } from './ui-foundation.js';
 import { normalizePolishPaths } from '../../../../packages/agent-core/src/agent-input-builder.js';
 
 export function assembleProject(
@@ -64,6 +64,21 @@ export function assembleProject(
     logger.info(
       `enforceDesignSystem: rewrote ${dsResult.totalReplacements} invented className tokens across ${dsResult.filesChanged} file(s)`,
     );
+  }
+
+  // 10. Image enforcement — guarantee no broken image icons. Rewrites every
+  //     <img>/<Image> with a missing/empty/fictional/unresolved-local src to
+  //     a deterministic picsum.photos / pravatar URL.
+  const imgResult = enforceImageAssets(fileMap);
+  if (imgResult.rewrites > 0) {
+    logger.info(
+      `enforceImageAssets: rewrote ${imgResult.rewrites} broken image src(s) across ${imgResult.filesChanged} file(s)`,
+    );
+  }
+  // 11. Whitelist placeholder hosts in next.config so Next/Image renders them.
+  const nextImgResult = ensureNextImageRemotePatterns(fileMap);
+  if (nextImgResult.changed) {
+    logger.info('ensureNextImageRemotePatterns: updated next.config images.remotePatterns');
   }
 
   return Array.from(fileMap.values());

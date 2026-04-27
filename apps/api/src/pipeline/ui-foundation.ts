@@ -1220,3 +1220,347 @@ export function enforceDesignSystem(fileMap: Map<string, { path: string; content
   }
   return { filesChanged, totalReplacements };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// enforceImageAssets — guarantee every <img>/<Image> renders.
+//
+// Goal: NO broken image icons in generated apps. Strategy:
+//   1. Scan every .tsx/.jsx for <img …> / <Image …> tags.
+//   2. For each tag, classify the src:
+//        - missing / empty                → REWRITE to picsum.photos
+//        - fictional domain               → REWRITE to picsum.photos
+//        - local path with no matching
+//          file in fileMap                → REWRITE to picsum.photos
+//        - placeholder host / dynamic /
+//          real local asset               → keep
+//   3. Ensure next.config.{js,mjs,ts} (when present) has the placeholder
+//      hosts in images.remotePatterns so Next/Image works in preview.
+//
+// The rewrite uses a deterministic seed derived from file path + line so the
+// same broken image always becomes the same picsum image (stable previews
+// across re-runs of the pipeline).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const IMG_TAG_RE = /<(img|Image)\b([^>]*?)(\/?)>/gi;
+const SRC_ATTR_RE = /\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
+const DYNAMIC_SRC_RE = /\bsrc\s*=\s*\{[^}]+\}/;
+
+const PLACEHOLDER_HOSTS = [
+  'picsum.photos',
+  'placehold.co',
+  'placehold.it',
+  'placeholder.com',
+  'images.unsplash.com',
+  'ui-avatars.com',
+  'api.dicebear.com',
+  'i.pravatar.cc',
+  'avatars.githubusercontent.com',
+];
+
+const FICTIONAL_DOMAIN_RE =
+  /\b(?:example\.(?:com|org|net)|your-(?:domain|site|cdn|app|company)|cdn\.example|placeholder\.(?:com|net)|via\.placeholder\.com)\b/i;
+
+function imgSlug(parts: string[]): string {
+  return (
+    parts
+      .join('-')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40) || 'placeholder'
+  );
+}
+
+function isHttpUrl(s: string): boolean {
+  return /^https?:\/\//i.test(s);
+}
+
+function hostnameOf(s: string): string | null {
+  try {
+    return new URL(s).hostname;
+  } catch {
+    return null;
+  }
+}
+
+function isPlaceholderHost(s: string): boolean {
+  const host = hostnameOf(s);
+  if (!host) return false;
+  return PLACEHOLDER_HOSTS.some((h) => host === h || host.endsWith('.' + h));
+}
+
+function localAssetExists(src: string, fileMap: Map<string, ProjectFile>): boolean {
+  // Strip query/hash, leading slash. Match any path that ends with the asset.
+  const clean = src.split(/[?#]/)[0].replace(/^\//, '');
+  if (!clean) return false;
+  for (const path of fileMap.keys()) {
+    if (path.endsWith('/' + clean) || path.endsWith(clean)) return true;
+  }
+  return false;
+}
+
+interface ImgAttrs {
+  width: number;
+  height: number;
+  isAvatar: boolean;
+}
+
+function parseAttrs(attrs: string): ImgAttrs {
+  const widthM = /\bwidth\s*=\s*(?:"(\d+)"|'(\d+)'|\{(\d+)\})/.exec(attrs);
+  const heightM = /\bheight\s*=\s*(?:"(\d+)"|'(\d+)'|\{(\d+)\})/.exec(attrs);
+  const w = widthM ? parseInt(widthM[1] ?? widthM[2] ?? widthM[3] ?? '0', 10) : 0;
+  const h = heightM ? parseInt(heightM[1] ?? heightM[2] ?? heightM[3] ?? '0', 10) : 0;
+  const isAvatar = /avatar|profile|user-?(?:pic|photo)|headshot/i.test(attrs);
+  return { width: w, height: h, isAvatar };
+}
+
+function placeholderFor(seed: string, attrs: ImgAttrs, originalSrc: string): string {
+  const lowerSrc = originalSrc.toLowerCase();
+  const looksAvatar = attrs.isAvatar || /avatar|profile|headshot|user-?pic/.test(lowerSrc);
+  if (looksAvatar) {
+    return `https://i.pravatar.cc/${attrs.width || 150}?u=${encodeURIComponent(seed)}`;
+  }
+  const w = attrs.width > 0 ? attrs.width : 800;
+  const h = attrs.height > 0 ? attrs.height : Math.round(w * 0.75) || 600;
+  return `https://picsum.photos/seed/${seed}/${w}/${h}`;
+}
+
+function classifySrc(
+  src: string | null,
+  fileMap: Map<string, ProjectFile>,
+): 'ok' | 'missing' | 'fictional' | 'unresolved' {
+  if (src === null || src === '') return 'missing';
+  if (isHttpUrl(src)) {
+    if (FICTIONAL_DOMAIN_RE.test(src)) return 'fictional';
+    if (isPlaceholderHost(src)) return 'ok';
+    return 'ok'; // real third-party URL — trust it
+  }
+  // Allow data:, blob:, mailto:, tel:.
+  if (/^(data|blob|mailto|tel):/i.test(src)) return 'ok';
+  // Local path — must resolve.
+  return localAssetExists(src, fileMap) ? 'ok' : 'unresolved';
+}
+
+/**
+ * Rewrite broken/missing/fictional image srcs to deterministic placeholder
+ * URLs. Returns counts for logging. Idempotent.
+ */
+export function enforceImageAssets(fileMap: Map<string, ProjectFile>): {
+  filesChanged: number;
+  rewrites: number;
+} {
+  let filesChanged = 0;
+  let rewrites = 0;
+
+  for (const [path, file] of fileMap) {
+    if (!/\.(tsx|jsx)$/i.test(path)) continue;
+    let text = file.content ?? '';
+    let fileRewrites = 0;
+
+    text = text.replace(IMG_TAG_RE, (full, tagName: string, rawAttrs: string, selfClose: string, offset: number) => {
+      const attrs = rawAttrs ?? '';
+
+      // Dynamic src={…} — leave alone (we can't reason about runtime values).
+      if (DYNAMIC_SRC_RE.test(attrs) && !SRC_ATTR_RE.test(attrs)) return full;
+
+      const srcMatch = SRC_ATTR_RE.exec(attrs);
+      const src = srcMatch ? (srcMatch[1] ?? srcMatch[2] ?? '') : null;
+      const verdict = classifySrc(src, fileMap);
+      if (verdict === 'ok') return full;
+
+      const parsed = parseAttrs(attrs);
+      const seed = imgSlug([path.replace(/\.(tsx|jsx)$/i, ''), String(offset)]);
+      const replacement = placeholderFor(seed, parsed, src ?? '');
+
+      let newAttrs: string;
+      if (srcMatch) {
+        // Replace the existing src attribute value, preserving quote style.
+        newAttrs = attrs.replace(SRC_ATTR_RE, `src="${replacement}"`);
+      } else {
+        // Inject a new src attribute right after the tag name.
+        const trimmed = attrs.replace(/^\s*/, ' ');
+        newAttrs = ` src="${replacement}"${trimmed}`;
+      }
+
+      // Ensure an alt attribute exists for accessibility.
+      if (!/\balt\s*=/.test(newAttrs)) {
+        newAttrs = newAttrs.replace(/\s*$/, '') + ' alt=""';
+      }
+
+      fileRewrites++;
+      return `<${tagName}${newAttrs}${selfClose ? ' /' : ''}>`;
+    });
+
+    if (fileRewrites > 0) {
+      filesChanged++;
+      rewrites += fileRewrites;
+      fileMap.set(path, { ...file, content: text });
+    }
+  }
+
+  return { filesChanged, rewrites };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ensureNextImageRemotePatterns — Next/Image refuses to render external URLs
+// unless their host is whitelisted. We always inject a config block covering
+// every placeholder host we use.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const NEXT_CONFIG_PATHS = [
+  'next.config.js',
+  'next.config.mjs',
+  'next.config.ts',
+  'apps/web/next.config.js',
+  'apps/web/next.config.mjs',
+  'apps/web/next.config.ts',
+];
+
+const NEXT_REMOTE_PATTERNS_BLOCK = `images: {
+    remotePatterns: [
+      { protocol: 'https', hostname: 'picsum.photos' },
+      { protocol: 'https', hostname: 'fastly.picsum.photos' },
+      { protocol: 'https', hostname: 'placehold.co' },
+      { protocol: 'https', hostname: 'images.unsplash.com' },
+      { protocol: 'https', hostname: 'ui-avatars.com' },
+      { protocol: 'https', hostname: 'api.dicebear.com' },
+      { protocol: 'https', hostname: 'i.pravatar.cc' },
+      { protocol: 'https', hostname: 'avatars.githubusercontent.com' },
+    ],
+  },`;
+
+function buildDefaultNextConfig(ext: 'js' | 'mjs' | 'ts'): string {
+  if (ext === 'ts') {
+    return `import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
+  reactStrictMode: true,
+  ${NEXT_REMOTE_PATTERNS_BLOCK}
+};
+
+export default nextConfig;
+`;
+  }
+  if (ext === 'mjs') {
+    return `/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  ${NEXT_REMOTE_PATTERNS_BLOCK}
+};
+
+export default nextConfig;
+`;
+  }
+  return `/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  ${NEXT_REMOTE_PATTERNS_BLOCK}
+};
+
+module.exports = nextConfig;
+`;
+}
+
+function projectUsesNextImage(fileMap: Map<string, ProjectFile>): boolean {
+  for (const file of fileMap.values()) {
+    if (!/\.(tsx|jsx|ts|js)$/i.test(file.path)) continue;
+    if (/from\s+['"]next\/image['"]/.test(file.content)) return true;
+  }
+  return false;
+}
+
+function projectIsNext(fileMap: Map<string, ProjectFile>): boolean {
+  for (const path of fileMap.keys()) {
+    if (/(^|\/)next\.config\.(js|mjs|ts)$/.test(path)) return true;
+    if (/(^|\/)(src\/)?app\/layout\.(tsx|jsx)$/.test(path)) return true;
+  }
+  return false;
+}
+
+/**
+ * Ensure next.config.{js,mjs,ts} declares the placeholder image hosts in
+ * images.remotePatterns. If a config exists without remotePatterns, we
+ * insert the block. If no config exists in a Next project that uses
+ * next/image, we create one. Idempotent.
+ */
+export function ensureNextImageRemotePatterns(fileMap: Map<string, ProjectFile>): {
+  changed: boolean;
+} {
+  if (!projectIsNext(fileMap)) return { changed: false };
+
+  // Find existing config.
+  let existingPath: string | null = null;
+  for (const candidate of NEXT_CONFIG_PATHS) {
+    if (fileMap.has(candidate)) {
+      existingPath = candidate;
+      break;
+    }
+  }
+
+  if (!existingPath) {
+    // Only create a config when next/image is actually used (otherwise we
+    // shouldn't be authoring a config the user didn't expect).
+    if (!projectUsesNextImage(fileMap)) return { changed: false };
+    // Detect monorepo layout.
+    const isMono = Array.from(fileMap.keys()).some((p) => p.startsWith('apps/web/'));
+    const target = isMono ? 'apps/web/next.config.mjs' : 'next.config.mjs';
+    fileMap.set(target, {
+      path: target,
+      content: buildDefaultNextConfig('mjs'),
+      language: 'javascript',
+    });
+    return { changed: true };
+  }
+
+  const file = fileMap.get(existingPath)!;
+  const content = file.content ?? '';
+
+  // Already has all placeholder hosts? No-op.
+  const allPresent =
+    content.includes('picsum.photos') &&
+    content.includes('images.unsplash.com') &&
+    content.includes('api.dicebear.com');
+  if (allPresent && /remotePatterns\s*:/.test(content)) return { changed: false };
+
+  let updated = content;
+
+  if (/images\s*:\s*\{[\s\S]*?remotePatterns\s*:\s*\[/m.test(updated)) {
+    // Append our entries inside the existing remotePatterns array.
+    const additions = [
+      "{ protocol: 'https', hostname: 'picsum.photos' },",
+      "{ protocol: 'https', hostname: 'fastly.picsum.photos' },",
+      "{ protocol: 'https', hostname: 'placehold.co' },",
+      "{ protocol: 'https', hostname: 'images.unsplash.com' },",
+      "{ protocol: 'https', hostname: 'ui-avatars.com' },",
+      "{ protocol: 'https', hostname: 'api.dicebear.com' },",
+      "{ protocol: 'https', hostname: 'i.pravatar.cc' },",
+      "{ protocol: 'https', hostname: 'avatars.githubusercontent.com' },",
+    ]
+      .filter((entry) => {
+        const host = entry.match(/hostname:\s*'([^']+)'/)?.[1];
+        return host ? !updated.includes(`'${host}'`) : true;
+      })
+      .join('\n      ');
+    if (additions) {
+      updated = updated.replace(
+        /(remotePatterns\s*:\s*\[)/m,
+        `$1\n      ${additions}`,
+      );
+    }
+  } else if (/(?:const|let|var)\s+\w+\s*[:=]\s*\{/.test(updated) || /export default\s*\{/.test(updated)) {
+    // Inject a fresh `images:` block at the top of the config object.
+    updated = updated.replace(
+      /(\b(?:const|let|var)\s+\w+\s*(?::[^=]+)?=\s*\{|export default\s*\{)/,
+      `$1\n  ${NEXT_REMOTE_PATTERNS_BLOCK}\n  `,
+    );
+  } else {
+    // Unrecognised shape — overwrite with a clean default rather than risk
+    // breaking the user's config.
+    const ext = existingPath.endsWith('.ts') ? 'ts' : existingPath.endsWith('.mjs') ? 'mjs' : 'js';
+    updated = buildDefaultNextConfig(ext);
+  }
+
+  if (updated === content) return { changed: false };
+  fileMap.set(existingPath, { ...file, content: updated });
+  return { changed: true };
+}

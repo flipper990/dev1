@@ -128,12 +128,14 @@ function checkUiStructure(files: ProjectFile[]): StaticIssue[] {
 // https://picsum.photos/seed/<slug>/<w>/<h>".
 const PLACEHOLDER_HOSTS = [
   'picsum.photos',
+  'fastly.picsum.photos',
   'placehold.co',
   'placehold.it',
   'placeholder.com',
   'images.unsplash.com',
   'ui-avatars.com',
   'api.dicebear.com',
+  'i.pravatar.cc',
   'avatars.githubusercontent.com',
 ];
 

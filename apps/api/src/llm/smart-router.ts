@@ -9,21 +9,21 @@ import { CircuitBreaker } from '../../../../packages/agent-core/src/resilience.j
 import type { CircuitBreakerConfig } from '../../../../packages/agent-core/src/resilience.js';
 import { ProviderRegistry } from './provider-registry.js';
 import { CostTracker } from './cost-tracker.js';
-import type { ChatMessage, CostSummary, LLMProviderClient, ModelOverride, RoutedLLMResponse, RouterConfig, TaskCategory } from './types.js';
+import type { ChatMessage, CostSummary, LLMProviderClient, ModelOverride, RoutedLLMResponse, RouterConfig, RoutingRule, TaskCategory } from './types.js';
 import { ROLE_TO_CATEGORY as roleToCategory } from './types.js';
-import { DEFAULT_ROUTING_RULES, CLAUDE_SONNET, GPT_4O, classifyRouterError, isRetryable, sleep } from './router-config.js';
-
-export { DEFAULT_ROUTING_RULES } from './router-config.js';
+import { buildRoutingRulesFromConfig, buildFallbackByModelMap, classifyRouterError, isRetryable, sleep } from './router-config.js';
 
 export class SmartLLMRouter implements LLMClient {
   private registry: ProviderRegistry;
   private costTracker: CostTracker;
   private circuitBreaker: CircuitBreaker;
   private logger: Logger;
-  private rules: Map<TaskCategory, (typeof DEFAULT_ROUTING_RULES)[0]>;
+  private rules: Map<TaskCategory, RoutingRule>;
   private overrides: ModelOverride[] = [];
-  private defaultModel: ModelConfig;
-  private defaultFallback?: ModelConfig;
+  /** Explicit per-model fallback map. NEVER inferred — only set via .env. */
+  private fallbackByModel: Map<string, ModelConfig>;
+  /** Optional default model — only used when both routeByCategory and a model hint are absent. */
+  private defaultModel?: ModelConfig;
   private maxRetries: number;
   private retryBaseDelayMs: number;
 
@@ -38,11 +38,11 @@ export class SmartLLMRouter implements LLMClient {
     this.costTracker = new CostTracker();
     this.circuitBreaker = new CircuitBreaker(logger, cbConfig);
     this.rules = new Map();
-    for (const rule of config?.rules ?? DEFAULT_ROUTING_RULES) {
+    for (const rule of config?.rules ?? buildRoutingRulesFromConfig()) {
       this.rules.set(rule.category, rule);
     }
-    this.defaultModel    = config?.defaultModel    ?? CLAUDE_SONNET;
-    this.defaultFallback = config?.defaultFallback ?? GPT_4O;
+    this.fallbackByModel = config?.fallbackByModel ?? buildFallbackByModelMap();
+    this.defaultModel    = config?.defaultModel;
     this.maxRetries          = config?.maxRetries          ?? 3;
     this.retryBaseDelayMs    = config?.retryBaseDelayMs    ?? 1000;
   }
@@ -54,13 +54,13 @@ export class SmartLLMRouter implements LLMClient {
 
   async *chat(params: { model: ModelConfig; system: string; messages: { role: 'user' | 'assistant'; content: string }[]; stream?: boolean }): AsyncGenerator<string, void, unknown> {
     if (!this.circuitBreaker.canUse(params.model.provider)) {
-      const fallback = this.defaultFallback;
+      const fallback = this.fallbackByModel.get(params.model.model);
       if (fallback && fallback.model !== params.model.model && this.circuitBreaker.canUse(fallback.provider) && this.registry.has(fallback.provider)) {
-        this.logger.warn(`Streaming circuit open for ${params.model.provider}, falling back to ${fallback.provider}/${fallback.model}`);
+        this.logger.warn(`Streaming circuit open for ${params.model.provider}/${params.model.model}, using configured fallback ${fallback.provider}/${fallback.model}`);
         yield* this.getProviderClient(fallback.provider).chatStream({ ...params, model: fallback });
         return;
       }
-      throw new Error(`Circuit open for provider ${params.model.provider} and no streaming fallback available`);
+      throw new Error(`Circuit open for provider ${params.model.provider} and no explicit streaming fallback configured for ${params.model.model}`);
     }
     if (!this.registry.has(params.model.provider)) throw new Error(`Provider ${params.model.provider} not registered`);
     try {
@@ -81,12 +81,15 @@ export class SmartLLMRouter implements LLMClient {
     const override  = this.findOverride(agentRole, category);
     const rule      = this.rules.get(category);
     const primary   = override ?? modelHint ?? rule?.primary ?? this.defaultModel;
-    const fallbacks = [...(rule?.fallbacks ?? []), ...(this.defaultFallback ? [this.defaultFallback] : [])].filter(fb => fb.model !== primary.model);
+    if (!primary) throw new Error(`No model configured for category "${category}" and no default model set`);
+    const fallbacks = (rule?.fallbacks ?? []).filter(fb => fb.model !== primary.model);
     return this.executeWithFallbackChain(primary, fallbacks, system, messages, { agentRole, taskCategory: category });
   }
 
   async routedCall(model: ModelConfig, system: string, messages: ChatMessage[], meta?: { agentRole?: AgentRole; taskCategory?: TaskCategory }): Promise<RoutedLLMResponse> {
-    const fallbacks = this.defaultFallback && this.defaultFallback.model !== model.model ? [this.defaultFallback] : [];
+    // Explicit fallback only — must be configured in .env via MODEL_<ROLE>_FALLBACK.
+    const explicit = this.fallbackByModel.get(model.model);
+    const fallbacks = explicit && explicit.model !== model.model ? [explicit] : [];
     return this.executeWithFallbackChain(model, fallbacks, system, messages, meta);
   }
 
@@ -158,10 +161,29 @@ export class SmartLLMRouter implements LLMClient {
           const errorCode = classifyRouterError(lastError);
           this.logger.warn(`LLM call failed: ${provider}/${model.model}`, { requestId, attempt, error: lastError.message, errorCode });
           this.costTracker.record({ requestId, timestamp: new Date(), provider, model: model.model, tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs, agentRole: meta?.agentRole, taskCategory: meta?.taskCategory, usedFallback: isFallback, success: false, error: lastError.message });
-          this.circuitBreaker.recordFailure(provider);
+          // Rate-limit (429) is throttling, not a provider outage.
+          // Tripping the breaker on 429 punishes the whole provider for a
+          // legitimate per-minute quota event and prevents the fallback
+          // chain from even trying the smaller model on the same provider.
+          if (errorCode !== 'RATE_LIMITED') {
+            this.circuitBreaker.recordFailure(provider);
+          }
           if (!isRetryable(errorCode)) { this.logger.warn(`Error ${errorCode} is not retryable, moving to next model`); break; }
+          // On RATE_LIMITED, the per-minute bucket is full — retrying the
+          // same big model will just fail again. Jump straight to the
+          // fallback (typically a smaller model with higher TPM headroom).
+          if (errorCode === 'RATE_LIMITED' && mi < models.length - 1) {
+            this.logger.warn(`Rate limit on ${provider}/${model.model} — skipping retries, moving to fallback`, { requestId });
+            break;
+          }
           if (attempt < this.maxRetries) {
-            const delay = this.retryBaseDelayMs * Math.pow(2, attempt - 1);
+            // Rate limits (TPM/RPM) reset on a 60s window. Short
+            // exponential backoff isn't enough — wait long enough for
+            // the bucket to refill before retrying.
+            const baseDelay = errorCode === 'RATE_LIMITED'
+              ? 20000 // 20s, 40s on next attempt
+              : this.retryBaseDelayMs;
+            const delay = baseDelay * Math.pow(2, attempt - 1);
             await sleep(Math.max(100, Math.round(delay + delay * 0.25 * (Math.random() * 2 - 1))));
           }
         }

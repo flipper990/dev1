@@ -88,12 +88,12 @@ export interface RoutingRule {
 // â”€â”€ Router Configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface RouterConfig {
-  /** Per-category routing rules. If a category has no rule, uses defaultModel. */
+  /** Per-category routing rules. */
   rules: RoutingRule[];
-  /** Default model when no rule matches. */
-  defaultModel: ModelConfig;
-  /** Default fallback when no rule-specific fallbacks available. */
-  defaultFallback?: ModelConfig;
+  /** Optional default model for routeByCategory when no rule matches. NOT used by routedCall. */
+  defaultModel?: ModelConfig;
+  /** Explicit per-model fallback map (model.model → fallback ModelConfig). Built from .env. */
+  fallbackByModel?: Map<string, ModelConfig>;
   /** Enable circuit breaker (default true). */
   enableCircuitBreaker?: boolean;
   /** Enable cost tracking (default true). */

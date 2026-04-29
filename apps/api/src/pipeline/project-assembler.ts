@@ -97,17 +97,72 @@ export function applyPatches(
       continue;
     }
     if (typeof patch.newContent !== 'string') continue;
+
+    const before = file.content;
+    let after: string;
+
     // Allow whole-file replacement when oldContent is empty.
     if (!patch.oldContent) {
-      file.content = patch.newContent;
-      continue;
-    }
-    if (file.content.includes(patch.oldContent)) {
-      file.content = file.content.replace(patch.oldContent, patch.newContent);
+      after = patch.newContent;
+    } else if (before.includes(patch.oldContent)) {
+      after = before.replace(patch.oldContent, patch.newContent);
     } else {
       logger.warn(`${source} patch content mismatch in ${patch.file}`);
+      continue;
     }
+
+    // Reject patches that introduce syntactic damage. The QA/polish agents
+    // sometimes emit patches whose oldContent matches an opener but whose
+    // newContent forgets the original closer, leaving an orphan tail in the
+    // file and a permanently broken build. We refuse such patches and keep
+    // the previous (working) content.
+    if (isCodeFilePath(patch.file)) {
+      const beforeOk = isBracketBalanced(before);
+      const afterOk = isBracketBalanced(after);
+      if (beforeOk && !afterOk) {
+        logger.warn(
+          `${source} patch REJECTED for ${patch.file}: would unbalance brackets — keeping previous content`,
+        );
+        continue;
+      }
+    }
+
+    file.content = after;
   }
+}
+
+const CODE_EXT_RE = /\.(tsx|jsx|ts|js|mjs|cjs)$/i;
+function isCodeFilePath(p: string): boolean {
+  return CODE_EXT_RE.test(p);
+}
+
+/**
+ * Cheap balance check matching `quality-assurance.ts.checkSyntaxBalance`.
+ * Returns true when (), {}, [] balance out and no string/comment is left
+ * unterminated. Skips JSX tag pairing — that's checked elsewhere.
+ */
+function isBracketBalanced(src: string): boolean {
+  if (!src.trim()) return true;
+  let paren = 0, brace = 0, bracket = 0;
+  let inString: '"' | "'" | '`' | null = null;
+  let inLineComment = false, inBlockComment = false;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    const prev = i > 0 ? src[i - 1] : '';
+    if (inLineComment) { if (c === '\n') inLineComment = false; continue; }
+    if (inBlockComment) { if (c === '/' && prev === '*') inBlockComment = false; continue; }
+    if (inString) {
+      if (c === inString && prev !== '\\') inString = null;
+      continue;
+    }
+    if (c === '/' && src[i + 1] === '/') { inLineComment = true; continue; }
+    if (c === '/' && src[i + 1] === '*') { inBlockComment = true; continue; }
+    if (c === '"' || c === "'" || c === '`') { inString = c; continue; }
+    if (c === '(') paren++;   else if (c === ')') paren--;
+    if (c === '{') brace++;   else if (c === '}') brace--;
+    if (c === '[') bracket++; else if (c === ']') bracket--;
+  }
+  return paren === 0 && brace === 0 && bracket === 0 && !inString && !inBlockComment;
 }
 
 export function buildTaskSummaries(state: PipelineState): TaskSummary[] {

@@ -44,7 +44,7 @@ export class ProjectGenerator {
   private readonly maxConcurrentSessions: number;
   /** Wall-clock cap on a single pipeline run. Per-agent step timeouts and
    *  SDK request timeouts cap individual calls; this caps everything. */
-  private readonly pipelineHardTimeoutMs: number = 25 * 60 * 1000;
+  private readonly pipelineHardTimeoutMs: number = 45 * 60 * 1000;
   private updater: ProjectUpdater;
   private previewManager?: PreviewManager;
   private apiBaseUrl = 'http://127.0.0.1:3003';
@@ -191,10 +191,12 @@ export class ProjectGenerator {
       return result;
     } catch (err) {
       const error = (err as Error).message;
+      const stack = (err as Error).stack;
       project.status = 'failed';
+      project.error = error || 'Unknown pipeline error';
       project.completedAt = new Date().toISOString();
       await this.projectStore.save(project);
-      this.logger.error(`Project ${projectId} crashed`, { error });
+      this.logger.error(`Project ${projectId} crashed`, { error, stack });
       return { projectId, sessionId, success: false, error };
     } finally {
       if (pipelineTimeoutHandle) clearTimeout(pipelineTimeoutHandle);
@@ -219,8 +221,40 @@ export class ProjectGenerator {
   ): Promise<GenerateResult> {
     const { projectId, sessionId, request, project, session, cacheKey } = ctx;
     const bus = new InMemoryMessageBus();
+
+    // Multi-orchestrator pipelines (Phase 1 spec, then per-slice
+    // builder/qa/polish, then per-slice rebuilds) all emit their own
+    // pipeline:started / pipeline:completed events on DIFFERENT session
+    // ids. The UI subscribes to the MAIN session's progress, so we:
+    //   1. Rewrite every event's sessionId to the main session.
+    //   2. Suppress intermediate pipeline:started / pipeline:completed /
+    //      pipeline:failed — only the very first 'started' (Phase 1) and
+    //      a single final 'completed' (after assembly) should reach the
+    //      session manager. Otherwise the UI flips to "Pipeline complete"
+    //      after the spec phase and stops updating.
+    let lifecycleEmitted = false; // tracks whether we let pipeline:started through
+    const forwardEvents = (orchSessionIsMain: boolean): ((event: PipelineEvent) => void) => {
+      return (event: PipelineEvent) => {
+        // Always rewrite onto the main session id so the UI sees a single timeline.
+        const remapped = { ...event, sessionId } as PipelineEvent;
+        if (event.type === 'pipeline:started') {
+          if (!lifecycleEmitted && orchSessionIsMain) {
+            lifecycleEmitted = true;
+            this.sessionManager.handleEvent(remapped);
+          }
+          return;
+        }
+        // Swallow pipeline-level terminal events; we emit one final event
+        // ourselves after assembly + QA gate.
+        if (event.type === 'pipeline:completed' || event.type === 'pipeline:failed') {
+          return;
+        }
+        this.sessionManager.handleEvent(remapped);
+      };
+    };
+
     const orchestrator = new PipelineOrchestrator(this.agents, bus, this.logger);
-    orchestrator.onEvent((event: PipelineEvent) => this.sessionManager.handleEvent(event));
+    orchestrator.onEvent(forwardEvents(/* orchSessionIsMain */ true));
 
     {
       // ── Phase 1 — SPEC only ──────────────────────────────
@@ -300,7 +334,7 @@ export class ProjectGenerator {
         if (sliceIdx < sliceCount - 1) sliceSeed.set('polish', stubPolish);
 
         const sliceOrch = new PipelineOrchestrator(this.agents, bus, this.logger);
-        sliceOrch.onEvent((event: PipelineEvent) => this.sessionManager.handleEvent(event));
+        sliceOrch.onEvent(forwardEvents(/* orchSessionIsMain */ false));
         let sliceState = await sliceOrch.execute(sliceSession, sliceSeed);
         totalBuilderIterations++;
 
@@ -346,7 +380,7 @@ export class ProjectGenerator {
           if (sliceIdx < sliceCount - 1) rebuildSeed.set('polish', stubPolish);
 
           const rebuildOrch = new PipelineOrchestrator(this.agents, bus, this.logger);
-          rebuildOrch.onEvent((event: PipelineEvent) => this.sessionManager.handleEvent(event));
+          rebuildOrch.onEvent(forwardEvents(/* orchSessionIsMain */ false));
           sliceState = await rebuildOrch.execute(rebuildSession, rebuildSeed);
           totalBuilderIterations++;
           // Re-check integrity after the rebuild so the loop converges or
@@ -465,6 +499,28 @@ export class ProjectGenerator {
 
       await this.projectStore.save(project);
       this.writeResultCache(cacheKey, project.id);
+
+      // Emit the single, final pipeline-lifecycle event for the UI. All
+      // intermediate orchestrators were suppressed so the dashboard never
+      // sees a premature "Pipeline complete" between slices.
+      const finalEvent: PipelineEvent =
+        project.status === 'failed'
+          ? {
+              type: 'pipeline:failed',
+              sessionId,
+              error: pipelineState.error ?? (qaPassed ? 'unknown' : `QA gate failed (score ${qaGate.report.score}/100)`),
+              failedStep: pipelineState.error ? 'pipeline' : 'qa-gate',
+              durationMs: pipelineState.durationMs,
+            }
+          : {
+              type: 'pipeline:completed',
+              sessionId,
+              durationMs: pipelineState.durationMs,
+              stepsCompleted: stepSummaries.filter(s => s.status === 'completed').length,
+              stepsFailed:    stepSummaries.filter(s => s.status === 'failed').length,
+              stepsSkipped:   stepSummaries.filter(s => s.status === 'skipped').length,
+            };
+      this.sessionManager.handleEvent(finalEvent);
 
       // Fire-and-forget runtime validation + auto-fix. Best-effort: if
       // Docker is missing, the preview manager isn't wired, or anything

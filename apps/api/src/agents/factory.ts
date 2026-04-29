@@ -6,6 +6,7 @@
 import type { AgentRole, AgentMiddleware, AgentHooks, PromptConfig } from '../../../../packages/agent-core/src/types.js';
 import { BaseAgent, type AgentConfig, type LLMClient, type MemoryStore, type MessageBus, type Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import { AGENT_DEFINITIONS } from '../../../../packages/agent-core/src/agent-registry.js';
+import { MODEL_CONFIG, describeModel } from '../config/models.js';
 
 import { SpecAgent }    from './spec-agent.js';
 import { BuilderAgent } from './builder-agent.js';
@@ -61,7 +62,17 @@ export function createAllAgents(
       logIO: options?.logIO ?? true,
     };
 
-    agents.set(agentRole, new AgentClass(definition, llm, memory, bus, agentLogger, agentConfig));
+    // Override the registry-defined model with the env-driven MODEL_CONFIG.
+    // This is the single source of truth for which model each agent uses.
+    const cfg = MODEL_CONFIG[agentRole];
+    const definitionWithEnvModel = {
+      ...definition,
+      model: cfg.primary,
+      fallbackModel: cfg.fallback,
+    };
+    agentLogger.info(`Configured model: ${describeModel(cfg.primary)}${cfg.fallback ? ` (fallback: ${describeModel(cfg.fallback)})` : ' (no fallback)'}`);
+
+    agents.set(agentRole, new AgentClass(definitionWithEnvModel, llm, memory, bus, agentLogger, agentConfig));
   }
 
   return agents;
@@ -79,5 +90,11 @@ export function createAgent(
   if (!AgentClass) throw new Error(`No implementation for agent role: ${role}`);
   const definition = AGENT_DEFINITIONS[role];
   if (!definition) throw new Error(`No definition for agent role: ${role}`);
-  return new AgentClass(definition, llm, memory, bus, logger, config);
+  const cfg = MODEL_CONFIG[role];
+  const definitionWithEnvModel = {
+    ...definition,
+    model: cfg.primary,
+    fallbackModel: cfg.fallback,
+  };
+  return new AgentClass(definitionWithEnvModel, llm, memory, bus, logger, config);
 }

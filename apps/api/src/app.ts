@@ -12,6 +12,7 @@ import { ZodError } from 'zod';
 import { config } from './config.js';
 import { createLogger, pinoLogger } from './logger.js';
 import { createLLMRouter } from './llm/router.js';
+import { validateModelConfig, logActiveModels } from './config/models.js';
 import { createAllAgents } from './agents/factory.js';
 import { FileMemoryStore } from './storage/memory-store.js';
 import { LearningEngine } from './storage/learning-engine.js';
@@ -42,6 +43,24 @@ export async function buildApp() {
   const learningEngine = new LearningEngine(memoryStore, createLogger('learning'));
 
   // ── Initialize LLM + Agents ─────────────────────────
+
+  // Validate the env-driven MODEL_CONFIG before wiring agents.
+  const modelLogger = createLogger('models');
+  const validation = validateModelConfig({
+    hasOpenAIKey:    Boolean(config.llm.openaiApiKey),
+    hasAnthropicKey: Boolean(config.llm.anthropicApiKey),
+    hasGoogleKey:    Boolean(config.llm.googleApiKey),
+  });
+  for (const w of validation.warnings) modelLogger.warn(w);
+  for (const e of validation.errors)   modelLogger.error(e);
+  if (!validation.ok) {
+    throw new Error(
+      `Model configuration invalid — fix the errors above. ` +
+      `Set MODEL_<ROLE> + matching <PROVIDER>_API_KEY in .env. ` +
+      `Errors: ${validation.errors.join('; ')}`,
+    );
+  }
+  logActiveModels(modelLogger);
 
   const llm = createLLMRouter(createLogger('llm'));
 

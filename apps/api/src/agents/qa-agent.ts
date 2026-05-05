@@ -21,6 +21,7 @@ interface FeatureSlice {
 interface QaInput {
   spec: Record<string, unknown>;
   files: Array<{ path: string; content: string; language?: string }>;
+  filesManifest?: Array<{ path: string; bytes: number; lines: number; kind: string; language?: string }>;
   runtimeFeedback?: {
     issues?: { category: string; message: string; hint?: string; rootCause?: string }[];
     log?: string;
@@ -44,7 +45,7 @@ export class QaAgent extends BaseAgent {
   private lastStaticIssues: StaticIssue[] = [];
 
   protected async buildPrompt(task: Task, memories: MemoryEntry[]): Promise<string> {
-    const { spec, files, runtimeFeedback, currentSlice, sliceIndex, totalSlices } =
+    const { spec, files, filesManifest, runtimeFeedback, currentSlice, sliceIndex, totalSlices } =
       task.input as unknown as QaInput;
 
     // Run mechanical preflight FIRST so its findings are surfaced as forced
@@ -116,6 +117,26 @@ export class QaAgent extends BaseAgent {
     prompt += `## Codebase (${files.length} files)\n\n`;
     for (const f of files) {
       prompt += `### ${f.path}\n\`\`\`${f.language ?? ''}\n${f.content}\n\`\`\`\n\n`;
+    }
+
+    if (filesManifest && filesManifest.length > 0) {
+      prompt += `## Other files in the project (manifest only — bodies omitted to save tokens)\n\n`;
+      prompt += `These files EXIST in the codebase but were not loaded for this review because they are not part of the active slice. They are managed by other slices and are presumed correct.\n`;
+      prompt += `Rules:\n`;
+      prompt += `  • Do NOT flag them as missing.\n`;
+      prompt += `  • Do NOT include them in patches[] / newFiles[].\n`;
+      prompt += `  • If a file in the loaded set imports from one of these, treat the import as resolved.\n`;
+      prompt += `  • If you SUSPECT a regression in one of them caused by this slice, request it by path in your "issues[]" with a 'needs-review' note instead of guessing.\n\n`;
+      // Group by kind for readability and cap to a reasonable size.
+      const byKind: Record<string, typeof filesManifest> = {};
+      for (const m of filesManifest) (byKind[m.kind] ??= []).push(m);
+      for (const kind of Object.keys(byKind).sort()) {
+        prompt += `### ${kind} (${byKind[kind].length})\n`;
+        for (const m of byKind[kind]) {
+          prompt += `- ${m.path} — ${m.bytes}B / ${m.lines} lines\n`;
+        }
+        prompt += `\n`;
+      }
     }
 
     prompt += this.formatMemoriesForPrompt(memories);

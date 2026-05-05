@@ -39,7 +39,7 @@ const ROLE_DEFAULTS: Record<AgentRole, { model: string; provider: LLMProvider; t
   polish:  { model: 'gpt-4o-mini', provider: 'openai', temperature: 0.2, maxTokens: 16384 },
 };
 
-const VALID_PROVIDERS: readonly LLMProvider[] = ['openai', 'anthropic', 'google', 'local'];
+const VALID_PROVIDERS: readonly LLMProvider[] = ['openai', 'anthropic', 'azure', 'google', 'local'];
 
 // ── Loader ─────────────────────────────────────────────────
 
@@ -105,6 +105,7 @@ export const MODEL_CONFIG: ModelConfigMap = build();
 const PROVIDER_LABEL: Record<LLMProvider, string> = {
   openai:    'OpenAI',
   anthropic: 'Anthropic',
+  azure:     'Azure OpenAI',
   google:    'Google',
   local:     'Local',
 };
@@ -131,6 +132,7 @@ export function validateModelConfig(opts: {
   hasOpenAIKey: boolean;
   hasAnthropicKey: boolean;
   hasGoogleKey: boolean;
+  hasAzureOpenAI?: boolean;
 }): ModelValidationResult {
   const warnings: string[] = [];
   const errors: string[]   = [];
@@ -138,6 +140,7 @@ export function validateModelConfig(opts: {
   const providerKey: Record<LLMProvider, boolean> = {
     openai:    opts.hasOpenAIKey,
     anthropic: opts.hasAnthropicKey,
+    azure:     Boolean(opts.hasAzureOpenAI),
     google:    opts.hasGoogleKey,
     local:     true,
   };

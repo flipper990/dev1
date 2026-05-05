@@ -21,7 +21,7 @@
  *   - Device toggle switches max-width (desktop / tablet / mobile).
  */
 
-import { Component, useCallback, useEffect, useState } from 'react';
+import { Component, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Monitor, Tablet, Smartphone,
   RefreshCw, AlertTriangle, RotateCcw, Globe, Download, Loader2, CheckCircle2, ShieldCheck,
@@ -30,7 +30,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../lib/store';
 import { cn } from '../lib/cn';
-import { exportProject } from '../lib/api';
+import { exportProject, reportIframeReady } from '../lib/api';
 import { usePreviewHtml } from '../hooks/usePreviewHtml';
 import { useDockerPreview } from '../hooks/useDockerPreview';
 
@@ -76,6 +76,13 @@ export function LivePreview() {
   const [viewport,  setViewport]  = useState<Viewport>('desktop');
   const [iframeKey, setIframeKey] = useState(0);
   const [loading,   setLoading]   = useState(false);
+  // Has the Docker iframe successfully fired `onLoad` for the current
+  // mount? This is the SINGLE source of truth for "preview is visible".
+  // We deliberately don't wait for `docker.phase === 'ready'` because the
+  // dev server inside the container can become responsive seconds before
+  // the 2s status poll catches up — leaving the user staring at a "Booting"
+  // overlay covering an already-rendered iframe.
+  const [dockerIframeLoaded, setDockerIframeLoaded] = useState(false);
 
   const project = projects.find((p) => p.id === selectedProjectId) ?? null;
   const projectStatus = project?.status ?? null;
@@ -90,6 +97,24 @@ export function LivePreview() {
   const docker = useDockerPreview(selectedProjectId, enabled);
   const useDocker = docker.phase === 'ready' || docker.phase === 'starting' || docker.phase === 'checking';
   const dockerFailed = docker.phase === 'failed' || docker.phase === 'unavailable';
+
+  // Reset the iframe-loaded flag whenever we remount the iframe (key change),
+  // switch project, or restart the container.
+  useEffect(() => {
+    setDockerIframeLoaded(false);
+  }, [selectedProjectId, iframeKey, docker.url]);
+
+  // Log preview lifecycle milestones to the host log panel so users can see
+  // exactly when the iframe became live.
+  const lastLifecycleRef = useRef<string>('');
+  useEffect(() => {
+    if (!enabled || !selectedProjectId) return;
+    const tag = `${docker.previewState}|${docker.url ? 'url' : 'no-url'}|loaded=${dockerIframeLoaded}`;
+    if (tag !== lastLifecycleRef.current) {
+      pushLog('preview', `state=${docker.previewState}${docker.url ? ` url=${docker.url}` : ''}${dockerIframeLoaded ? ' iframe-loaded' : ''}`, 'info');
+      lastLifecycleRef.current = tag;
+    }
+  }, [enabled, selectedProjectId, docker.previewState, docker.url, dockerIframeLoaded, pushLog]);
 
   // Fallback srcDoc preview — only build it when Docker isn't going to work,
   // otherwise we waste cycles fetching every file in the project.
@@ -148,6 +173,40 @@ export function LivePreview() {
   const currentStep = progress?.currentStep?.name ?? null;
   const vp          = VIEWPORTS.find((v) => v.id === viewport)!;
 
+  // ─── Unified preview readiness ─────────────────────────────────────────
+  // Three independent signals can each say "preview is ready"; we trust
+  // ANY of them and clear loading overlays accordingly:
+  //   1. The iframe's own `onLoad` fired         → most authoritative
+  //   2. The /preview/status poll says 'ready'   → backend confirms healthy
+  //   3. ProjectRecord.preview.previewReady true → persisted mirror
+  // Per UX rule: if iframe loads but backend status is stale, trust the
+  // iframe — the user is already looking at a working app.
+  const previewIsReady =
+    dockerIframeLoaded
+    || docker.previewState === 'ready'
+    || project?.preview?.previewReady === true;
+
+  const previewIsFailed =
+    docker.previewState === 'failed'
+    || project?.preview?.previewStatus === 'failed';
+
+  // Single message string for the banner above the iframe. Mirrors the
+  // user spec: "Project generated successfully" → "Preview starting…" →
+  // "Preview ready". Failures + idle phases are handled separately.
+  const previewMessage: { kind: 'generating' | 'generated' | 'starting' | 'ready' | 'failed' | 'idle'; text: string } | null =
+    !selectedProjectId ? null
+    : projectStatus === 'generating' ? { kind: 'generating', text: 'Generating project…' }
+    : projectStatus === 'failed'     ? { kind: 'failed',     text: 'Generation failed' }
+    : previewIsFailed                ? { kind: 'failed',     text: 'Preview failed to start' }
+    : previewIsReady                 ? { kind: 'ready',      text: 'Preview ready' }
+    : projectStatus === 'completed'  ? { kind: 'starting',   text:
+        docker.previewState === 'preparing' ? 'Project generated successfully · preparing preview…'
+        : docker.previewState === 'installing' ? 'Installing dependencies…'
+        : docker.previewState === 'building'   ? 'Building image…'
+        : docker.previewState === 'starting'   ? 'Starting dev server…'
+        : 'Project generated successfully · preview starting…' }
+    : { kind: 'idle', text: 'Idle' };
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
       {/* Toolbar */}
@@ -172,20 +231,43 @@ export function LivePreview() {
             </div>
           )}
 
-          {project && (
-            <div className={cn(
-              'flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest border flex-shrink-0',
-              projectStatus === 'completed' ? 'text-[#22C55E] border-[#22C55E]/30 bg-[#22C55E]/[0.08]'
-                : projectStatus === 'generating' ? 'text-[#3B82F6] border-[#3B82F6]/30 bg-[#3B82F6]/[0.08]'
-                : 'text-[#64748B] border-white/[0.06] bg-white/[0.03]',
-            )}>
-              <span className="w-1.5 h-1.5 rounded-full" style={{
-                background: projectStatus === 'completed' ? '#22C55E' : projectStatus === 'generating' ? '#3B82F6' : '#64748B',
-                animation: projectStatus === 'completed' || projectStatus === 'generating' ? 'pulse-dot 1.8s ease-in-out infinite' : undefined,
-              }} />
-              {projectStatus === 'completed' ? 'Live' : projectStatus === 'generating' ? 'Building' : 'Ready'}
-            </div>
-          )}
+          {project && (() => {
+            // Decoupled status pill. Project lifecycle on the left half,
+            // preview lifecycle on the right half — never conflate the two.
+            const projDone = projectStatus === 'completed';
+            const projGen  = projectStatus === 'generating';
+            const previewLabel: string =
+              !projDone ? (projGen ? 'Generating' : 'Idle')
+              : previewIsReady ? 'Live'
+              : previewIsFailed ? 'Failed'
+              : docker.previewState === 'preparing' ? 'Preparing'
+              : docker.previewState === 'installing' ? 'Installing'
+              : docker.previewState === 'building' ? 'Building'
+              : docker.previewState === 'starting' ? 'Starting'
+              : 'Waiting';
+            const live = previewLabel === 'Live';
+            const isPending = projGen || (projDone && !live && !previewIsFailed);
+            const colorClass = live
+              ? 'text-[#22C55E] border-[#22C55E]/30 bg-[#22C55E]/[0.08]'
+              : previewLabel === 'Failed'
+                ? 'text-[#EF4444] border-[#EF4444]/30 bg-[#EF4444]/[0.08]'
+                : isPending
+                  ? 'text-[#3B82F6] border-[#3B82F6]/30 bg-[#3B82F6]/[0.08]'
+                  : 'text-[#64748B] border-white/[0.06] bg-white/[0.03]';
+            const dot = live ? '#22C55E' : previewLabel === 'Failed' ? '#EF4444' : isPending ? '#3B82F6' : '#64748B';
+            return (
+              <div className={cn(
+                'flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest border flex-shrink-0',
+                colorClass,
+              )}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{
+                  background: dot,
+                  animation: isPending || live ? 'pulse-dot 1.8s ease-in-out infinite' : undefined,
+                }} />
+                {previewLabel}
+              </div>
+            );
+          })()}
 
           {/* Mode badge (react-synth / index-html / fallback) */}
           {preview.mode && enabled && (
@@ -243,7 +325,64 @@ export function LivePreview() {
       </div>
 
       {/* Stage */}
-      <div className="flex-1 relative flex items-start justify-center overflow-hidden" style={{ background: '#07090f' }}>
+      <div className="flex-1 relative flex flex-col overflow-hidden rounded-b-[20px]" style={{ background: '#07090f' }}>
+        {/* Status-message banner — single source of truth for the user-
+            facing copy ("Project generated successfully", "Preview
+            starting…", "Preview ready"). Auto-hides on idle so it
+            doesn't add noise when no project is selected. */}
+        {previewMessage && previewMessage.kind !== 'idle' && (
+          <div
+            className={cn(
+              'flex items-center gap-2 px-3 py-1.5 border-b text-[11px] flex-shrink-0',
+              previewMessage.kind === 'ready'
+                ? 'bg-[#22C55E]/[0.08] border-[#22C55E]/30 text-[#86EFAC]'
+                : previewMessage.kind === 'failed'
+                  ? 'bg-[#EF4444]/[0.08] border-[#EF4444]/30 text-[#FCA5A5]'
+                  : 'bg-[#3B82F6]/[0.08] border-[#3B82F6]/30 text-[#93C5FD]',
+            )}
+          >
+            {previewMessage.kind === 'ready' ? (
+              <CheckCircle2 size={12} className="flex-shrink-0" />
+            ) : previewMessage.kind === 'failed' ? (
+              <AlertTriangle size={12} className="flex-shrink-0" />
+            ) : (
+              <Loader2 size={12} className="flex-shrink-0 animate-spin" />
+            )}
+            <span className="flex-1 min-w-0 truncate font-semibold">{previewMessage.text}</span>
+            {previewMessage.kind === 'starting' && project?.preview?.previewStartedAt && (
+              <span className="text-[#64748B] font-mono">
+                {Math.max(0, Math.round((Date.now() - new Date(project.preview.previewStartedAt).getTime()) / 1000))}s
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Fallback mode banner — in normal flow above the iframe. Persistent
+            so users always know which mode they are seeing. Rendered first so
+            it gets layout space instead of overlapping content. */}
+        {enabled && dockerFailed && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-[#F59E0B]/10 border-b border-[#F59E0B]/30 text-[11px] text-[#FCD34D] flex-shrink-0">
+            <AlertTriangle size={12} className="flex-shrink-0 text-[#F59E0B]" />
+            <span className="flex-1 min-w-0 truncate">
+              <span className="font-semibold">Full preview unavailable</span>
+              <span className="opacity-75">
+                {' — showing frontend only ('}
+                {docker.phase === 'unavailable' ? 'Docker not running on host' : 'container failed to boot'}
+                {')'}
+              </span>
+            </span>
+            <button
+              onClick={handleRefresh}
+              title="Retry full Docker preview"
+              className="flex items-center gap-1 px-2 py-0.5 rounded border border-[#F59E0B]/40 text-[#FCD34D] hover:bg-[#F59E0B]/15 flex-shrink-0"
+            >
+              <RotateCcw size={10} /> Retry
+            </button>
+          </div>
+        )}
+
+        {/* Inner content area — flex column wrapper for overlays + iframe */}
+        <div className="flex-1 relative flex items-start justify-center min-h-0 overflow-hidden">
         {/* Pipeline overlay while a session is running */}
         <AnimatePresence>
           {isGenerating && (
@@ -272,31 +411,87 @@ export function LivePreview() {
           </div>
         )}
 
-        {/* Docker preview: starting (build + boot) */}
-        {enabled && useDocker && docker.phase !== 'ready' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center">
+        {/* Docker preview: starting (build + boot). Hide the moment ANY
+            readiness signal fires (iframe onLoad, status poll, persisted
+            mirror) — never make the user stare at a "Booting" overlay
+            covering an already-rendered app.
+            Per UX rule: if the iframe loaded but backend status is stale,
+            we trust the iframe and clear the overlay. */}
+        {enabled && useDocker && !previewIsReady && !previewIsFailed && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center z-20 bg-[#07090f]/80 backdrop-blur-sm">
             <Loader2 size={28} className="animate-spin text-[#3B82F6]" />
             <div>
               <p className="text-[13px] font-semibold text-[#F1F5F9] flex items-center justify-center gap-2">
                 <Container size={14} className="text-[#3B82F6]" />
-                {docker.phase === 'checking' ? 'Checking Docker…' : 'Booting container'}
+                {docker.previewState === 'preparing' ? 'Preparing preview…'
+                  : docker.previewState === 'installing' ? 'Installing dependencies…'
+                  : docker.previewState === 'building' ? 'Building image…'
+                  : docker.previewState === 'starting' ? 'Starting dev server…'
+                  : 'Preview starting…'}
               </p>
               <p className="text-[11px] text-[#64748B] mt-1 font-mono">
-                {docker.status?.state === 'building' && 'Building image (npm install)…'}
-                {docker.status?.state === 'starting' && 'Starting dev server…'}
+                {docker.status?.state === 'building' && 'npm install + image build (60–180s on first run)'}
+                {docker.status?.state === 'starting' && 'Waiting for HTTP health check…'}
                 {docker.status?.state === 'detecting' && 'Detecting framework…'}
-                {!docker.status?.state && 'First build can take 60-180s'}
+                {!docker.status?.state && 'First build can take 60–180s'}
                 {docker.status?.stack && ` · ${docker.status.stack}`}
               </p>
             </div>
             <div className="w-48 h-1 bg-white/[0.06] rounded-full overflow-hidden">
               <div className="h-full w-1/3" style={{ background: 'linear-gradient(90deg, #3B82F6, #818CF8)', animation: 'load-sweep 1.5s ease-in-out infinite' }} />
             </div>
+            {/* Timeline: explains the gap between generation completion
+                and a visible iframe. Reads from project.preview.timeline,
+                which is mirrored from the API's PreviewManager on every
+                lifecycle event. */}
+            {project?.preview?.timeline && project.preview.timeline.length > 0 && (
+              <div className="mt-2 max-w-md w-full text-left bg-[#0B0F19]/70 border border-white/[0.06] rounded-md px-3 py-2">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-[#64748B] mb-1">
+                  Lifecycle ({project.preview.timeline.length} event{project.preview.timeline.length === 1 ? '' : 's'})
+                </div>
+                <ol className="space-y-0.5 max-h-40 overflow-y-auto">
+                  {project.preview.timeline.slice(-12).map((evt, i) => {
+                    const isErr = evt.event === 'failed';
+                    const dot = isErr ? '#EF4444'
+                      : evt.event.endsWith('-end') || evt.event === 'http-probe-ok' || evt.event === 'url-published' || evt.event === 'iframe-ready'
+                      ? '#22C55E' : '#3B82F6';
+                    return (
+                      <li key={`${evt.at}-${i}`} className="flex items-center gap-2 text-[11px] font-mono">
+                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: dot }} />
+                        <span className={isErr ? 'text-[#FCA5A5]' : 'text-[#CBD5E1]'}>{evt.event}</span>
+                        {evt.durationMs != null && (
+                          <span className="text-[#64748B]">+{(evt.durationMs / 1000).toFixed(1)}s</span>
+                        )}
+                        {evt.details && typeof evt.details === 'object' && (() => {
+                          const d = evt.details as Record<string, unknown>;
+                          const port = (d.hostPort ?? d.webHostPort) as number | undefined;
+                          const stack = d.stack as string | undefined;
+                          return port || stack ? (
+                            <span className="text-[#64748B] truncate">
+                              {port ? `:${port}` : ''}{stack ? ` ${stack}` : ''}
+                            </span>
+                          ) : null;
+                        })()}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Docker preview: ready — real running app via reverse proxy */}
-        {enabled && useDocker && docker.phase === 'ready' && docker.url && (
+        {/* Fallback mode banner — shown ABOVE the srcDoc iframe whenever
+            we're rendering the static frontend-only preview. Persistent
+            (not just during loading) so users always know which mode they
+            are seeing. */}
+        {/* (banner moved above into stage flex-column) */}
+
+        {/* Docker preview: render the iframe as soon as a host port is
+            allocated (preview state ∈ {starting, ready}). The dev server
+            often becomes responsive before our poll catches up; the iframe
+            onLoad below clears the boot overlay above. */}
+        {enabled && useDocker && docker.url && (
           <motion.div
             className="relative flex flex-col overflow-hidden"
             style={{ width: '100%', height: '100%', maxWidth: vp.maxW ?? '100%' }}
@@ -349,12 +544,37 @@ export function LivePreview() {
               <iframe
                 key={`docker-${iframeKey}`}
                 src={docker.url}
-                className="flex-1 w-full border-0 bg-white block"
+                className="flex-1 w-full border-0 block"
+                style={{ background: '#07090f', colorScheme: 'dark' }}
                 title="Docker preview"
                 // Real app, real network. We don't sandbox this iframe because
                 // the contained app needs HMR, fetch to its own API, etc.
                 referrerPolicy="no-referrer"
-                onLoad={() => setLoading(false)}
+                onLoad={() => {
+                  setLoading(false);
+                  setDockerIframeLoaded(true);
+                  pushLog('preview', `iframe loaded: ${docker.url}`, 'info');
+                  // Close the timeline loop on the server so the dashboard
+                  // can show true wall-clock from runner-start → visible UI.
+                  if (selectedProjectId) {
+                    const startedAtIso = project?.preview?.previewStartedAt;
+                    const loadDurationMs = startedAtIso
+                      ? Date.now() - new Date(startedAtIso).getTime()
+                      : undefined;
+                    void reportIframeReady(selectedProjectId, {
+                      url: docker.url ?? undefined,
+                      viewport,
+                      loadDurationMs,
+                    });
+                  }
+                }}
+                onError={() => {
+                  // Eagerly mounted iframes can get a transient connection
+                  // refused while the dev server is still binding. The 2s
+                  // status poll will eventually flip the URL back on,
+                  // remounting via iframeKey, so we just log here.
+                  pushLog('preview', `iframe error (will retry): ${docker.url}`, 'warn');
+                }}
               />
             </PreviewErrorBoundary>
           </motion.div>
@@ -364,33 +584,20 @@ export function LivePreview() {
         {/* The remainder of this section is the original srcDoc preview, */}
         {/* gated on dockerFailed so we don't double-render.              */}
 
-        {/* Loading state (fetching + building HTML) */}
+        {/* Loading state (fetching + building HTML) — banner above persists,
+            so the user already sees "Full preview unavailable". */}
         {enabled && dockerFailed && preview.status === 'loading' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-[#64748B] text-[12px]">
             <Loader2 size={20} className="animate-spin text-[#3B82F6]" />
-            <span>Building preview…</span>
-            <span className="text-[10px] font-mono opacity-60">
-              {docker.phase === 'unavailable' ? 'Docker unavailable — using sandbox preview' : 'Container failed — using sandbox preview'}
-            </span>
+            <span>Building static preview…</span>
           </div>
         )}
 
-        {/* Host-side error fallback (builder couldn't even produce HTML) */}
-        {enabled && dockerFailed && preview.status === 'error' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
-            <AlertTriangle size={28} className="text-[#F59E0B]" />
-            <div>
-              <p className="text-[13px] font-semibold text-[#F1F5F9]">Could not build preview</p>
-              <p className="text-[11px] text-[#64748B] mt-1 font-mono break-all max-w-md">{preview.error ?? docker.error ?? 'Unknown failure'}</p>
-            </div>
-            <button onClick={handleRefresh} className="flex items-center gap-2 bg-[#3B82F6]/20 border border-[#3B82F6]/30 text-[#60A5FA] rounded-lg px-4 py-2 text-[12px] font-semibold hover:bg-[#3B82F6]/30">
-              <RotateCcw size={13} /> Retry
-            </button>
-          </div>
-        )}
-
-        {/* Device frame + iframe (srcDoc) — only when Docker has failed */}
-        {enabled && dockerFailed && (preview.status === 'ready' || preview.status === 'empty') && (
+        {/* Device frame + iframe (srcDoc) — always render whenever the hook
+            has produced HTML (ready / empty / error). The hook guarantees
+            non-empty fallback HTML even in 'error' state, so the iframe
+            always shows something instead of a blank screen. */}
+        {enabled && dockerFailed && (preview.status === 'ready' || preview.status === 'empty' || preview.status === 'error') && (
           <motion.div
             className="relative flex flex-col overflow-hidden"
             style={{ width: '100%', height: '100%', maxWidth: vp.maxW ?? '100%' }}
@@ -418,7 +625,8 @@ export function LivePreview() {
               <iframe
                 key={iframeKey}
                 srcDoc={preview.html}
-                className="flex-1 w-full border-0 bg-white block"
+                className="flex-1 w-full border-0 block"
+                style={{ background: '#07090f', colorScheme: 'dark' }}
                 title="Live preview"
                 // NOTE: no `allow-same-origin` — iframe runs in a unique opaque
                 // origin so it cannot reach our host app, localStorage, cookies,
@@ -430,6 +638,7 @@ export function LivePreview() {
             </PreviewErrorBoundary>
           </motion.div>
         )}
+        </div>
       </div>
     </div>
   );

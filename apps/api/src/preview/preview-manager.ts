@@ -19,7 +19,8 @@ import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import type { ProjectStore } from '../storage/project-store.js';
 import type { DockerRunner } from './docker-runner.js';
 import type { PortAllocator } from './port-allocator.js';
-import type { PreviewRecord, PreviewStatus, StackInfo } from './types.js';
+import type { LocalPreviewRunner } from './local-runner.js';
+import type { PreviewRecord, PreviewState, PreviewStatus, PreviewTimelineEvent, PreviewTimelineEventName, StackInfo } from './types.js';
 import { detectStack, isRunnableStack } from './stack-detector.js';
 import { getDockerfile, bootBudgetMs } from './dev-dockerfiles.js';
 
@@ -102,6 +103,8 @@ export interface PreviewManagerOptions {
   docker: DockerRunner;
   ports: PortAllocator;
   logger: Logger;
+  /** Optional Docker fallback that runs `npm run dev` directly on the host. */
+  localRunner?: LocalPreviewRunner;
   /** Max concurrent running preview containers. Beyond this, oldest is evicted. */
   maxConcurrent?: number;
   /** Stop a container after this many ms of no proxy traffic. */
@@ -114,10 +117,148 @@ export class PreviewManager {
   private records = new Map<string, PreviewRecord>();
   /** projectId → in-flight start() promise so concurrent callers share one boot. */
   private starting = new Map<string, Promise<PreviewStatus>>();
-  private readonly opts: Required<Omit<PreviewManagerOptions, 'projectStore' | 'docker' | 'ports' | 'logger'>> &
-    Pick<PreviewManagerOptions, 'projectStore' | 'docker' | 'ports' | 'logger'>;
+  private readonly opts: Required<Omit<PreviewManagerOptions, 'projectStore' | 'docker' | 'ports' | 'logger' | 'localRunner'>> &
+    Pick<PreviewManagerOptions, 'projectStore' | 'docker' | 'ports' | 'logger' | 'localRunner'>;
   private cleanupTimer: NodeJS.Timeout | null = null;
   private dockerAvailable: boolean | null = null;
+  private localAvailable: boolean | null = null;
+
+  /**
+   * Update preview lifecycle metadata on a record. Always called instead of
+   * raw `record.state = ...` assignments so we get:
+   *   - lastMeaningfulStep (free-form text matching ProjectRecord.progress)
+   *   - readyAtIso captured the first time state hits 'ready'
+   *   - history (last 32 transitions, oldest → newest) for post-mortem
+   *   - a structured log line on every transition
+   */
+  private markPreviewStep(
+    record: PreviewRecord,
+    nextState: PreviewState,
+    step: string,
+  ): void {
+    const at = new Date().toISOString();
+    record.state = nextState;
+    record.lastMeaningfulStep = step;
+    if (nextState === 'ready' && !record.readyAtIso) record.readyAtIso = at;
+    if (!record.startedAtIso) record.startedAtIso = new Date(record.startedAt).toISOString();
+    record.history = record.history ?? [];
+    record.history.push({ step: `${nextState}:${step}`, at });
+    if (record.history.length > 32) record.history = record.history.slice(-32);
+    this.opts.logger.info('preview:step', {
+      projectId: record.projectId, state: nextState, step,
+      llmCalled: false, // placeholder so log shape is consistent across systems
+    });
+
+    // Mirror onto ProjectRecord.preview so polling clients of GET
+    // /api/projects/:id can drive UI off a single source of truth without
+    // having to fan-out a second request to /preview/status. Decoupled
+    // from project.status (which stays generation-only). Best-effort:
+    // failures are non-fatal — preview lifecycle continues either way.
+    void this.syncPreviewToProject(record).catch((err) => {
+      this.opts.logger.warn('syncPreviewToProject failed', {
+        projectId: record.projectId, error: (err as Error).message,
+      });
+    });
+  }
+
+  /** Translate internal PreviewState → public previewStatus vocabulary. */
+  private toPublicPreviewStatus(
+    state: PreviewState,
+  ): NonNullable<NonNullable<Awaited<ReturnType<ProjectStore['get']>>>['preview']>['previewStatus'] {
+    switch (state) {
+      case 'ready':      return 'ready';
+      case 'failed':     return 'failed';
+      case 'starting':   return 'starting';
+      case 'building':   return 'building';
+      case 'installing': return 'installing';
+      case 'detecting':
+      case 'preparing':  return 'preparing';
+      case 'idle':
+      case 'stopped':
+      case 'fallback':
+      default:           return 'idle';
+    }
+  }
+
+  private async syncPreviewToProject(record: PreviewRecord): Promise<void> {
+    const previewStatus = this.toPublicPreviewStatus(record.state);
+    const url = record.state === 'ready' && record.hostPort != null
+      ? `/preview/${record.projectId}/`
+      : null;
+    await this.opts.projectStore.updatePreview(record.projectId, {
+      previewStatus,
+      previewReady: previewStatus === 'ready',
+      previewUrl: url,
+      previewStartedAt: record.startedAtIso ?? null,
+      previewReadyAt: record.readyAtIso ?? null,
+      previewError: record.error ?? null,
+      timeline: record.timeline,
+    });
+  }
+
+  /** Tail-truncate a string to `max` chars, keeping the trailing portion. */
+  private static tail(s: string | undefined | null, max = 2_000): string | undefined {
+    if (!s) return undefined;
+    return s.length <= max ? s : s.slice(-max);
+  }
+
+  /**
+   * Record a discrete lifecycle event on the preview record + mirror it
+   * onto ProjectRecord.preview.timeline so the dashboard can explain the
+   * gap between generation completion and a visible iframe.
+   *
+   * Pair semantics for `durationMs`:
+   *   - install-end    pairs with install-start
+   *   - build-end      pairs with build-start
+   *   - http-probe-ok  pairs with devserver-start
+   *   - url-published  pairs with runner-start (whole-flow time)
+   *   - failed         pairs with runner-start
+   */
+  private recordTimelineEvent(
+    record: PreviewRecord,
+    event: PreviewTimelineEventName,
+    extras?: { details?: Record<string, unknown>; stdout?: string; stderr?: string },
+  ): void {
+    const at = new Date().toISOString();
+    const pairStart: Partial<Record<PreviewTimelineEventName, PreviewTimelineEventName>> = {
+      'install-end':    'install-start',
+      'build-end':      'build-start',
+      'http-probe-ok':  'devserver-start',
+      'url-published':  'runner-start',
+      'failed':         'runner-start',
+    };
+    const startName = pairStart[event];
+    let durationMs: number | undefined;
+    if (startName) {
+      const start = (record.timeline ?? []).find((e) => e.event === startName);
+      if (start) durationMs = Date.now() - new Date(start.at).getTime();
+    }
+    const evt: PreviewTimelineEvent = {
+      event,
+      at,
+      projectId: record.projectId,
+      previewStatus: this.toPublicPreviewStatus(record.state),
+      durationMs,
+      details: extras?.details,
+      stdoutTail: PreviewManager.tail(extras?.stdout),
+      stderrTail: PreviewManager.tail(extras?.stderr),
+    };
+    record.timeline = [...(record.timeline ?? []), evt].slice(-64);
+
+    this.opts.logger.info('preview:timeline', {
+      projectId: record.projectId,
+      event,
+      previewStatus: evt.previewStatus,
+      durationMs,
+      ...evt.details,
+    });
+
+    void this.syncPreviewToProject(record).catch((err) => {
+      this.opts.logger.warn('syncPreviewToProject (timeline) failed', {
+        projectId: record.projectId, event, error: (err as Error).message,
+      });
+    });
+  }
 
   constructor(o: PreviewManagerOptions) {
     this.opts = {
@@ -125,6 +266,7 @@ export class PreviewManager {
       docker: o.docker,
       ports: o.ports,
       logger: o.logger,
+      localRunner: o.localRunner,
       maxConcurrent: o.maxConcurrent ?? 3,
       idleTtlMs: o.idleTtlMs ?? 10 * 60_000,
       buildTimeoutMs: o.buildTimeoutMs ?? 300_000,
@@ -134,10 +276,21 @@ export class PreviewManager {
   /** Should be called once at startup. */
   async init(): Promise<void> {
     this.dockerAvailable = await this.opts.docker.isAvailable();
+    if (this.opts.localRunner) {
+      this.localAvailable = await this.opts.localRunner.isAvailable();
+    } else {
+      this.localAvailable = false;
+    }
     if (this.dockerAvailable) {
       this.opts.logger.info('Preview manager initialised (Docker available)');
+    } else if (this.localAvailable) {
+      this.opts.logger.warn(
+        'Preview manager initialised: Docker unavailable, falling back to LOCAL execution-runner',
+      );
     } else {
-      this.opts.logger.warn('Preview manager initialised but Docker is NOT available — preview/start calls will fail');
+      this.opts.logger.warn(
+        'Preview manager initialised but neither Docker nor local runner is available — preview/start calls will fail',
+      );
     }
     // Sweep idle containers periodically.
     this.cleanupTimer = setInterval(() => { void this.sweepIdle(); }, 60_000);
@@ -145,6 +298,15 @@ export class PreviewManager {
 
   isDockerAvailable(): boolean {
     return this.dockerAvailable === true;
+  }
+
+  isLocalAvailable(): boolean {
+    return this.localAvailable === true;
+  }
+
+  /** True if the manager can serve a real running preview by ANY backend. */
+  isAnyAvailable(): boolean {
+    return this.isDockerAvailable() || this.isLocalAvailable();
   }
 
   /** Returns null if no preview record exists. */
@@ -165,20 +327,45 @@ export class PreviewManager {
   }
 
   /**
+   * Record an `iframe-ready` event reported by the web client when its
+   * iframe `onLoad` fires. This closes the loop on the timeline so the
+   * dashboard can show the true wall-clock from runner-start to a
+   * visible UI in the user's browser. No-ops silently if the project
+   * has no preview record (e.g. it was already stopped).
+   */
+  reportIframeReady(projectId: string, details?: Record<string, unknown>): void {
+    const rec = this.records.get(projectId);
+    if (!rec) return;
+    this.recordTimelineEvent(rec, 'iframe-ready', { details });
+  }
+
+  /**
    * Start (or return existing) preview container for the given project.
    * Concurrent calls share one start promise.
+   *
+   * Routing:
+   *   1. Docker available  → build image + run container
+   *   2. Else local runner → stage files + spawn `npm run dev` on host
+   *   3. Else                throw
    */
   async start(projectId: string): Promise<PreviewStatus> {
-    if (!this.dockerAvailable) {
-      throw new Error('Docker is not available on this host. Start Docker Desktop and retry.');
+    if (!this.dockerAvailable && !this.localAvailable) {
+      throw new Error(
+        'No preview backend available. Start Docker Desktop or ensure Node.js is on PATH.',
+      );
     }
 
     // Already running and healthy → return immediately.
     const existing = this.records.get(projectId);
     if (existing && (existing.state === 'ready' || existing.state === 'starting' || existing.state === 'building')) {
       existing.lastAccessedAt = Date.now();
-      // If state is ready but the container actually died, fall through to restart.
-      if (existing.state === 'ready' && existing.containerId) {
+      // Local mode: check that the spawned dev process is still alive.
+      if (existing.state === 'ready' && existing.mode === 'local') {
+        const lr = this.opts.localRunner?.get(projectId);
+        if (lr && lr.ready && !lr.child.killed) return this.toStatus(existing);
+        this.opts.logger.warn('Local preview process disappeared, restarting', { projectId });
+        await this.stop(projectId);
+      } else if (existing.state === 'ready' && existing.containerId) {
         const live = await this.opts.docker.inspectState(existing.containerId);
         if (live === 'running') return this.toStatus(existing);
         this.opts.logger.warn('Preview container disappeared, restarting', { projectId });
@@ -196,7 +383,9 @@ export class PreviewManager {
       }
     }
 
-    const promise = this.doStart(projectId);
+    const promise = this.dockerAvailable
+      ? this.doStart(projectId)
+      : this.doStartLocal(projectId);
     this.starting.set(projectId, promise);
     try {
       return await promise;
@@ -209,6 +398,16 @@ export class PreviewManager {
   async stop(projectId: string): Promise<void> {
     const rec = this.records.get(projectId);
     if (!rec) return;
+    // Local runner: kill the dev process.
+    if (rec.mode === 'local') {
+      await this.opts.localRunner?.stop(projectId).catch(() => {});
+      // localRunner releases its own allocated port internally.
+      this.markPreviewStep(rec, 'stopped', 'local-runner stopped');
+      rec.containerId = null;
+      rec.hostPort = null;
+      this.records.delete(projectId);
+      return;
+    }
     // Fullstack stack: tear down compose project.
     if (rec.composeProject) {
       const contextDir = this.opts.projectStore.getOutputDir(projectId);
@@ -223,7 +422,7 @@ export class PreviewManager {
     if (rec.apiHostPort != null) {
       this.opts.ports.release(rec.apiHostPort);
     }
-    rec.state = 'stopped';
+    this.markPreviewStep(rec, 'stopped', 'container stopped');
     rec.containerId = null;
     rec.hostPort = null;
     rec.apiHostPort = null;
@@ -236,6 +435,7 @@ export class PreviewManager {
     if (this.cleanupTimer) clearInterval(this.cleanupTimer);
     const ids = [...this.records.keys()];
     await Promise.all(ids.map((id) => this.stop(id)));
+    if (this.opts.localRunner) await this.opts.localRunner.shutdown().catch(() => {});
   }
 
   // ── internals ─────────────────────────────────────────
@@ -253,6 +453,12 @@ export class PreviewManager {
       error: rec.error,
       log: rec.log,
       uptimeMs: rec.startedAt ? Date.now() - rec.startedAt : 0,
+      mode: rec.mode,
+      startedAtIso: rec.startedAtIso,
+      readyAtIso: rec.readyAtIso ?? null,
+      lastMeaningfulStep: rec.lastMeaningfulStep,
+      history: rec.history,
+      timeline: rec.timeline,
     };
   }
 
@@ -262,6 +468,7 @@ export class PreviewManager {
     // Evict if over capacity.
     await this.evictIfFull();
 
+    const startTs = Date.now();
     const record: PreviewRecord = {
       projectId,
       state: 'detecting',
@@ -269,12 +476,24 @@ export class PreviewManager {
       imageTag: null,
       containerId: null,
       hostPort: null,
-      startedAt: Date.now(),
-      lastAccessedAt: Date.now(),
+      startedAt: startTs,
+      lastAccessedAt: startTs,
       error: null,
       log: '',
+      startedAtIso: new Date(startTs).toISOString(),
+      readyAtIso: null,
+      lastMeaningfulStep: 'detecting stack',
+      history: [{ step: 'detecting:start', at: new Date(startTs).toISOString() }],
     };
     this.records.set(projectId, record);
+
+    // Initial mirror onto ProjectRecord.preview ('preparing'). Lets
+    // polling clients show "Preview starting…" the instant generation
+    // completes, even before docker build kicks in.
+    void this.syncPreviewToProject(record).catch(() => {});
+    this.recordTimelineEvent(record, 'runner-start', {
+      details: { mode: 'docker', contextDir },
+    });
 
     // 1. Detect stack
     let stack: StackInfo;
@@ -295,7 +514,10 @@ export class PreviewManager {
     }
 
     // 2. Build
-    record.state = 'building';
+    this.markPreviewStep(record, 'building', 'docker build (npm install)');
+    this.recordTimelineEvent(record, 'build-start', {
+      details: { stack: stack.kind, port: stack.port },
+    });
     const imageTag = `devteam-preview/${projectId.toLowerCase()}:latest`;
     record.imageTag = imageTag;
     const dockerfile = getDockerfile(stack);
@@ -310,13 +532,24 @@ export class PreviewManager {
     });
     record.log = build.log;
     if (!build.ok) {
+      this.recordTimelineEvent(record, 'build-end', {
+        details: { ok: false, imageTag },
+        stdout: build.log,
+      });
       return this.fail(record, 'Docker build failed — see log');
     }
+    this.recordTimelineEvent(record, 'build-end', {
+      details: { ok: true, imageTag },
+      stdout: build.log,
+    });
 
     // 3. Run
-    record.state = 'starting';
+    this.markPreviewStep(record, 'starting', 'docker run + health probe');
     const hostPort = await this.opts.ports.allocate();
     record.hostPort = hostPort;
+    this.recordTimelineEvent(record, 'port-assigned', {
+      details: { hostPort, containerPort: stack.port },
+    });
     const containerName = `devteam-preview-${projectId.toLowerCase()}`;
     const run = await this.opts.docker.run({
       imageTag,
@@ -333,6 +566,10 @@ export class PreviewManager {
       return this.fail(record, 'Docker run failed — see log');
     }
     record.containerId = run.containerId;
+    this.recordTimelineEvent(record, 'devserver-start', {
+      details: { containerId: run.containerId, containerName, hostPort },
+      stdout: run.log,
+    });
 
     // 4. Health check
     const budget = bootBudgetMs(stack.kind);
@@ -343,11 +580,108 @@ export class PreviewManager {
       record.log = `${record.log}\n\n=== container logs (tail) ===\n${tail}`;
       return this.fail(record, `Dev server did not become healthy within ${budget}ms (last status: ${healthy.lastStatus ?? 'no response'})`);
     }
+    this.recordTimelineEvent(record, 'http-probe-ok', {
+      details: { hostPort, healthPath: stack.healthPath, lastStatus: healthy.lastStatus ?? null },
+    });
 
-    record.state = 'ready';
+    this.markPreviewStep(record, 'ready', `dev server healthy on :${record.hostPort}`);
+    this.recordTimelineEvent(record, 'url-published', {
+      details: { url: `/preview/${projectId}/`, hostPort, stack: stack.kind },
+    });
     record.lastAccessedAt = Date.now();
     this.opts.logger.info('Preview ready', { projectId, hostPort, stack: stack.kind });
     return this.toStatus(record);
+  }
+
+  /**
+   * Local fallback: stage files and spawn `npm run dev` on the host (no Docker).
+   * Returns once the dev server starts accepting HTTP connections on the
+   * allocated port. The same `/preview/:id/*` reverse proxy still applies, but
+   * `previewIframeUrl()` on the client will point directly at
+   * `http://localhost:<hostPort>/` so HMR + asset URLs work natively.
+   */
+  private async doStartLocal(projectId: string): Promise<PreviewStatus> {
+    if (!this.opts.localRunner) {
+      throw new Error('Local preview runner is not configured.');
+    }
+    const project = await this.opts.projectStore.get(projectId);
+    if (!project || !project.files || project.files.length === 0) {
+      throw new Error(`Project ${projectId} has no files to run.`);
+    }
+
+    // Evict if over capacity.
+    await this.evictIfFull();
+
+    const startTs = Date.now();
+    const record: PreviewRecord = {
+      projectId,
+      state: 'starting',
+      stack: null,
+      imageTag: null,
+      containerId: null,
+      hostPort: null,
+      startedAt: startTs,
+      lastAccessedAt: startTs,
+      error: null,
+      log: '',
+      mode: 'local',
+      startedAtIso: new Date(startTs).toISOString(),
+      readyAtIso: null,
+      lastMeaningfulStep: 'local runner starting',
+      history: [{ step: 'starting:local-runner', at: new Date(startTs).toISOString() }],
+    };
+    this.records.set(projectId, record);
+
+    // Initial mirror onto ProjectRecord.preview. Local runner goes
+    // straight to 'installing' (npm install) before flipping to 'ready'.
+    void this.syncPreviewToProject(record).catch(() => {});
+    this.recordTimelineEvent(record, 'runner-start', {
+      details: { mode: 'local', fileCount: project.files.length },
+    });
+    this.recordTimelineEvent(record, 'install-start', {
+      details: { mode: 'local' },
+    });
+
+    try {
+      const lr = await this.opts.localRunner.start(
+        projectId,
+        project.files.map((f) => ({ path: f.path, contents: f.contents })),
+      );
+      record.stack = lr.stack;
+      record.hostPort = lr.port;
+      record.log = lr.log;
+      this.recordTimelineEvent(record, 'install-end', {
+        details: { ok: true, stack: lr.stack.kind },
+        stdout: lr.log,
+      });
+      this.recordTimelineEvent(record, 'port-assigned', {
+        details: { hostPort: lr.port },
+      });
+      this.recordTimelineEvent(record, 'devserver-start', {
+        details: { mode: 'local', hostPort: lr.port, stack: lr.stack.kind },
+      });
+      this.recordTimelineEvent(record, 'http-probe-ok', {
+        details: { hostPort: lr.port, mode: 'local' },
+      });
+      this.markPreviewStep(record, 'ready', `local dev server on :${lr.port}`);
+      this.recordTimelineEvent(record, 'url-published', {
+        details: { url: `/preview/${projectId}/`, hostPort: lr.port, mode: 'local', stack: lr.stack.kind },
+      });
+      record.lastAccessedAt = Date.now();
+      this.opts.logger.info('Local preview ready', {
+        projectId, hostPort: lr.port, stack: lr.stack.kind,
+      });
+      return this.toStatus(record);
+    } catch (err) {
+      const msg = (err as Error).message;
+      const lr = this.opts.localRunner.get(projectId);
+      if (lr?.log) record.log = lr.log;
+      this.recordTimelineEvent(record, 'install-end', {
+        details: { ok: false, error: msg },
+        stderr: lr?.log,
+      });
+      return this.fail(record, `Local preview failed: ${msg}`);
+    }
   }
 
   /**
@@ -359,7 +693,10 @@ export class PreviewManager {
    */
   private async doStartFullstack(record: PreviewRecord, contextDir: string): Promise<PreviewStatus> {
     const projectId = record.projectId;
-    record.state = 'building';
+    this.markPreviewStep(record, 'building', 'compose build (web + api + postgres)');
+    this.recordTimelineEvent(record, 'build-start', {
+      details: { mode: 'fullstack-compose' },
+    });
 
     // Allocate two host ports: one for web, one for api. The browser running
     // inside the iframe sees both via 127.0.0.1:<port>.
@@ -374,6 +711,9 @@ export class PreviewManager {
       return this.fail(record, `Could not allocate api host port: ${(err as Error).message}`);
     }
     record.apiHostPort = apiHostPort;
+    this.recordTimelineEvent(record, 'port-assigned', {
+      details: { webHostPort, apiHostPort },
+    });
 
     const composeProject = `devteam-prv-${projectId.toLowerCase()}`;
     record.composeProject = composeProject;
@@ -421,14 +761,23 @@ export class PreviewManager {
       record.hostPort = null;
       record.apiHostPort = null;
       record.composeProject = null;
+      this.recordTimelineEvent(record, 'build-end', {
+        details: { ok: false }, stderr: up.log,
+      });
       return this.fail(record, 'docker compose up failed — see log');
     }
+    this.recordTimelineEvent(record, 'build-end', {
+      details: { ok: true, composeProject }, stdout: up.log,
+    });
 
     // Health-check loop: web first (the iframe target). If web becomes
     // healthy, return ready. We also probe the api separately and surface
     // its log tail when web is up but api is down — so the QA auto-fix loop
     // can pick up the failure as runtimeFeedback.
-    record.state = 'starting';
+    this.markPreviewStep(record, 'starting', 'compose up — awaiting web health');
+    this.recordTimelineEvent(record, 'devserver-start', {
+      details: { webHostPort, apiHostPort, composeProject },
+    });
     const budget = bootBudgetMs('fullstack');
     const webHealthy = await this.opts.docker.awaitHealthy(webHostPort, '/', budget);
     if (!webHealthy.ok) {
@@ -443,6 +792,9 @@ export class PreviewManager {
       ].join('\n');
       return this.fail(record, `web service did not become healthy within ${budget}ms (last status: ${webHealthy.lastStatus ?? 'no response'})`);
     }
+    this.recordTimelineEvent(record, 'http-probe-ok', {
+      details: { hostPort: webHostPort, healthPath: '/', lastStatus: webHealthy.lastStatus ?? null, service: 'web' },
+    });
 
     // Verify api too — non-fatal if down, but include in log so the runtime
     // validator + auto-fix loop can drive QA to fix it.
@@ -453,7 +805,14 @@ export class PreviewManager {
       this.opts.logger.warn('Fullstack preview: web up but api unhealthy', { projectId, apiHostPort });
     }
 
-    record.state = 'ready';
+    this.markPreviewStep(record, 'ready', `fullstack web=:${record.hostPort} api=:${record.apiHostPort}`);
+    this.recordTimelineEvent(record, 'url-published', {
+      details: {
+        url: `/preview/${projectId}/`,
+        webHostPort, apiHostPort, composeProject,
+        apiHealthy: apiProbe.ok,
+      },
+    });
     record.lastAccessedAt = Date.now();
     this.opts.logger.info('Fullstack preview ready', {
       projectId, webHostPort, apiHostPort, composeProject, apiHealthy: apiProbe.ok,
@@ -462,8 +821,12 @@ export class PreviewManager {
   }
 
   private fail(record: PreviewRecord, message: string): PreviewStatus {
-    record.state = 'failed';
+    this.markPreviewStep(record, 'failed', message.slice(0, 200));
     record.error = message;
+    this.recordTimelineEvent(record, 'failed', {
+      details: { message },
+      stderr: record.log,
+    });
     this.opts.logger.warn('Preview failed', { projectId: record.projectId, message });
     // Best-effort cleanup of any started container or compose stack.
     if (record.composeProject) {

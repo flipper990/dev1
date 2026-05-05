@@ -24,4 +24,4 @@ export type TaskStatus =
   | 'retrying'
   | 'cancelled';
 
-export type LLMProvider = 'anthropic' | 'openai' | 'google' | 'local';
+export type LLMProvider = 'anthropic' | 'openai' | 'azure' | 'google' | 'local';

@@ -60,6 +60,19 @@ export interface ProjectRecord {
   spec?: Record<string, unknown>;
   plan?: Record<string, unknown>;
   qaReport?: Record<string, unknown>;
+  /**
+   * Stack selection mode chosen for this project.
+   *   - 'auto'   (default): the spec agent picked the stack from the prompt.
+   *   - 'manual': the user explicitly chose technologies in the UI.
+   * Missing / undefined is treated as 'auto' for backward compatibility.
+   */
+  stackSelectionMode?: 'auto' | 'manual';
+  /**
+   * Final technology stack the pipeline committed to (mirror of
+   * `spec.techStack`). Materialised on the record so UI/validators don't have
+   * to dive into the spec object.
+   */
+  techStack?: Record<string, string>;
   /** Intent-expansion output: features, UI expectations, quality standards. */
   expandedSpec?: Record<string, unknown>;
   /** Quality-enforcer output: scores, verdict, findings, patches summary. */
@@ -80,6 +93,24 @@ export interface ProjectRecord {
     totalDurationMs: number;
     completedAt: string;
   };
+  /** Real-environment execution-runner verdict (npm install + build + dev). */
+  executionValidation?: {
+    finalVerdict: 'pass' | 'fail';
+    iterations: number;
+    buildErrors: string[];
+    runtimeErrors: string[];
+    httpProbes?: Array<{
+      path: string;
+      ok: boolean;
+      status: number | null;
+      bodyBytes: number;
+      durationMs: number;
+      error?: string;
+    }>;
+    totalDurationMs: number;
+    completedAt: string;
+    reason?: string;
+  };
   tasks: TaskSummary[];
   totalTokens: number;
   totalCostUsd: number;
@@ -96,12 +127,121 @@ export interface ProjectRecord {
   durationMs: number;
   createdAt: string;
   completedAt?: string;
+  /** Failure message when status === 'failed'. */
+  error?: string;
   /** ISO timestamp of last update (set on update() calls, not initial generate). */
   updatedAt?: string;
   /** Current version number (1 = initial generation, 2+ = updates). */
   version: number;
   /** Lightweight history of all versions. Oldest first. */
   versionHistory: VersionMeta[];
+  /** Non-fatal warnings produced during the pipeline (e.g. partial output
+   *  from a soft-deadline break). The project still finishes as 'completed'
+   *  but consumers can surface these. */
+  warnings?: Array<{ code: string; message: string; details?: Record<string, unknown> }>;
+  /**
+   * Live heartbeat used by external watchdogs to distinguish a *stuck*
+   * pipeline from one that is genuinely making early-startup progress.
+   * Updated at every meaningful transition (entering spec, before/after the
+   * first LLM call, after slices planned, after each persistence write,
+   * after each QA iteration). Never persisted by the updater — belongs to
+   * the active generation only.
+   */
+  progress?: {
+    /** High-level phase tag: 'init' | 'spec' | 'slice-N/M' | 'final-assembly' | 'qa-gate' | 'execution-validation'. */
+    phase: string;
+    /** ISO timestamp of the last meaningful update. */
+    lastProgressAt: string;
+    /** ISO timestamp when the background runner first started. */
+    startedAt: string;
+    /** Free-form label for the most recent meaningful step ("orchestrator:execute:start", "slice-2:files-persisted", etc.). */
+    lastMeaningfulStep: string;
+    /** Count of orchestrator step:started events observed so far (≈ LLM agent invocations). */
+    llmCallCount: number;
+    /** Cumulative count of files persisted to the project record. */
+    filesWrittenCount: number;
+    /** Number of slices planned by the spec phase (0 until spec returns). */
+    slicesPlannedCount: number;
+    /**
+     * ISO timestamp at which `lastMeaningfulStep` started. Stamped by
+     * `markProgress` whenever the caller passes `stepStartedAt`. Used
+     * by polling clients to compute "time spent in current step".
+     */
+    stepStartedAt?: string;
+    /**
+     * ISO timestamp at which `lastMeaningfulStep` finished. Set by the
+     * paired `completeFinalizeStep` / `runFinalizeStep` helpers. When
+     * present alongside a still-current `lastMeaningfulStep` it means
+     * the step is done but the next step has not yet started.
+     */
+    stepCompletedAt?: string;
+    /** Wall-clock duration (ms) of the most recently completed step. */
+    stepDurationMs?: number;
+    /** The previous step label, before the current `lastMeaningfulStep`. */
+    previousStep?: string;
+  };
+  /**
+   * Preview-runtime lifecycle state. **Decoupled from `status`** — `status`
+   * tracks generation only ('generating' | 'completed' | 'failed'); this
+   * block tracks the post-generation Docker/local preview server. Mirrored
+   * from PreviewManager state on every transition so polling clients can
+   * show "Preview starting…" without conflating with generation progress.
+   */
+  preview?: {
+    /** Public preview state vocabulary (decoupled from internal docker states). */
+    previewStatus: 'idle' | 'preparing' | 'installing' | 'building' | 'starting' | 'ready' | 'failed';
+    /** Convenience flag — true iff previewStatus === 'ready'. */
+    previewReady: boolean;
+    /** Preview iframe URL (relative). Populated as soon as a host port is allocated. */
+    previewUrl?: string | null;
+    /** ISO timestamp when start() was first invoked. */
+    previewStartedAt?: string | null;
+    /** ISO timestamp the moment previewStatus first hit 'ready'. */
+    previewReadyAt?: string | null;
+    /** Failure message when previewStatus === 'failed'. */
+    previewError?: string | null;
+    /** Discrete lifecycle events with durations + stdout/stderr tails.
+     *  Drives the dashboard “why is the preview taking so long?” view. */
+    timeline?: Array<{
+      event:
+        | 'runner-start' | 'install-start' | 'install-end'
+        | 'build-start' | 'build-end' | 'devserver-start'
+        | 'port-assigned' | 'http-probe-ok' | 'url-published'
+        | 'iframe-ready' | 'failed';
+      at: string;
+      projectId: string;
+      previewStatus:
+        | 'idle' | 'preparing' | 'installing' | 'building'
+        | 'starting' | 'ready' | 'failed';
+      durationMs?: number;
+      details?: Record<string, unknown>;
+      stdoutTail?: string;
+      stderrTail?: string;
+    }>;
+  };
+  /** Detailed crash record (set alongside `error` when status === 'failed'). */
+  failure?: {
+    failedPhase: string;
+    errorName: string;
+    errorMessage: string;
+    stack?: string;
+    failedAt: string;
+    /** Most recently completed phase before the crash. Helps post-mortem
+     *  pinpoint how far the pipeline got. */
+    lastSuccessfulPhase?: string;
+    /** Number of LLM calls observed (via orchestrator step:started events)
+     *  before the crash. 0 means the failure happened before any LLM
+     *  invocation \u2014 typically a setup/config problem. */
+    llmCallCount?: number;
+    /** Granular step within `failedPhase` where the throw happened (e.g.
+     *  'final-assembly:assembleProject', 'qa-gate:runQualityAssurance',
+     *  'finalize:projectStore.save'). */
+    failedStep?: string;
+    /** Most recently completed step before the crash. */
+    lastSuccessfulStep?: string;
+    /** Alias for `stack` \u2014 some consumers expect the conventional name. */
+    errorStack?: string;
+  };
 }
 
 export interface TaskSummary {
@@ -173,9 +313,15 @@ export class ProjectStore {
       'utf-8',
     );
 
-    // Save generated files to disk
+    // Save generated files to disk. Wipe the previous output/ tree first
+    // so files removed since the last save (e.g. by layout consolidation
+    // that strips apps/web/* duplicates) don't linger on disk and confuse
+    // downstream tooling like the runtime validator or the live preview.
     if (project.files.length > 0) {
       const outputDir = join(dir, 'output');
+      if (existsSync(outputDir)) {
+        await rm(outputDir, { recursive: true, force: true });
+      }
       await mkdir(outputDir, { recursive: true });
 
       for (const file of project.files) {
@@ -195,6 +341,31 @@ export class ProjectStore {
 
     const raw = await readFile(metaPath, 'utf-8');
     return JSON.parse(raw) as ProjectRecord;
+  }
+
+  /**
+   * Lightweight metadata-only update: rewrites project.json without
+   * touching files on disk. Used by the PreviewManager to mirror its
+   * state machine onto ProjectRecord.preview without paying the cost of
+   * re-emitting the entire output/ tree.
+   *
+   * Best-effort: silently no-ops if the project.json is missing (e.g.
+   * the project was deleted mid-flight).
+   */
+  async updatePreview(
+    projectId: string,
+    patch: NonNullable<ProjectRecord['preview']>,
+  ): Promise<void> {
+    const metaPath = join(this.baseDir, projectId, 'project.json');
+    if (!existsSync(metaPath)) return;
+    try {
+      const raw = await readFile(metaPath, 'utf-8');
+      const project = JSON.parse(raw) as ProjectRecord;
+      project.preview = { ...(project.preview ?? {}), ...patch };
+      await writeFile(metaPath, JSON.stringify(project, null, 2), 'utf-8');
+    } catch (err) {
+      this.logger.warn(`updatePreview(${projectId}) failed: ${(err as Error).message}`);
+    }
   }
 
   /** List all projects (metadata only, no file contents) */

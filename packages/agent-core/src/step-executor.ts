@@ -120,11 +120,37 @@ export async function executeStep(
       }
 
     } catch (err) {
+      // Normalise — `(err as Error).message` was often empty when the
+      // thrown value lacked a message or wasn't an Error. We now always
+      // produce a non-empty message and capture the stack for diagnosis.
+      const e = err instanceof Error
+        ? {
+            name: err.name || 'Error',
+            message: err.message && err.message.length > 0
+              ? err.message
+              : `${err.name || 'Error'} thrown without a message`,
+            stack: err.stack,
+          }
+        : {
+            name: 'Error',
+            message: typeof err === 'string' && err.length > 0
+              ? err
+              : `Non-Error value thrown: ${(() => { try { return JSON.stringify(err); } catch { return String(err); } })()}`,
+            stack: undefined as string | undefined,
+          };
       task.error = {
         code: 'EXECUTION_ERROR',
-        message: (err as Error).message,
+        message: `${e.name}: ${e.message}`,
         retryable: true,
       };
+      ctx.logger.warn(`Step "${step.name}" attempt ${attempt}/${policy.maxAttempts} threw`, {
+        agent: step.agent,
+        errorName: e.name,
+        errorMessage: e.message,
+        stack: e.stack,
+      });
+      // Skip the duplicate generic warn below — we already logged with full detail.
+      continue;
     }
 
     ctx.logger.warn(`Step "${step.name}" attempt ${attempt}/${policy.maxAttempts} failed`, {

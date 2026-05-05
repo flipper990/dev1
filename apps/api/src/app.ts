@@ -25,6 +25,7 @@ import { registerPreviewRoutes } from './routes/preview-routes.js';
 import { createDockerRunner } from './preview/docker-runner.js';
 import { PortAllocator } from './preview/port-allocator.js';
 import { PreviewManager } from './preview/preview-manager.js';
+import { LocalPreviewRunner } from './preview/local-runner.js';
 
 export async function buildApp() {
   const logger = createLogger('server');
@@ -50,6 +51,7 @@ export async function buildApp() {
     hasOpenAIKey:    Boolean(config.llm.openaiApiKey),
     hasAnthropicKey: Boolean(config.llm.anthropicApiKey),
     hasGoogleKey:    Boolean(config.llm.googleApiKey),
+    hasAzureOpenAI:  Boolean(config.llm.azure.apiKey && config.llm.azure.endpoint),
   });
   for (const w of validation.warnings) modelLogger.warn(w);
   for (const e of validation.errors)   modelLogger.error(e);
@@ -140,6 +142,11 @@ export async function buildApp() {
     max: config.rateLimit.max,
     timeWindow: config.rateLimit.windowMs,
     keyGenerator: (req) => req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() ?? req.ip,
+    // In development, bypass the limit entirely. The dashboard polls
+    // /api/projects (8s) + preview status (5s) + WS reconnects + HMR
+    // double-mounts easily burst past 600/min from a single client and
+    // the false-positive 429s break the UX. Production keeps the limit.
+    skip: () => config.isDev,
     errorResponseBuilder: (_req, context) => ({
       error: 'Too Many Requests',
       code: 'RATE_LIMIT',
@@ -208,10 +215,16 @@ export async function buildApp() {
 
   const dockerRunner = createDockerRunner(createLogger('docker'));
   const portAllocator = new PortAllocator();
+  const localRunner = new LocalPreviewRunner({
+    projectStore,
+    ports: portAllocator,
+    logger: createLogger('local-runner'),
+  });
   const previewManager = new PreviewManager({
     projectStore,
     docker: dockerRunner,
     ports: portAllocator,
+    localRunner,
     logger: createLogger('preview'),
   });
   await previewManager.init();
@@ -222,7 +235,7 @@ export async function buildApp() {
 
   // ── Register routes ─────────────────────────────────
 
-  registerRoutes(app as unknown as import('fastify').FastifyInstance, { generator, projectStore, sessionManager, memoryStore, llm, logger });
+  registerRoutes(app as unknown as import('fastify').FastifyInstance, { generator, projectStore, sessionManager, memoryStore, llm, logger, preview: previewManager });
   registerWebSocket(app as unknown as import('fastify').FastifyInstance, { sessionManager, logger });
   registerPreviewRoutes(app as unknown as import('fastify').FastifyInstance, {
     preview: previewManager,

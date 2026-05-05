@@ -15,7 +15,60 @@ export class SpecAgent extends BaseAgent {
       globalMemoryHints?: string[];
     };
 
-    let prompt = `## User Prompts (${prompts.length})\n\n`;
+    let prompt = '';
+
+    // ── STACK SELECTION MODE ───────────────────────────────────────────────
+    // 'auto' (default): the user did not pick a stack in the UI; the spec
+    //   agent must choose an appropriate stack based on the prompt's intent.
+    // 'manual': the user picked specific technologies — they are emitted
+    //   below as a hard, non-negotiable override.
+    //
+    // Backward safety: legacy projects with no `stackSelectionMode` are
+    // treated as 'manual' iff a non-empty `techStackOverride` exists, else
+    // 'auto'.
+    const override =
+      (userPreferences?.techStackOverride as Record<string, string> | undefined) ??
+      undefined;
+    const declaredMode = userPreferences?.stackSelectionMode as 'auto' | 'manual' | undefined;
+    const stackSelectionMode: 'auto' | 'manual' =
+      declaredMode === 'manual' || declaredMode === 'auto'
+        ? declaredMode
+        : override && Object.keys(override).length > 0
+          ? 'manual'
+          : 'auto';
+
+    const injectOverride = stackSelectionMode === 'manual' && !!override && Object.keys(override).length > 0;
+
+    this.logger.info('spec:stack', {
+      stackSelectionMode,
+      injectedBlock: injectOverride,
+      override: override ?? null,
+    });
+
+    if (stackSelectionMode === 'auto') {
+      prompt += `## ⚙️ STACK SELECTION MODE: AUTO\n\n`;
+      prompt += `The user has NOT manually picked a tech stack. Choose the most appropriate\n`;
+      prompt += `stack for the requested product based on the prompt's intent and constraints.\n`;
+      prompt += `Justify your choice in the spec briefly. Do not silently fall back to a\n`;
+      prompt += `template default if a different stack better fits the user's request.\n\n`;
+    }
+
+    if (injectOverride) {
+      prompt += `## ⛔ CRITICAL — USER-CHOSEN TECH STACK (HARD OVERRIDE)\n\n`;
+      prompt += `The user picked this stack in the UI. This OVERRIDES every default in your\n`;
+      prompt += `system prompt (Fastify, Postgres+Prisma, Next.js, etc.). DO NOT substitute,\n`;
+      prompt += `"upgrade", or fall back to defaults. Emit techStack values that match these\n`;
+      prompt += `picks verbatim. Pick npm packages and file-tree entries that fit this stack.\n\n`;
+      for (const [k, v] of Object.entries(override!)) {
+        prompt += `  • ${k}: ${v}\n`;
+      }
+      prompt += `\nIf a chosen technology is incompatible with another (e.g. Prisma + MongoDB),\n`;
+      prompt += `prefer the user's most-specific pick and adapt the rest. Never silently swap.\n\n`;
+      prompt += `Mirror these picks into the output techStack object exactly:\n`;
+      prompt += `\`\`\`json\n${JSON.stringify(override, null, 2)}\n\`\`\`\n\n`;
+    }
+
+    prompt += `## User Prompts (${prompts.length})\n\n`;
     prompts.forEach((p, i) => { prompt += `### Prompt ${i + 1}\n${p}\n\n`; });
 
     if (userPreferences && Object.keys(userPreferences).length > 0) {

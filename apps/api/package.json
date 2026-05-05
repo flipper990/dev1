@@ -8,9 +8,11 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "lint": "eslint src/",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:generations": "tsx src/testing/generation-runner.ts"
   },
   "dependencies": {
+    "@devteam/types": "*",
     "@anthropic-ai/sdk": "^0.39.0",
     "openai": "^4.78.0",
     "fastify": "^5.2.0",

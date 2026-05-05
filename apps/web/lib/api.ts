@@ -95,10 +95,13 @@ async function request<T>(path: string, init?: RequestInit & { timeoutMs?: numbe
   }
 }
 
-export async function generateProject(prompt: string): Promise<GenerateResponse> {
+export async function generateProject(
+  prompt: string,
+  preferences?: Record<string, unknown>,
+): Promise<GenerateResponse> {
   const result = await request<{ project: GenerateResponse['project']; pipeline: { sessionId: string } }>('/api/projects', {
     method: 'POST',
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify(preferences ? { prompt, preferences } : { prompt }),
   });
   return {
     projectId: result.project.id,
@@ -151,6 +154,16 @@ export function normalizeProject(raw: unknown): GeneratedProject {
     durationMs:     num(p['durationMs']),
     createdAt:      str(p['createdAt'], new Date().toISOString()),
     completedAt:    typeof p['completedAt'] === 'string' ? p['completedAt'] : undefined,
+    preview:        (p['preview'] && typeof p['preview'] === 'object')
+      ? (p['preview'] as GeneratedProject['preview'])
+      : undefined,
+    stackSelectionMode:
+      p['stackSelectionMode'] === 'manual' || p['stackSelectionMode'] === 'auto'
+        ? (p['stackSelectionMode'] as 'auto' | 'manual')
+        : undefined,
+    techStack:      (p['techStack'] && typeof p['techStack'] === 'object')
+      ? (p['techStack'] as Record<string, string>)
+      : undefined,
   };
 }
 
@@ -190,6 +203,35 @@ export async function listProjects(): Promise<GeneratedProject[]> {
   }
 }
 
+/**
+ * Fetch the authoritative project record for a single id.
+ *
+ * Bypasses the dashboard's local cache so callers (focus-resync, manual
+ * refresh, post-select hydration) can reconcile against the backend's
+ * latest state — important for projects that were created/completed
+ * outside the UI (e.g. terminal diagnostics) where the cached list may
+ * still report a stale FAILED status.
+ */
+export async function getProject(projectId: string): Promise<GeneratedProject | null> {
+  try {
+    const raw = await request<Raw | { project: Raw }>(`/api/projects/${projectId}`);
+    const proj = (raw && typeof raw === 'object' && 'project' in (raw as object))
+      ? (raw as { project: Raw }).project
+      : (raw as Raw);
+    if (!proj) return null;
+    const normalized = normalizeProject(proj);
+    if (!normalized.id || normalized.id.startsWith('unknown-')) return null;
+    return normalized;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null;
+    if (err instanceof ApiError && err.isUnreachable) {
+      console.warn(`[api] getProject(${projectId}): backend unreachable`);
+      return null;
+    }
+    throw err;
+  }
+}
+
 export async function getProjectFiles(projectId: string): Promise<ProjectFileEntry[]> {
   try {
     const result = await request<ProjectFileEntry[] | { files: ProjectFileEntry[] }>(`/api/projects/${projectId}/files`);
@@ -218,10 +260,14 @@ export async function getProjectFile(projectId: string, filePath: string): Promi
   }
 }
 
-export async function updateProject(projectId: string, prompt: string): Promise<GenerateResponse> {
+export async function updateProject(
+  projectId: string,
+  prompt: string,
+  preferences?: Record<string, unknown>,
+): Promise<GenerateResponse> {
   const result = await request<{ project: GenerateResponse['project']; pipeline: { sessionId: string } }>(`/api/projects/${projectId}/prompts`, {
     method: 'POST',
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify(preferences ? { prompt, preferences } : { prompt }),
   });
   return {
     projectId: result.project.id,
@@ -279,7 +325,7 @@ export async function getContainerInfo(projectId: string): Promise<{ available: 
  * the UI falls back to the in-browser srcDoc preview.
  * ───────────────────────────────────────────────────────────── */
 
-export type PreviewState = 'idle' | 'detecting' | 'building' | 'starting' | 'ready' | 'failed' | 'stopped';
+export type PreviewState = 'idle' | 'detecting' | 'building' | 'starting' | 'ready' | 'failed' | 'fallback' | 'stopped';
 
 export interface PreviewStatus {
   projectId: string;
@@ -290,6 +336,22 @@ export interface PreviewStatus {
   error: string | null;
   log: string;
   uptimeMs: number;
+  /** True when state === 'fallback' — caller should render frontend-only static preview. */
+  fallback?: boolean;
+  /** Reason for fallback (e.g. 'docker-unavailable'). */
+  fallbackReason?: 'docker-unavailable' | 'boot-failed' | null;
+  /** User-facing notice to display in the preview UI. */
+  notice?: string;
+  /** Which backend served this preview. */
+  mode?: 'docker' | 'local';
+  /** ISO timestamp when start() was first invoked. */
+  startedAtIso?: string;
+  /** ISO timestamp the moment state transitioned to 'ready' (null until then). */
+  readyAtIso?: string | null;
+  /** Most recent lifecycle event description. */
+  lastMeaningfulStep?: string;
+  /** Last 32 lifecycle transitions (oldest \u2192 newest). */
+  history?: Array<{ step: string; at: string }>;
 }
 
 /**
@@ -316,14 +378,20 @@ export function previewIframeUrl(projectId: string, hostPort?: number | null): s
   return `${API_BASE}/preview/${projectId}/`;
 }
 
-export async function getPreviewHealth(): Promise<{ docker: boolean }> {
+export async function getPreviewHealth(): Promise<{ docker: boolean; local: boolean; any: boolean }> {
   try {
-    // Server returns { dockerAvailable: boolean, running: [...] } — normalise
+    // Server returns { dockerAvailable, localAvailable, anyAvailable, running } — normalise
     // to a stable shape for the UI.
-    const raw = await request<{ dockerAvailable?: boolean; docker?: boolean }>('/api/preview/health', { timeoutMs: 4_000 });
-    return { docker: !!(raw.dockerAvailable ?? raw.docker) };
+    const raw = await request<{
+      dockerAvailable?: boolean; docker?: boolean;
+      localAvailable?: boolean; local?: boolean;
+      anyAvailable?: boolean;
+    }>('/api/preview/health', { timeoutMs: 4_000 });
+    const docker = !!(raw.dockerAvailable ?? raw.docker);
+    const local = !!(raw.localAvailable ?? raw.local);
+    return { docker, local, any: !!(raw.anyAvailable ?? (docker || local)) };
   } catch {
-    return { docker: false };
+    return { docker: false, local: false, any: false };
   }
 }
 
@@ -342,6 +410,26 @@ export async function startPreview(projectId: string): Promise<PreviewStatus> {
     body: '{}',
     timeoutMs: 240_000,
   });
+}
+
+/**
+ * Notify the API that the preview iframe successfully fired `onLoad` —
+ * closes the timeline loop so the dashboard can show true wall-clock from
+ * runner-start to a visible UI in the browser. Best-effort, fire-and-forget.
+ */
+export async function reportIframeReady(
+  projectId: string,
+  details: { url?: string; viewport?: string; loadDurationMs?: number },
+): Promise<void> {
+  try {
+    await request<void>(`/api/projects/${projectId}/preview/iframe-ready`, {
+      method: 'POST',
+      body: JSON.stringify(details),
+      timeoutMs: 4_000,
+    });
+  } catch {
+    // Non-fatal: timeline event is purely diagnostic.
+  }
 }
 
 export async function stopPreview(projectId: string): Promise<{ stopped: boolean }> {

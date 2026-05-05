@@ -54,6 +54,15 @@ export function registerVersionRoutes(
       scope: data.scope,
     });
 
+    // Persist the new sessionId + 'generating' status synchronously so the
+    // dashboard's poll/auto-attach picks up the new run instead of the
+    // stale one from the original generation. Without this, the
+    // websocket attaches to the dead original session and the UI shows
+    // no progress even though the pipeline is running fine in the bg.
+    existing.sessionId = reservation.sessionId;
+    existing.status = 'generating';
+    await projectStore.save(existing);
+
     void generator.runReservedUpdate(reservation).catch((err) => {
       request.log.error({ err, projectId: id }, 'Background update failed');
     });
@@ -61,7 +70,7 @@ export function registerVersionRoutes(
     return reply.status(202).send({
       projectId: id,
       sessionId: reservation.sessionId,
-      project:  { id: existing.id, name: existing.name, status: 'generating', fileCount: existing.files.length, totalTokens: existing.totalTokens, totalCostUsd: existing.totalCostUsd, durationMs: existing.durationMs },
+      project:  { id: existing.id, name: existing.name, sessionId: reservation.sessionId, status: 'generating', fileCount: existing.files.length, totalTokens: existing.totalTokens, totalCostUsd: existing.totalCostUsd, durationMs: existing.durationMs },
       pipeline: { sessionId: reservation.sessionId },
     });
   };

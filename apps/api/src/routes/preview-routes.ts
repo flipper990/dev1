@@ -36,16 +36,31 @@ export function registerPreviewRoutes(app: FastifyInstance, deps: PreviewRoutesD
 
   app.post('/api/projects/:id/preview/start', async (req: FastifyRequest, reply: FastifyReply) => {
     const { id } = req.params as { id: string };
+    req.log.info({ event: 'route:preview:start', projectId: id, reqId: req.id }, '[route:preview:start] request received');
     if (!PROJECT_ID_RE.test(id)) return reply.status(400).send({ error: 'Invalid project id' });
-    if (!preview.isDockerAvailable()) {
-      return reply.status(503).send({
-        error: 'Docker is not available on this host',
-        code: 'DOCKER_UNAVAILABLE',
-        hint: 'Start Docker Desktop and try again.',
-      });
-    }
     const exists = await projectStore.get(id);
     if (!exists) return reply.status(404).send({ error: 'Project not found' });
+
+    // ── No backend at all ──
+    // Only short-circuit when neither Docker nor the local runner is
+    // available. Otherwise let preview.start() pick the best available
+    // backend (Docker first, then local-runner fallback).
+    if (!preview.isAnyAvailable()) {
+      return reply.status(200).send({
+        projectId: id,
+        state: 'fallback',
+        stack: null,
+        url: null,
+        hostPort: null,
+        error: null,
+        log: '',
+        uptimeMs: 0,
+        fallback: true,
+        fallbackReason: 'docker-unavailable',
+        notice: 'Full preview unavailable, showing frontend only',
+        hint: 'Install / start Docker Desktop or ensure Node.js is on PATH to enable the live preview.',
+      });
+    }
 
     try {
       const status = await preview.start(id);
@@ -59,6 +74,7 @@ export function registerPreviewRoutes(app: FastifyInstance, deps: PreviewRoutesD
 
   app.post('/api/projects/:id/preview/stop', async (req: FastifyRequest, reply: FastifyReply) => {
     const { id } = req.params as { id: string };
+    req.log.info({ event: 'route:preview:stop', projectId: id, reqId: req.id }, '[route:preview:stop] request received');
     if (!PROJECT_ID_RE.test(id)) return reply.status(400).send({ error: 'Invalid project id' });
     await preview.stop(id);
     return reply.status(200).send({ stopped: true });
@@ -66,9 +82,29 @@ export function registerPreviewRoutes(app: FastifyInstance, deps: PreviewRoutesD
 
   app.get('/api/projects/:id/preview/status', async (req: FastifyRequest, reply: FastifyReply) => {
     const { id } = req.params as { id: string };
+    // status is high-frequency-polled; log at debug level to avoid spam.
+    req.log.debug({ event: 'route:preview:status', projectId: id, reqId: req.id }, '[route:preview:status] poll');
     if (!PROJECT_ID_RE.test(id)) return reply.status(400).send({ error: 'Invalid project id' });
     const status = preview.getStatus(id);
     if (!status) {
+      // No record yet. If NO backend is available at all, surface the fallback
+      // signal so polling clients can render the static preview without first
+      // hitting /start. Otherwise return idle (start will pick docker or local).
+      if (!preview.isAnyAvailable()) {
+        return reply.status(200).send({
+          projectId: id,
+          state: 'fallback',
+          stack: null,
+          url: null,
+          hostPort: null,
+          error: null,
+          log: '',
+          uptimeMs: 0,
+          fallback: true,
+          fallbackReason: 'docker-unavailable',
+          notice: 'Full preview unavailable, showing frontend only',
+        });
+      }
       return reply.status(200).send({
         projectId: id,
         state: 'idle',
@@ -83,8 +119,23 @@ export function registerPreviewRoutes(app: FastifyInstance, deps: PreviewRoutesD
     return reply.status(200).send(status);
   });
 
+  app.post('/api/projects/:id/preview/iframe-ready', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { id } = req.params as { id: string };
+    if (!PROJECT_ID_RE.test(id)) return reply.status(400).send({ error: 'Invalid project id' });
+    const body = (req.body ?? {}) as { url?: string; viewport?: string; loadDurationMs?: number };
+    preview.reportIframeReady(id, {
+      url: typeof body.url === 'string' ? body.url.slice(0, 500) : undefined,
+      viewport: typeof body.viewport === 'string' ? body.viewport.slice(0, 32) : undefined,
+      loadDurationMs: typeof body.loadDurationMs === 'number' && Number.isFinite(body.loadDurationMs)
+        ? body.loadDurationMs : undefined,
+    });
+    return reply.status(204).send();
+  });
+
   app.get('/api/preview/health', async () => ({
     dockerAvailable: preview.isDockerAvailable(),
+    localAvailable: preview.isLocalAvailable(),
+    anyAvailable: preview.isAnyAvailable(),
     running: preview.listAll(),
   }));
 

@@ -16,6 +16,34 @@ import {
 import { executeStep, getStepCacheKey, writeStepCache } from './step-executor';
 import { validateAndRepair } from './step-validator';
 
+/**
+ * Normalise any thrown value into a populated `{ name, message, stack }`
+ * triple. The legacy `(err as Error).message` pattern often produced an
+ * empty string when an Error was thrown without a message, when a non-Error
+ * value was thrown (`throw 'oops'`, `throw {code:1}`), or when `err` was
+ * null/undefined. That empty string was then persisted as `project.error`,
+ * giving the user a silent failure with no diagnostics.
+ */
+function formatErr(err: unknown): { name: string; message: string; stack?: string } {
+  if (err instanceof Error) {
+    const message = err.message && err.message.length > 0
+      ? err.message
+      : `${err.name || 'Error'} thrown without a message`;
+    return { name: err.name || 'Error', message, stack: err.stack };
+  }
+  if (err === null || err === undefined) {
+    return { name: 'Error', message: `Non-error value thrown: ${err === null ? 'null' : 'undefined'}` };
+  }
+  if (typeof err === 'string') {
+    return { name: 'Error', message: err.length > 0 ? err : 'Empty string thrown as error' };
+  }
+  try {
+    return { name: 'Error', message: `Non-Error value thrown: ${JSON.stringify(err)}` };
+  } catch {
+    return { name: 'Error', message: `Non-Error value thrown: ${String(err)}` };
+  }
+}
+
 // Re-export types so existing consumers of this module are unaffected.
 export type {
   PipelineStep, StepState, PipelineState, StepStatus,
@@ -177,15 +205,26 @@ export class PipelineOrchestrator {
     } catch (err) {
       state.durationMs = Date.now() - pipelineStart;
       state.status = 'failed';
-      state.error = (err as Error).message;
+      const formatted = formatErr(err);
+      const failedStep = PIPELINE_STEPS[state.currentStepIndex]?.id ?? 'unknown';
+      // Surface the failing phase in the message so the persisted
+      // `state.error` is self-describing — no more empty-string errors
+      // requiring log-spelunking to diagnose.
+      state.error = `[phase=${failedStep}] ${formatted.name}: ${formatted.message}`;
       this.emit({
         type: 'pipeline:failed',
         sessionId: session.id,
         error: state.error,
-        failedStep: PIPELINE_STEPS[state.currentStepIndex]?.id ?? 'unknown',
+        failedStep,
         durationMs: state.durationMs,
       });
-      this.logger.error('Pipeline execution error', { error: state.error, sessionId: session.id });
+      this.logger.error('Pipeline execution error', {
+        sessionId: session.id,
+        failedStep,
+        errorName: formatted.name,
+        errorMessage: formatted.message,
+        stack: formatted.stack,
+      });
       return state;
     }
   }
@@ -294,7 +333,35 @@ export class PipelineOrchestrator {
       stepState.status = 'completed';
       stepState.completedAt = new Date();
       stepState.taskId = task.id;
-      this.emit({ type: 'step:completed', sessionId: session.id, stepId: step.id, agent: step.agent, durationMs: stepState.durationMs, stepIndex, totalSteps });
+      // Surface per-step LLM usage on the event so downstream listeners
+      // (project-generator) can accumulate token/cost totals on the
+      // project record IMMEDIATELY after each call. Without this, totals
+      // were only computed at the end of the pipeline — meaning a crash
+      // before final assembly persisted totalTokens=0 / totalCostUsd=0
+      // even when several LLM calls had completed successfully.
+      const md = task.metadata as
+        | { model?: string; provider?: string; tokensIn?: number; tokensOut?: number; costUsd?: number }
+        | undefined;
+      const tokensIn = md?.tokensIn ?? 0;
+      const tokensOut = md?.tokensOut ?? 0;
+      const costUsd = md?.costUsd ?? 0;
+      this.emit({
+        type: 'step:completed',
+        sessionId: session.id,
+        stepId: step.id,
+        agent: step.agent,
+        durationMs: stepState.durationMs,
+        stepIndex,
+        totalSteps,
+        usage: {
+          model: md?.model,
+          provider: md?.provider,
+          tokensIn,
+          tokensOut,
+          totalTokens: tokensIn + tokensOut,
+          costUsd,
+        },
+      });
     } else {
       stepState.status = 'failed';
       stepState.error = task.error?.message ?? 'Unknown error';

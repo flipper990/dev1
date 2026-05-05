@@ -107,9 +107,24 @@ export abstract class BaseAgent {
       if (this.hooks.beforePrompt) prompt = await this.hooks.beforePrompt(ctx, prompt);
 
       const systemPrompt = this.resolveSystemPrompt(ctx);
-      const model = this.definition.model;
+      // Allow callers (e.g. BuilderAgent's phased mode + token budget) to
+      // tighten maxTokens for THIS call only, without mutating the agent's
+      // base model definition. Override is read from ctx.variables.
+      const baseModel = this.definition.model;
+      const override = (ctx.variables?.modelOverride ?? null) as
+        | { maxTokens?: number; temperature?: number }
+        | null;
+      const model = override
+        ? {
+            ...baseModel,
+            ...(typeof override.maxTokens === 'number' ? { maxTokens: override.maxTokens } : {}),
+            ...(typeof override.temperature === 'number' ? { temperature: override.temperature } : {}),
+          }
+        : baseModel;
       this.logger.debug(`[${this.definition.role}] Calling LLM`, {
-        traceId: ctx.traceId, model: model.model, provider: model.provider, promptLength: prompt.length,
+        traceId: ctx.traceId, model: model.model, provider: model.provider,
+        promptLength: prompt.length, maxTokens: model.maxTokens,
+        overridden: override !== null,
       });
 
       const result = await this.llm.chatSync({

@@ -57,6 +57,17 @@ export interface QAReport {
   findings: QAFinding[];
   autoFixCount: number;
   blockers: QAFinding[];
+  /**
+   * Per-sub-check wall-clock timings in milliseconds. Populated by
+   * `runQualityAssurance` via `performance.now()` so callers can spot
+   * the slowest deterministic check at a glance. Order matches the
+   * call order inside `runQualityAssurance`.
+   */
+  timings?: Array<{ step: string; ms: number; fileCount?: number; findingCount?: number }>;
+  /** Total wall-clock ms spent inside `runQualityAssurance`. */
+  totalMs?: number;
+  /** Slowest sub-check identifier (e.g. 'checkPreviewRenderability'). */
+  slowestStep?: string;
 }
 
 // ── Small helpers ──────────────────────────────────────────
@@ -65,26 +76,37 @@ const FRONTEND_EXT = /\.(tsx|jsx)$/i;
 const CODE_EXT     = /\.(ts|tsx|js|jsx|mjs|cjs)$/i;
 const STYLE_EXT    = /\.(css|scss|sass|less)$/i;
 
-function isFrontendFile(f: ProjectFile): boolean  { return FRONTEND_EXT.test(f.path); }
-function isCodeFile(f: ProjectFile): boolean      { return CODE_EXT.test(f.path); }
-function isStyleFile(f: ProjectFile): boolean     { return STYLE_EXT.test(f.path); }
+// Defensive accessors — `ProjectFile` records produced by upstream LLM
+// merging have occasionally arrived with `path: undefined` or
+// `content: undefined`. Coerce to safe strings so a single malformed
+// file can't throw the whole QA gate.
+function safePath(f: ProjectFile): string    { return typeof f?.path === 'string' ? f.path : ''; }
+function safeContent(f: ProjectFile): string { return typeof f?.content === 'string' ? f.content : ''; }
+
+function isFrontendFile(f: ProjectFile): boolean  { return FRONTEND_EXT.test(safePath(f)); }
+function isCodeFile(f: ProjectFile): boolean      { return CODE_EXT.test(safePath(f)); }
+function isStyleFile(f: ProjectFile): boolean     { return STYLE_EXT.test(safePath(f)); }
 function looksLikePage(f: ProjectFile): boolean   {
-  return /(^|\/)(pages?|app|routes)\//i.test(f.path) && FRONTEND_EXT.test(f.path);
+  const p = safePath(f);
+  return /(^|\/)(pages?|app|routes)\//i.test(p) && FRONTEND_EXT.test(p);
 }
 function isBackendFile(f: ProjectFile): boolean {
-  return /(^|\/)(server|api|backend|routes)[./]/i.test(f.path) && CODE_EXT.test(f.path);
+  const p = safePath(f);
+  return /(^|\/)(server|api|backend|routes)[./]/i.test(p) && CODE_EXT.test(p);
 }
 
 /** Heuristic: does this project declare a frontend at all? */
 function hasFrontend(files: ProjectFile[]): boolean {
+  if (!Array.isArray(files)) return false;
   return files.some(isFrontendFile)
-      || files.some((f) => /(package\.json|next\.config|vite\.config)/i.test(f.path));
+      || files.some((f) => /(package\.json|next\.config|vite\.config)/i.test(safePath(f)));
 }
 
 function hasBackend(files: ProjectFile[]): boolean {
+  if (!Array.isArray(files)) return false;
   return files.some(isBackendFile)
-      || files.some((f) => /(server\.(t|j)s|index\.(t|j)s|app\.(t|j)s)$/i.test(f.path) &&
-                           /(express|fastify|koa|hono|http\.createServer)/i.test(f.content));
+      || files.some((f) => /(server\.(t|j)s|index\.(t|j)s|app\.(t|j)s)$/i.test(safePath(f)) &&
+                           /(express|fastify|koa|hono|http\.createServer)/i.test(safeContent(f)));
 }
 
 // ── Placeholder detection ──────────────────────────────────
@@ -104,16 +126,21 @@ const PLACEHOLDER_PATTERNS: { pattern: RegExp; label: string; blocker: boolean }
 
 function findPlaceholders(files: ProjectFile[]): QAFinding[] {
   const found: QAFinding[] = [];
+  if (!Array.isArray(files)) return found;
   for (const f of files) {
-    if (!isCodeFile(f) && !f.path.endsWith('.md') && !f.path.endsWith('.html')) continue;
+    if (!f) continue;
+    const p = safePath(f);
+    const c = safeContent(f);
+    if (!p) continue;
+    if (!isCodeFile(f) && !p.endsWith('.md') && !p.endsWith('.html')) continue;
     for (const { pattern, label, blocker } of PLACEHOLDER_PATTERNS) {
-      if (pattern.test(f.content)) {
+      if (pattern.test(c)) {
         found.push({
-          id: `placeholder.${label.replace(/\s+/g, '-')}.${f.path}`,
+          id: `placeholder.${label.replace(/\s+/g, '-')}.${p}`,
           bar: 'no-placeholders',
           severity: blocker ? 'blocker' : 'warning',
-          message: `${label} detected in ${f.path}`,
-          file: f.path,
+          message: `${label} detected in ${p}`,
+          file: p,
         });
       }
     }
@@ -129,7 +156,7 @@ function findPlaceholders(files: ProjectFile[]): QAFinding[] {
  * Catches the most common "truncated code" failure modes.
  */
 function checkSyntaxBalance(file: ProjectFile): string | null {
-  const src = file.content;
+  const src = safeContent(file);
   if (!src.trim()) return 'file is empty';
 
   let paren = 0, brace = 0, bracket = 0;
@@ -165,16 +192,18 @@ function checkSyntaxBalance(file: ProjectFile): string | null {
 
 function checkPreviewRenderability(files: ProjectFile[]): QAFinding[] {
   const findings: QAFinding[] = [];
+  if (!Array.isArray(files)) return findings;
   for (const f of files) {
-    if (!isCodeFile(f)) continue;
+    if (!f || !isCodeFile(f)) continue;
+    const p = safePath(f);
     const problem = checkSyntaxBalance(f);
     if (problem) {
       findings.push({
-        id: `preview.syntax.${f.path}`,
+        id: `preview.syntax.${p}`,
         bar: 'preview-renders',
         severity: 'blocker',
-        message: `${f.path}: ${problem}`,
-        file: f.path,
+        message: `${p}: ${problem}`,
+        file: p,
       });
     }
   }
@@ -207,6 +236,37 @@ function checkUIQuality(files: ProjectFile[]): QAFinding[] {
       severity: 'error',
       message: 'No page/route components detected in app/ or pages/.',
     });
+  }
+
+  // Builder-output guard: detect when every page is the runtime-fallback
+  // placeholder. The scaffold injects a stub `page.tsx` saying "scaffolded
+  // by the runtime fallback" when the builder shipped 0 application pages
+  // — that should fail the gate so the project isn't marked completed
+  // with an empty preview.
+  if (pages.length > 0) {
+    const FALLBACK_MARKERS = [
+      /scaffolded by the runtime fallback/i,
+      /Replace it with your real homepage/i,
+      /This page was scaffolded/i,
+    ];
+    const isFallbackPage = (f: ProjectFile): boolean => {
+      const c = f.content;
+      if (FALLBACK_MARKERS.some((re) => re.test(c))) return true;
+      // Also flag pages that are *only* a centered "Welcome" stub with
+      // <500 chars — that's the same shape regardless of marker wording.
+      return c.trim().length < 500 && /\bWelcome\b/.test(c) && !/href=/.test(c);
+    };
+    const realPages = pages.filter((p) => !isFallbackPage(p));
+    if (realPages.length === 0) {
+      findings.push({
+        id: 'ui.only-fallback-pages',
+        bar: 'ui-modern',
+        severity: 'blocker',
+        message:
+          `Builder shipped no application pages — only the runtime-fallback placeholder is present (${pages.length} stub page(s)). ` +
+          `Re-run the builder with a more focused prompt or update the project with explicit page requirements.`,
+      });
+    }
   }
 
   // Detect a modern styling system (Tailwind / CSS modules / styled /
@@ -319,7 +379,13 @@ function checkFunctionalE2E(files: ProjectFile[]): QAFinding[] {
   for (const f of files.filter(isBackendFile)) {
     let m: RegExpExecArray | null;
     const re = new RegExp(ROUTE_RE.source, 'gi');
-    while ((m = re.exec(f.content)) !== null) backendRoutes.add(m[1]);
+    const c = safeContent(f);
+    while ((m = re.exec(c)) !== null) {
+      backendRoutes.add(m[1]);
+      // Defensive: guard against zero-length matches from any future
+      // regex change that would otherwise loop forever.
+      if (m.index === re.lastIndex) re.lastIndex++;
+    }
   }
 
   // Collect frontend fetch paths.
@@ -328,9 +394,11 @@ function checkFunctionalE2E(files: ProjectFile[]): QAFinding[] {
   for (const f of files.filter((x) => isFrontendFile(x) || (isCodeFile(x) && !isBackendFile(x)))) {
     let m: RegExpExecArray | null;
     const re = new RegExp(CALL_RE.source, 'gi');
-    while ((m = re.exec(f.content)) !== null) {
+    const c = safeContent(f);
+    while ((m = re.exec(c)) !== null) {
       const url = m[1] ?? m[2];
       if (url && url.startsWith('/')) frontendCalls.add(url.split('?')[0]);
+      if (m.index === re.lastIndex) re.lastIndex++;
     }
   }
 
@@ -519,23 +587,57 @@ function scoreBars(findings: QAFinding[]): QAReport['bars'] {
 export function runQualityAssurance(
   inputFiles: ProjectFile[],
 ): { files: ProjectFile[]; report: QAReport } {
-  // 1. Initial assessment
+  const safeInput = Array.isArray(inputFiles) ? inputFiles.filter(Boolean) : [];
+  const fileCount = safeInput.length;
+  const timings: NonNullable<QAReport['timings']> = [];
+  const totalStart = performance.now();
+
+  // Wrap each sub-check so its wall-clock cost is recorded. If any
+  // sub-check throws, we capture its name + error in the timing entry
+  // and re-throw so the outer pipeline still routes through
+  // persistQaGateFailure with a meaningful failedStep.
+  const time = <T>(step: string, fn: () => T): T => {
+    const t0 = performance.now();
+    try {
+      const result = fn();
+      const ms = performance.now() - t0;
+      const entry: { step: string; ms: number; fileCount?: number; findingCount?: number } = {
+        step, ms: +ms.toFixed(3),
+      };
+      if (Array.isArray(result)) entry.findingCount = result.length;
+      timings.push(entry);
+      return result;
+    } catch (err) {
+      const ms = performance.now() - t0;
+      timings.push({
+        step: `${step}:THROW`, ms: +ms.toFixed(3),
+        findingCount: -1,
+      });
+      // Tag the error so the qa-gate dump shows the exact sub-check name.
+      const tagged = err instanceof Error
+        ? Object.assign(err, { qaGateSubCheck: step })
+        : new Error(`qa-gate sub-check '${step}' threw: ${String(err)}`);
+      throw tagged;
+    }
+  };
+
+  // 1. Initial assessment — five sub-checks, each timed individually.
   const findings: QAFinding[] = [
-    ...findPlaceholders(inputFiles),
-    ...checkPreviewRenderability(inputFiles),
-    ...checkUIQuality(inputFiles),
-    ...checkLayoutStructure(inputFiles),
-    ...checkFunctionalE2E(inputFiles),
+    ...time('findPlaceholders.initial',          () => findPlaceholders(safeInput)),
+    ...time('checkPreviewRenderability.initial', () => checkPreviewRenderability(safeInput)),
+    ...time('checkUIQuality.initial',            () => checkUIQuality(safeInput)),
+    ...time('checkLayoutStructure.initial',      () => checkLayoutStructure(safeInput)),
+    ...time('checkFunctionalE2E.initial',        () => checkFunctionalE2E(safeInput)),
   ];
 
   // 2. Auto-repair
-  const { files: repairedFiles, fixed } = autoRepair(inputFiles, findings);
+  const { files: repairedFiles, fixed } = time('autoRepair', () => autoRepair(safeInput, findings));
 
   // 3. Re-run syntax + placeholder checks on the repaired files so we
   //    don't double-count issues that were fixed.
   const postRepair: QAFinding[] = [
-    ...findPlaceholders(repairedFiles),
-    ...checkPreviewRenderability(repairedFiles),
+    ...time('findPlaceholders.postRepair',          () => findPlaceholders(repairedFiles)),
+    ...time('checkPreviewRenderability.postRepair', () => checkPreviewRenderability(repairedFiles)),
   ];
   // Re-run UI/layout/e2e checks against repaired files too. Auto-repair
   // (or upstream scaffold) can satisfy these — for example, layout.missing-app-layout
@@ -543,20 +645,39 @@ export function runQualityAssurance(
   // see whatever pages are present after assembleProject completes. Without
   // re-running, stale round-1 findings produce false negatives.
   const uiLayoutE2E = [
-    ...checkUIQuality(repairedFiles),
-    ...checkLayoutStructure(repairedFiles),
-    ...checkFunctionalE2E(repairedFiles),
+    ...time('checkUIQuality.postRepair',       () => checkUIQuality(repairedFiles)),
+    ...time('checkLayoutStructure.postRepair', () => checkLayoutStructure(repairedFiles)),
+    ...time('checkFunctionalE2E.postRepair',   () => checkFunctionalE2E(repairedFiles)),
   ];
 
   const finalFindings = [...postRepair, ...uiLayoutE2E];
 
-  const bars = scoreBars(finalFindings);
+  const bars = time('scoreBars', () => scoreBars(finalFindings));
   const score = Math.round(
     Object.values(bars).reduce((sum, b) => sum + b.score, 0) / Object.keys(bars).length,
   );
   const blockers = finalFindings.filter((f) => f.severity === 'blocker' && !f.autoFixed);
   const errors = finalFindings.filter((f) => f.severity === 'error' && !f.autoFixed);
   const passed = blockers.length === 0 && errors.length === 0;
+
+  // Annotate every timing entry with the file count it ran against so
+  // a slow scan vs. a slow-per-file scan is distinguishable.
+  for (const t of timings) t.fileCount = fileCount;
+
+  const totalMs = +(performance.now() - totalStart).toFixed(3);
+  const slowest = timings.reduce((a, b) => (b.ms > a.ms ? b : a), timings[0] ?? { step: 'none', ms: 0 });
+
+  // Diagnostic line. Runs unconditionally — cost is one console.log;
+  // keeps the wall-clock breakdown visible even outside DIAGNOSTIC mode.
+  // eslint-disable-next-line no-console
+  console.log('[qa-gate:timings]', JSON.stringify({
+    event: 'qa-gate:timings',
+    fileCount,
+    totalMs,
+    slowestStep: slowest.step,
+    slowestMs: slowest.ms,
+    timings,
+  }));
 
   return {
     files: repairedFiles,
@@ -567,6 +688,9 @@ export function runQualityAssurance(
       findings: finalFindings,
       autoFixCount: fixed.length,
       blockers,
+      timings,
+      totalMs,
+      slowestStep: slowest.step,
     },
   };
 }

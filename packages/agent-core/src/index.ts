@@ -93,3 +93,53 @@ export type { CircuitBreakerConfig, RetryableOperation, RetryResult, LLMCallPara
 // Memory
 export { MemoryManager, InMemoryMemoryStore } from './memory';
 export type { RedisMemoryBackend, PgVectorBackend, EmbeddingClient } from './memory';
+
+// Dependency validator
+export { validateAndFixDependencies } from './dependency-validator';
+export type { DependencyValidationReport, DependencyValidationResult } from './dependency-validator';
+
+// UI design system
+export { UI_SYSTEM_PROMPT, validateUiSystemCompliance, uiSystemViolationsAsIssues } from './ui-system';
+export type { UiSystemViolation, UiSystemReport } from './ui-system';
+
+// Tech-stack contract
+export { normalizeTechStack, buildStackContract, validateStackCompliance, stackViolationsAsIssues } from './tech-stack';
+export type {
+  CanonicalStack, BackendStack, FrontendStack, OrmStack, DbStack,
+  ValidatorStack, StylingStack, StackViolation, StackComplianceReport, StackViolationRule,
+} from './tech-stack';
+
+// Slice planner — splits oversized slices, enforces dependency-aware order,
+// and produces per-slice context summaries.
+export {
+  planSlices, summarizePlannedSlice, buildSliceManifest,
+  MAX_FEATURES_PER_SLICE, SOFT_FEATURES_PER_SLICE, CANONICAL_SLICE_PRIORITY,
+} from './slice-planner';
+export type { RawSlice, PlannedSlice, SlicePlan } from './slice-planner';
+
+// Implementation-completeness validator — pure scan for stubs, mocks,
+// placeholder copy/images, empty handlers, unwired buttons.
+export {
+  validateImplementationCompleteness,
+  completenessViolationsAsIssues,
+  extractApiDomains,
+} from './implementation-completeness';
+export type {
+  CompletenessReport,
+  CompletenessViolation,
+  CompletenessRule,
+  CompletenessContext,
+} from './implementation-completeness';
+
+// Production-polish audit — pure scan for unused code, dead files,
+// a11y basics, and responsive breakpoint coverage. Consumed by the
+// final polish pass.
+export {
+  runProductionPolishAudit,
+  formatPolishAuditForPrompt,
+} from './production-polish-audit';
+export type {
+  PolishAuditReport,
+  PolishAuditViolation,
+  PolishAuditRule,
+} from './production-polish-audit';

@@ -22,6 +22,23 @@ YOU MUST:
     notifications, search, settings. Add domain-specific slices on top.
     Each slice owns its own routes (frontend + backend), DB tables,
     components, and acceptance tests.
+  ✓ KEEP SLICES SMALL. Each slice should declare ≤3–5 deliverables total
+    across routes + apiIds + components + dbTables. If a feature naturally
+    has more than that, SPLIT it into focused sub-slices (e.g.
+    'posts:create-edit', 'posts:list-detail', 'posts:moderation') instead
+    of one mega-slice. Smaller slices = smaller prompts, less truncation,
+    cleaner QA signal. The pipeline auto-splits anything that exceeds 5
+    deliverables, but a hand-tuned split is always better.
+  ✓ DECLARE DEPENDENCIES EXPLICITLY. Every slice MAY include a \`dependsOn\`
+    array listing the ids of other slices that must build first. The pipeline
+    topologically sorts slices using this list, falling back to canonical
+    order (auth → users → content → interactions → notif → search →
+    settings) when \`dependsOn\` is omitted. Examples:
+       "feed" dependsOn ["users", "posts"]
+       "comments" dependsOn ["users", "posts"]
+       "notifications" dependsOn ["users", "posts"]
+    Do NOT create cycles. If you split a slice yourself, sub-slices may
+    depend on each other in batch order (#1 → #2 → #3).
   ✓ ORDER featureSlices BY BUILD PRIORITY (foundation → leaves). The pipeline
     builds them one at a time in array order; later slices depend on earlier
     ones, never the reverse. Canonical order:
@@ -35,13 +52,20 @@ YOU MUST:
        8. <domain extras>
     Each slice MUST be independently shippable: a user could stop the pipeline
     after slice K and still have a working subset of the app.
-  ✓ DEFAULT TO FULLSTACK. techStack.backend MUST be "Fastify + TypeScript"
-    and techStack.database MUST be "PostgreSQL + Prisma" UNLESS the product
-    is genuinely a static page / single-file calculator / browser-only tool.
-    "Frontend-only" is a deliberate, justified choice — not a default.
-  ✓ When backend exists, EVERY interactive feature gets a real API endpoint
-    backed by a Prisma model. No "mocked: true" data deps when the backend
-    is present — that flag is reserved for the rare frontend-only path.
+  ✓ CHOOSE THE STACK FROM THE PROMPT. Read the user's request and pick the
+    technologies that genuinely fit the product. Do NOT default to a fixed
+    stack. A static portfolio is frontend-only; a CMS-backed marketing site
+    might use a headless CMS; a realtime collab tool might prefer a different
+    server runtime; a data-heavy SaaS leans relational; a chat app may pick
+    a document store. If the per-task input includes a "STACK SELECTION
+    MODE: AUTO" block, the user has NOT pre-selected — pick what fits.
+    If the per-task input includes a "USER-CHOSEN TECH STACK (HARD
+    OVERRIDE)" block, those values are non-negotiable and you must mirror
+    them verbatim into techStack.
+  ✓ When the chosen backend is non-empty, EVERY interactive feature gets a
+    real API endpoint backed by a real persistence model in whatever ORM /
+    storage you picked. No "mocked: true" data deps when the backend is
+    present — that flag is reserved for genuinely frontend-only paths.
   ✓ Write "expandedPrompt" as a senior PM briefing an engineering team
     (≥ 400 words, concrete, with user stories).
   ✓ Make every cross-reference internally consistent:
@@ -54,7 +78,9 @@ YOU MUST:
       - every userFlows[].steps[].page MUST match a frontendPages[].path
       - every userFlows[].steps[].apiId (when present) MUST exist in apiContracts
       - fileTree MUST include backend route files when techStack.backend !== 'none'
-      - fileTree MUST include prisma/schema.prisma when techStack.database !== 'none'
+      - fileTree MUST include the chosen ORM's schema file (e.g.
+        prisma/schema.prisma, drizzle/schema.ts, mongoose models) when
+        techStack.database !== 'none'
       - fileTree MUST include docker-compose.yml when techStack.backend !== 'none'
       - every featureSlice MUST list its routes, tables, components, and tests
   ✓ EXHAUSTIVE PAGE COVERAGE. List EVERY page a real user would navigate to:
@@ -126,16 +152,17 @@ OUTPUT FORMAT — respond with a SINGLE JSON object and NOTHING else:
       "apiIds":      ["string — apiContracts.id values this slice owns"],
       "dbTables":    ["string — table names this slice owns or extends"],
       "components":  ["string — component names primarily used by this slice"],
+      "dependsOn":   ["string — ids of slices that MUST build before this one (e.g. ['auth','users'])"],
       "acceptance":  ["string — observable behaviours that prove this slice works (e.g. 'user can register and is auto-logged-in')"]
     }
   ],
 
   "techStack": {
-    "frontend":  "Next.js 15 + React 19 + TypeScript",
-    "backend":   "Fastify + TypeScript  (or 'none — frontend-only' only when truly justified)",
-    "database":  "PostgreSQL + Prisma  (or 'none' only when truly justified)",
-    "auth":      "string",
-    "styling":   "Tailwind CSS + CVA primitives"
+    "frontend":  "string — the frontend framework + language you chose, e.g. 'Next.js 15 + React 19 + TypeScript', 'Astro + TypeScript', 'SvelteKit + TypeScript', 'Vite + React + TypeScript'. Pick what fits the product.",
+    "backend":   "string — the backend runtime + language you chose, e.g. 'Fastify + TypeScript', 'Express + TypeScript', 'Hono + TypeScript', or 'none — frontend-only' for static / browser-only products.",
+    "database":  "string — the persistence layer + access library you chose, e.g. 'PostgreSQL + Prisma', 'PostgreSQL + Drizzle', 'SQLite + Prisma', 'MongoDB + Mongoose', or 'none' for frontend-only.",
+    "auth":      "string — the auth approach you chose (e.g. 'JWT + bcrypt', 'NextAuth', 'Lucia', 'none').",
+    "styling":   "string — the styling system you chose (e.g. 'Tailwind CSS + CVA primitives', 'CSS Modules', 'Vanilla Extract', 'styled-components')."
   },
 
   "designSystem": {

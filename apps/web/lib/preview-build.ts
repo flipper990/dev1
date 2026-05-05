@@ -505,12 +505,29 @@ function orderForSynth(files: PreviewFile[]): PreviewFile[] {
 }
 
 function findReactEntry(files: PreviewFile[]): PreviewFile | null {
-  const candidates = ['src/App.tsx', 'src/App.jsx', 'App.tsx', 'App.jsx', 'src/app.tsx', 'src/app.jsx'];
-  for (const c of candidates) {
+  // Classic CRA/Vite "App" component first.
+  const craCandidates = ['src/App.tsx', 'src/App.jsx', 'App.tsx', 'App.jsx', 'src/app.tsx', 'src/app.jsx'];
+  for (const c of craCandidates) {
     const hit = files.find((f) => norm(f.path) === c);
     if (hit) return hit;
   }
-  return files.find((f) => /(?:^|\/)app\.(?:jsx?|tsx?)$/i.test(norm(f.path))) ?? null;
+  const craLoose = files.find((f) => /(?:^|\/)app\.(?:jsx?|tsx?)$/i.test(norm(f.path)));
+  if (craLoose) return craLoose;
+
+  // Next.js App Router / Pages Router entry pages. Generated projects almost
+  // always use these instead of an App component.
+  const nextCandidates = [
+    'src/app/page.tsx', 'src/app/page.jsx',
+    'app/page.tsx',     'app/page.jsx',
+    'src/pages/index.tsx', 'src/pages/index.jsx',
+    'pages/index.tsx',     'pages/index.jsx',
+  ];
+  for (const c of nextCandidates) {
+    const hit = files.find((f) => norm(f.path) === c);
+    if (hit) return hit;
+  }
+  // Loose match for any page.tsx under app/ — rare nested layouts.
+  return files.find((f) => /(?:^|\/)app\/(?:[^/]+\/)*page\.(?:jsx?|tsx?)$/i.test(norm(f.path))) ?? null;
 }
 
 function findIndexHtml(files: PreviewFile[]): PreviewFile | null {
@@ -1166,11 +1183,20 @@ function buildFallbackHtml(files: PreviewFile[], projectName: string, note: stri
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="color-scheme" content="dark" />
     <title>${escapeHtml(projectName)} — Preview unavailable</title>
     ${PREVIEW_MOCK_SCRIPT}
     <style>
-      body { margin:0; padding:24px; background:#07090f; color:#F1F5F9; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-      .card { max-width:560px; margin:40px auto; background:#0F172A; border:1px solid rgba(99,102,241,0.25); border-radius:12px; padding:28px; }
+      :root { color-scheme: dark; }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { background:#07090f; height:100%; margin:0; }
+      html { overflow: hidden; }
+      body { padding:24px; color:#F1F5F9; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+      ::-webkit-scrollbar { width:10px; height:10px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius:8px; }
+      ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.16); }
+      .card { width:100%; max-width:560px; max-height:100%; overflow:auto; background:#0F172A; border:1px solid rgba(99,102,241,0.25); border-radius:12px; padding:28px; }
       h1 { font-size:16px; margin:0 0 8px; }
       p  { font-size:13px; color:#94A3B8; margin:0 0 16px; }
       ul { font-size:12px; color:#CBD5E1; max-height:240px; overflow:auto; padding-left:18px; }

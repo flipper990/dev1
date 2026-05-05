@@ -53,6 +53,13 @@ export function ensureRunnableScaffold(fileMap: Map<string, ProjectFile>): void 
 
   if (stack === 'unknown') return;
 
+  // Pre-pass: collapse duplicate app/ + src/app/ trees the builder sometimes
+  // emits (e.g. a stub `app/page.tsx` next to a real `src/app/page.tsx`, or
+  // a partial `app/layout.tsx` whose imports point at components that only
+  // live in `src/components/`). Pick whichever tree has more files and drop
+  // the other so Next.js doesn't see two competing route roots.
+  collapseDuplicateAppTrees(fileMap);
+
   // Always ensure tsconfig.json + .gitignore (skipped for fullstack — each
   // app gets its own tsconfig).
   if (stack !== 'fullstack' && !has('tsconfig.json')) {
@@ -168,21 +175,22 @@ function ensureNextScaffold(fileMap: Map<string, ProjectFile>): void {
   if (!fileMap.has('tailwind.config.ts') && !fileMap.has('tailwind.config.js')) {
     fileMap.set('tailwind.config.ts', {
       path: 'tailwind.config.ts',
-      content: [
-        'import type { Config } from "tailwindcss";',
-        'const config: Config = {',
-        '  content: ["./src/**/*.{ts,tsx,js,jsx,mdx}", "./app/**/*.{ts,tsx,js,jsx,mdx}"],',
-        '  theme: { extend: {} },',
-        '  plugins: [],',
-        '};',
-        'export default config;',
-      ].join('\n') + '\n',
+      content: shadcnTailwindConfigTs(['./src/**/*.{ts,tsx,js,jsx,mdx}', './app/**/*.{ts,tsx,js,jsx,mdx}']),
     });
+  } else {
+    upgradeStubTailwindConfig(fileMap, 'tailwind.config.ts', 'tailwind.config.js', ['./src/**/*.{ts,tsx,js,jsx,mdx}', './app/**/*.{ts,tsx,js,jsx,mdx}']);
   }
   if (!fileMap.has('next-env.d.ts')) {
     fileMap.set('next-env.d.ts', {
       path: 'next-env.d.ts',
       content: '/// <reference types="next" />\n/// <reference types="next/image-types/global" />\n',
+    });
+  }
+  // Page fallback (single-app layout). Mirrors the monorepo guard.
+  if (!fileMap.has('src/app/page.tsx')) {
+    fileMap.set('src/app/page.tsx', {
+      path: 'src/app/page.tsx',
+      content: synthesizeFallbackNextPage(fileMap),
     });
   }
   // Layout fallback so `next dev` doesn't 500 if the LLM forgot it.
@@ -453,16 +461,10 @@ function ensureFullstackWeb(fileMap: Map<string, ProjectFile>): void {
   if (!has('apps/web/tailwind.config.ts') && !has('apps/web/tailwind.config.js')) {
     fileMap.set('apps/web/tailwind.config.ts', {
       path: 'apps/web/tailwind.config.ts',
-      content: [
-        'import type { Config } from "tailwindcss";',
-        'const config: Config = {',
-        '  content: ["./src/**/*.{ts,tsx,js,jsx,mdx}", "./app/**/*.{ts,tsx,js,jsx,mdx}"],',
-        '  theme: { extend: {} },',
-        '  plugins: [],',
-        '};',
-        'export default config;',
-      ].join('\n') + '\n',
+      content: shadcnTailwindConfigTs(['./src/**/*.{ts,tsx,js,jsx,mdx}', './app/**/*.{ts,tsx,js,jsx,mdx}']),
     });
+  } else {
+    upgradeStubTailwindConfig(fileMap, 'apps/web/tailwind.config.ts', 'apps/web/tailwind.config.js', ['./src/**/*.{ts,tsx,js,jsx,mdx}', './app/**/*.{ts,tsx,js,jsx,mdx}']);
   }
   if (!has('apps/web/next-env.d.ts')) {
     fileMap.set('apps/web/next-env.d.ts', {
@@ -470,8 +472,21 @@ function ensureFullstackWeb(fileMap: Map<string, ProjectFile>): void {
       content: '/// <reference types="next" />\n/// <reference types="next/image-types/global" />\n',
     });
   }
-  // Layout fallback so `next dev` doesn't 500 if the LLM forgot it.
-  const hasPage = has('apps/web/src/app/page.tsx') || has('apps/web/app/page.tsx');
+  // Page fallback. The builder OCCASIONALLY emits primitives + layout but
+  // never an actual route component (or its slice merging drops it). Without
+  // a page, `next dev` 404s and the QA "ui-modern" bar fails with
+  // "No page/route components detected". Synthesize a minimal but real page
+  // that wires up whatever feature components ARE present so the user gets
+  // something rendering.
+  let hasPage = has('apps/web/src/app/page.tsx') || has('apps/web/app/page.tsx');
+  if (!hasPage) {
+    const pagePath = 'apps/web/app/page.tsx';
+    fileMap.set(pagePath, {
+      path: pagePath,
+      content: synthesizeFallbackNextPage(fileMap),
+    });
+    hasPage = true;
+  }
   const hasLayout = has('apps/web/src/app/layout.tsx') || has('apps/web/app/layout.tsx');
   if (hasPage && !hasLayout) {
     const layoutPath = has('apps/web/app/page.tsx') ? 'apps/web/app/layout.tsx' : 'apps/web/src/app/layout.tsx';
@@ -1059,5 +1074,270 @@ function ensureUseClientDirectives(fileMap: Map<string, ProjectFile>): void {
     if (!needsClient) continue;
 
     fileMap.set(path, { path, content: `'use client';\n\n${file.content}` });
+  }
+}
+
+/**
+ * Synthesize a minimal Next.js page when the builder failed to emit one.
+ * Tries to discover a feature component and renders it; otherwise shows a
+ * friendly placeholder. Always centred, dark-themed, Tailwind-only.
+ */
+function synthesizeFallbackNextPage(fileMap: Map<string, ProjectFile>): string {
+  type Candidate = {
+    path: string;
+    name: string;
+    size: number;
+    isDefault: boolean;
+    isNamed: boolean;
+  };
+  const SKIP_NAME = /^(Sidebar|Topbar|AppShell|Header|Footer|Nav|Layout|Provider|Wrapper|Skeleton|Spinner|Loader|EmptyState|ErrorBoundary|Toast|Toaster|Tooltip|Modal|Dialog|Drawer|Popover|Menu|DropdownMenu|Avatar|Badge|Tag|Chip|Card|Button|Input|Textarea|Select|Checkbox|Radio|Switch|Slider|Tabs|Separator|Divider|Alert|Banner|Pagination|Breadcrumb|Accordion|Collapsible|Progress|PageHeader|Container|Section|Grid|Stack|Box|Flex)$/i;
+  const SKIP_DIR  = /\/(?:ui|layout|primitives?|theme|design|tokens?|icons?|svg)\//i;
+  const PREFER    = /Counter|Card|Page|View|Home|Main|App|Roller|Dice|Timer|Stopwatch|Clock|Editor|Note|Board|Tracker|Game|Quiz|Player|Form|Dashboard|Feed|List|Workspace|Canvas|Studio|Builder|Generator/i;
+
+  const candidates: Candidate[] = [];
+  for (const [path, file] of fileMap) {
+    const m = /^(?:apps\/web\/)?(?:src\/)?components\/(?:[^/]+\/)*([A-Z][A-Za-z0-9_]+)\.tsx$/.exec(path);
+    if (!m) continue;
+    const name = m[1];
+    if (SKIP_NAME.test(name)) continue;
+    if (SKIP_DIR.test(path)) continue;
+    const content = file.content || '';
+    const isNamed   = new RegExp(`export\\s+function\\s+${name}\\b|export\\s+const\\s+${name}\\b|export\\s*\\{[^}]*\\b${name}\\b[^}]*\\}`).test(content);
+    const isDefault = /export\s+default\s+(?:function|class|\(|\w)/.test(content);
+    if (!isNamed && !isDefault) continue;
+    candidates.push({ path, name, size: content.length, isDefault, isNamed });
+  }
+
+  // Rank: preferred name match first, then larger files (substantial features).
+  candidates.sort((a, b) => {
+    const ap = PREFER.test(a.name) ? 0 : 1;
+    const bp = PREFER.test(b.name) ? 0 : 1;
+    if (ap !== bp) return ap - bp;
+    return b.size - a.size;
+  });
+
+  const pick = candidates[0];
+  if (pick) {
+    // The `@/` alias resolves to either `./src/*` (src-layout) or root.
+    // Strip whichever prefix the picked file has so the import is correct.
+    const importPath = pick.path
+      .replace(/^apps\/web\//, '')
+      .replace(/^src\//, '')
+      .replace(/\.tsx$/, '');
+    const importLine = pick.isNamed
+      ? `import { ${pick.name} } from '@/${importPath}';`
+      : `import ${pick.name} from '@/${importPath}';`;
+    return [
+      `'use client';`,
+      ``,
+      `import * as React from 'react';`,
+      importLine,
+      ``,
+      `class ErrorBoundary extends React.Component<{ name: string; children: React.ReactNode }, { error: Error | null }> {`,
+      `  state = { error: null as Error | null };`,
+      `  static getDerivedStateFromError(error: Error) { return { error }; }`,
+      `  render() {`,
+      `    if (this.state.error) {`,
+      `      return (`,
+      `        <div className="max-w-lg rounded-lg border border-amber-500/30 bg-amber-500/5 p-6 text-amber-200">`,
+      `          <h2 className="mb-2 text-base font-semibold">Component "{this.props.name}" needs props</h2>`,
+      `          <p className="text-xs opacity-80">{this.state.error.message}</p>`,
+      `        </div>`,
+      `      );`,
+      `    }`,
+      `    return this.props.children as React.ReactElement;`,
+      `  }`,
+      `}`,
+      ``,
+      `export default function Page() {`,
+      `  const stubProps: any = { items: [], data: [], history: [], options: [], rolls: [], notes: [], tasks: [], onChange: () => {}, onClick: () => {}, onSubmit: () => {} };`,
+      `  return (`,
+      `    <main className="flex min-h-screen items-center justify-center bg-zinc-950 p-6 text-zinc-50">`,
+      `      <ErrorBoundary name="${pick.name}">`,
+      `        {/* @ts-ignore — stub props for fallback synth */}`,
+      `        <${pick.name} {...stubProps} />`,
+      `      </ErrorBoundary>`,
+      `    </main>`,
+      `  );`,
+      `}`,
+    ].join('\n') + '\n';
+  }
+  return [
+    `export default function Page() {`,
+    `  return (`,
+    `    <main className="flex min-h-screen items-center justify-center bg-zinc-950 p-6 text-zinc-50">`,
+    `      <div className="max-w-md text-center">`,
+    `        <h1 className="text-3xl font-semibold tracking-tight">Welcome</h1>`,
+    `        <p className="mt-2 text-sm text-zinc-400">This page was scaffolded by the runtime fallback. Replace it with your real homepage.</p>`,
+    `      </div>`,
+    `    </main>`,
+    `  );`,
+    `}`,
+  ].join('\n') + '\n';
+}
+
+/* ── shadcn-style tailwind config + token-aware upgrade ────────
+ *
+ * The builder agent commonly emits a `globals.css` that uses shadcn-style
+ * design tokens (`bg-background`, `text-foreground`, `border-border`,
+ * `bg-primary`, etc.) but pairs it with a stub `tailwind.config.ts`
+ * containing only `theme: { extend: {} }`. Those classes don't exist
+ * unless the config maps them to CSS variables, so PostCSS dies with
+ * "The 'border-border' class does not exist" and every route returns 500.
+ *
+ * Our defaults (and the upgrade pass below) ship a complete shadcn token
+ * mapping using `var(--*)` directly. We avoid `hsl(var(--*))` because the
+ * LLM almost always writes hex CSS variables (`--background: #18181B`),
+ * and `hsl(#18181B)` is invalid CSS.
+ * ────────────────────────────────────────────────────────────── */
+
+function shadcnTailwindConfigTs(contentGlobs: string[]): string {
+  const globs = contentGlobs.map((g) => `    "${g}"`).join(',\n');
+  return [
+    'import type { Config } from "tailwindcss";',
+    '',
+    'const config: Config = {',
+    '  darkMode: ["class", "[data-theme=\\"dark\\"]"],',
+    '  content: [',
+    globs,
+    '  ],',
+    '  theme: {',
+    '    extend: {',
+    '      colors: {',
+    '        border: "var(--border)",',
+    '        input: "var(--input)",',
+    '        ring: "var(--ring)",',
+    '        background: "var(--background)",',
+    '        foreground: "var(--foreground)",',
+    '        primary: {',
+    '          DEFAULT: "var(--primary)",',
+    '          foreground: "var(--primary-foreground)",',
+    '        },',
+    '        secondary: {',
+    '          DEFAULT: "var(--secondary)",',
+    '          foreground: "var(--secondary-foreground)",',
+    '        },',
+    '        destructive: {',
+    '          DEFAULT: "var(--destructive)",',
+    '          foreground: "var(--destructive-foreground)",',
+    '        },',
+    '        muted: {',
+    '          DEFAULT: "var(--muted)",',
+    '          foreground: "var(--muted-foreground)",',
+    '        },',
+    '        accent: {',
+    '          DEFAULT: "var(--accent)",',
+    '          foreground: "var(--accent-foreground)",',
+    '        },',
+    '        popover: {',
+    '          DEFAULT: "var(--popover, var(--card))",',
+    '          foreground: "var(--popover-foreground, var(--card-foreground))",',
+    '        },',
+    '        card: {',
+    '          DEFAULT: "var(--card)",',
+    '          foreground: "var(--card-foreground)",',
+    '        },',
+    '        success: "var(--success, #22c55e)",',
+    '        warning: "var(--warning, #f59e0b)",',
+    '        info: "var(--info, #3b82f6)",',
+    '      },',
+    '      borderRadius: {',
+    '        lg: "var(--radius-lg, 1rem)",',
+    '        md: "var(--radius-md, 0.5rem)",',
+    '        sm: "var(--radius-sm, 0.25rem)",',
+    '      },',
+    '    },',
+    '  },',
+    '  plugins: [],',
+    '};',
+    '',
+    'export default config;',
+    '',
+  ].join('\n');
+}
+
+/**
+ * If an existing tailwind.config.{ts,js} is the empty stub
+ * (`theme: { extend: {} }` and no `colors:` block) AND the project's CSS
+ * references shadcn tokens, replace the config with the full mapping.
+ *
+ * This is a no-op when the config already declares colors of its own.
+ */
+function upgradeStubTailwindConfig(
+  fileMap: Map<string, ProjectFile>,
+  tsPath: string,
+  jsPath: string,
+  contentGlobs: string[],
+): void {
+  const targetPath = fileMap.has(tsPath) ? tsPath : fileMap.has(jsPath) ? jsPath : null;
+  if (!targetPath) return;
+  const file = fileMap.get(targetPath)!;
+  const text = file.content;
+
+  // Heuristic: empty extend + no colors block → stub config.
+  const looksStub =
+    /theme\s*:\s*\{\s*extend\s*:\s*\{\s*\}\s*,?\s*\}/m.test(text) &&
+    !/colors\s*:\s*\{/m.test(text);
+  if (!looksStub) return;
+
+  // Only upgrade when CSS in this project references shadcn tokens.
+  if (!projectUsesShadcnTokens(fileMap)) return;
+
+  fileMap.set(tsPath, { path: tsPath, content: shadcnTailwindConfigTs(contentGlobs) });
+  if (targetPath === jsPath && tsPath !== jsPath) fileMap.delete(jsPath);
+}
+
+function projectUsesShadcnTokens(fileMap: Map<string, ProjectFile>): boolean {
+  const SHADCN_RE = /\b(?:bg|text|border|ring|fill|stroke|from|via|to|placeholder|caret|accent|outline|divide)-(?:background|foreground|border|input|ring|primary|secondary|destructive|muted|accent|popover|card)(?:-foreground)?\b/;
+  for (const [path, file] of fileMap) {
+    if (!/\.(?:css|tsx|jsx|ts|js|mdx|html)$/i.test(path)) continue;
+    if (SHADCN_RE.test(file.content)) return true;
+    // CSS @apply directive variant.
+    if (/\.css$/i.test(path) && /@apply\s+[^;]*\b(?:border|bg|text)-(?:border|background|foreground|primary|secondary|muted|accent|destructive|popover|card)/.test(file.content)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/* ── duplicate app-tree collapse ──────────────────────────────
+ *
+ * The builder occasionally emits both `app/...` and `src/app/...`
+ * (or `apps/web/app/...` and `apps/web/src/app/...`). Next.js reports
+ * conflicting routes and refuses to start, OR — worse — the LLM puts
+ * a real page under one tree and a stub under the other so users see
+ * the wrong page. We pick whichever side has more files (real content)
+ * and drop the other.
+ * ────────────────────────────────────────────────────────────── */
+
+function collapseDuplicateAppTrees(fileMap: Map<string, ProjectFile>): void {
+  const pairs: Array<{ a: string; b: string }> = [
+    { a: 'app/', b: 'src/app/' },
+    { a: 'apps/web/app/', b: 'apps/web/src/app/' },
+    { a: 'components/', b: 'src/components/' },
+    { a: 'apps/web/components/', b: 'apps/web/src/components/' },
+    { a: 'lib/', b: 'src/lib/' },
+    { a: 'apps/web/lib/', b: 'apps/web/src/lib/' },
+  ];
+
+  for (const { a, b } of pairs) {
+    const aFiles = [...fileMap.keys()].filter((k) => k.startsWith(a) && !k.startsWith(b));
+    const bFiles = [...fileMap.keys()].filter((k) => k.startsWith(b));
+    if (aFiles.length === 0 || bFiles.length === 0) continue;
+
+    // Keep the side with more total content (bytes), break ties by file count
+    // and prefer the one that contains a non-trivial page.tsx.
+    const aBytes = aFiles.reduce((n, k) => n + (fileMap.get(k)?.content.length ?? 0), 0);
+    const bBytes = bFiles.reduce((n, k) => n + (fileMap.get(k)?.content.length ?? 0), 0);
+    const aHasRealPage = aFiles.some((k) => k.endsWith('page.tsx') && (fileMap.get(k)?.content.length ?? 0) > 200);
+    const bHasRealPage = bFiles.some((k) => k.endsWith('page.tsx') && (fileMap.get(k)?.content.length ?? 0) > 200);
+
+    let drop: string[];
+    if (aHasRealPage && !bHasRealPage) drop = bFiles;
+    else if (bHasRealPage && !aHasRealPage) drop = aFiles;
+    else if (aBytes >= bBytes) drop = bFiles;
+    else drop = aFiles;
+
+    for (const k of drop) fileMap.delete(k);
   }
 }

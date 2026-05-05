@@ -57,10 +57,12 @@ export class ProjectUpdater {
       return { projectId, sessionId, success: false, error: `Project ${projectId} not found` };
     }
     if (existing.status === 'generating') {
-      // Runtime auto-fix runs DURING the generating window (the pipeline
-      // schedules it before flipping status), so allow it to bypass the
-      // human-update guard. Other callers must wait.
-      if (userId !== 'system-auto-fix') {
+      // Runtime auto-fix and execution-feedback loop both run DURING the
+      // generating window (the pipeline schedules them before flipping
+      // status), so allow them to bypass the human-update guard. Other
+      // callers must wait.
+      const systemBypassUsers = new Set(['system-auto-fix', 'system-execution-loop']);
+      if (!systemBypassUsers.has(userId ?? '')) {
         return { projectId, sessionId, success: false, error: 'Project is still generating; wait for it to complete before updating' };
       }
     }
@@ -78,6 +80,7 @@ export class ProjectUpdater {
     if (existing.files?.length) session.artifacts.set('existingFiles', existing.files);
 
     existing.status = 'generating';
+    existing.sessionId = sessionId;
     await this.projectStore.save(existing);
 
     const bus = new InMemoryMessageBus();
@@ -93,6 +96,52 @@ export class ProjectUpdater {
       const pipelineState = await orchestrator.execute(session, seedArtifacts);
 
       const assembled = assembleProject(pipelineState.artifacts, this.logger);
+
+      // ── File-loss safeguard ────────────────────────────────
+      // The pipeline regenerates the entire codebase on every update. If
+      // the builder LLM crashes / rate-limits / returns empty (a single
+      // "produced no files" failure mid auto-fix loop), `assembled` can
+      // collapse to just the deterministic deployment scaffolding. Without
+      // this check we'd persist an 11-file project over a previous 60-file
+      // project and the user loses everything they had.
+      //
+      // Heuristic: if the existing project had React/source files and the
+      // new assembly has no source files at all (or <30% of the previous
+      // file count), keep the existing files and mark this update failed.
+      const existingFiles = existing.files ?? [];
+      const isSourceFile = (p: string): boolean =>
+        /\.(?:tsx?|jsx?|css|scss|mdx?|html?|prisma|toml|ya?ml)$/i.test(p) &&
+        !/^(?:Dockerfile|docker-compose|\.dockerignore|\.github\/|infra\/|scripts\/|vercel\.json|\.env)/.test(p);
+      const existingSourceCount = existingFiles.filter((f) => isSourceFile(f.path)).length;
+      const newSourceCount = assembled.filter((f) => isSourceFile(f.path)).length;
+
+      const builderTask = pipelineState.tasks?.find((t) => t.agentRole === 'builder');
+      const builderFailed = builderTask?.status === 'failed';
+
+      const lostMostFiles =
+        existingSourceCount >= 5 &&
+        (newSourceCount === 0 || newSourceCount < Math.floor(existingSourceCount * 0.3));
+
+      if (lostMostFiles) {
+        this.logger.error(
+          `Project ${projectId} update aborted: regression detected ` +
+          `(existing ${existingSourceCount} source files → new ${newSourceCount}). ` +
+          `Builder task: ${builderTask?.status ?? 'missing'}${builderTask?.error ? ` (${builderTask.error.message})` : ''}. ` +
+          `Keeping existing files; not overwriting.`,
+        );
+        existing.status = 'failed';
+        existing.updatedAt = new Date().toISOString();
+        await this.projectStore.save(existing);
+        return {
+          projectId,
+          sessionId,
+          success: false,
+          error:
+            builderFailed && builderTask?.error?.message
+              ? `Builder failed: ${builderTask.error.message}. Existing files preserved.`
+              : `Update would have deleted ${existingSourceCount - newSourceCount} source file(s); existing files preserved.`,
+        };
+      }
 
       // ── Final QA gate ─────────────────────────────────────
       // Same guarantee as ProjectGenerator: no low-quality output is

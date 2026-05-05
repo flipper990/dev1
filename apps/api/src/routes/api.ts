@@ -9,8 +9,14 @@ import type { SessionManager } from '../pipeline/session-manager.js';
 import type { FileMemoryStore } from '../storage/memory-store.js';
 import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import type { SmartLLMRouter } from '../llm/smart-router.js';
+import type { PreviewManager } from '../preview/preview-manager.js';
 import { registerLLMRoutes } from './llm-routes.js';
 import { registerVersionRoutes } from './version-routes.js';
+import {
+  getActiveGenerations,
+  getHeartbeat,
+  getLastUnhandledError,
+} from '../crash-logger.js';
 
 const GenerateSchema = z.object({
   prompts: z.array(z.string().min(10).max(5000)).min(1).max(3),
@@ -27,11 +33,72 @@ export function registerRoutes(
     memoryStore: FileMemoryStore;
     llm: SmartLLMRouter;
     logger: Logger;
+    /** Optional: enables preview-job listing in /debug/runtime. */
+    preview?: PreviewManager;
   },
 ): void {
-  const { generator, projectStore, sessionManager, memoryStore, llm } = deps;
+  const { generator, projectStore, sessionManager, memoryStore, llm, preview } = deps;
 
-  app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
+  app.get('/health', async () => {
+    const hb = getHeartbeat();
+    // Count "active" projects as those currently in 'generating'.
+    let activeProjectCount = 0;
+    let activeProjectIds: string[] = [];
+    try {
+      const all = await projectStore.list();
+      const generating = all.filter((p) => p.status === 'generating');
+      activeProjectCount = generating.length;
+      activeProjectIds = generating.map((p) => p.id).slice(0, 50);
+    } catch {
+      // Best-effort. /health must never throw.
+    }
+    const active = getActiveGenerations();
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      pid: hb.pid,
+      uptime: hb.uptimeSeconds,
+      startedAt: hb.startedAt,
+      firstStartedAt: hb.firstStartedAt,
+      restartCounter: hb.restartCounter,
+      lastBeatAt: hb.lastBeatAt,
+      beatCount: hb.beatCount,
+      watchMode: hb.watchMode,
+      reloadedFromPid: hb.reloadedFromPid,
+      activeProjectCount,
+      activeProjectIds,
+      activeGenerationIds: active.map((g) => g.sessionId).filter((s): s is string => !!s),
+      activeGenerationCount: active.length,
+    };
+  });
+
+  app.get('/debug/runtime', async () => {
+    const hb = getHeartbeat();
+    const previews = preview
+      ? preview.listAll().map((p) => ({
+          projectId: p.projectId,
+          state: p.state,
+          stack: p.stack ?? null,
+          url: p.url ?? null,
+          uptimeMs: p.uptimeMs ?? 0,
+        }))
+      : [];
+    return {
+      pid: hb.pid,
+      uptimeSeconds: hb.uptimeSeconds,
+      startedAt: hb.startedAt,
+      firstStartedAt: hb.firstStartedAt,
+      restartCounter: hb.restartCounter,
+      lastBeatAt: hb.lastBeatAt,
+      beatCount: hb.beatCount,
+      watchMode: hb.watchMode,
+      reloadedFromPid: hb.reloadedFromPid,
+      memoryUsage: hb.memoryUsage,
+      lastUnhandledError: getLastUnhandledError(),
+      activeGenerations: getActiveGenerations(),
+      activePreviews: previews,
+    };
+  });
 
   const GenerateOrPromptSchema = z.union([
     GenerateSchema,
@@ -44,6 +111,10 @@ export function registerRoutes(
   ]);
 
   const handleGenerate = async (request: FastifyRequest, reply: FastifyReply) => {
+    request.log.info(
+      { event: 'route:generate:received', reqId: request.id, bodyLen: JSON.stringify(request.body ?? {}).length },
+      '[route:generate] request received',
+    );
     const parsed = GenerateOrPromptSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({
@@ -64,12 +135,20 @@ export function registerRoutes(
       userId: data.userId,
       preferences: data.preferences,
     });
+    request.log.info(
+      { event: 'route:generate:reserved', projectId: reservation.projectId, sessionId: reservation.sessionId, promptCount: prompts.length },
+      '[route:generate] project reserved \u2014 launching background runner',
+    );
 
     // Kick off the pipeline in the background. Errors are surfaced to the
     // session/WS stream by the generator itself; we never want this promise
-    // to crash the process.
+    // to crash the process. runReserved() is now responsible for marking
+    // the placeholder as 'failed' on any error \u2014 we just log here.
     void generator.runReserved(reservation).catch((err) => {
-      request.log.error({ err, projectId: reservation.projectId }, 'Background generation failed');
+      request.log.error(
+        { err, projectId: reservation.projectId, sessionId: reservation.sessionId },
+        '[route:generate] runReserved threw \u2014 should have been handled internally',
+      );
     });
 
     return reply.status(202).send({
@@ -85,9 +164,27 @@ export function registerRoutes(
 
   app.get('/api/projects/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const project = await projectStore.get(id);
-    if (!project) return reply.status(404).send({ error: 'Project not found' });
-    return project;
+    request.log.info(
+      { event: 'route:get-project', projectId: id, reqId: request.id },
+      '[route:get-project] lookup',
+    );
+    try {
+      const project = await projectStore.get(id);
+      if (!project) {
+        request.log.info(
+          { event: 'route:get-project:not-found', projectId: id, reqId: request.id },
+          '[route:get-project] 404',
+        );
+        return reply.status(404).send({ error: 'Project not found' });
+      }
+      return project;
+    } catch (err) {
+      request.log.error(
+        { event: 'route:get-project:error', projectId: id, reqId: request.id, err: (err as Error).message, stack: (err as Error).stack },
+        '[route:get-project] threw — returning 500 instead of crashing the process',
+      );
+      return reply.status(500).send({ error: 'Internal Error', code: 'GET_PROJECT_FAILED', message: (err as Error).message });
+    }
   });
 
   app.get('/api/projects', async () => projectStore.list());

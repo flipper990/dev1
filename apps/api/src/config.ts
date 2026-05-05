@@ -20,6 +20,12 @@ export const config = {
     anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? '',
     openaiApiKey: process.env.OPENAI_API_KEY ?? '',
     googleApiKey: process.env.GOOGLE_API_KEY ?? '',
+    azure: {
+      apiKey: process.env.AZURE_OPENAI_API_KEY ?? '',
+      endpoint: process.env.AZURE_OPENAI_ENDPOINT ?? '',
+      apiVersion: process.env.AZURE_OPENAI_API_VERSION ?? '2024-10-21',
+      healthCheckDeployment: process.env.AZURE_OPENAI_HEALTHCHECK_DEPLOYMENT ?? '',
+    },
   },
 
   db: {
@@ -40,7 +46,13 @@ export const config = {
   },
 
   rateLimit: {
-    max: parseInt(process.env.RATE_LIMIT_MAX ?? '100', 10),
+    // Dev defaults are generous: a single user with the dashboard open hits
+    // /api/projects (8 s poll) + /api/preview/health (boot) +
+    // /api/projects/:id/preview/status (5 s poll while a project is open).
+    // With React StrictMode double-mounts and HMR remounts that easily
+    // exceeds 100/min from a single localhost client. 600/min keeps the
+    // limit useful against runaway loops without false-positive throttling.
+    max: parseInt(process.env.RATE_LIMIT_MAX ?? '600', 10),
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? '60000', 10),
   },
 
@@ -61,8 +73,12 @@ export const config = {
 export function validateProductionConfig(): void {
   if (process.env.NODE_ENV !== 'production') return;
   const missing: string[] = [];
-  if (!process.env.ANTHROPIC_API_KEY && !process.env.OPENAI_API_KEY) {
-    missing.push('ANTHROPIC_API_KEY or OPENAI_API_KEY');
+  if (
+    !process.env.ANTHROPIC_API_KEY &&
+    !process.env.OPENAI_API_KEY &&
+    !(process.env.AZURE_OPENAI_API_KEY && process.env.AZURE_OPENAI_ENDPOINT)
+  ) {
+    missing.push('ANTHROPIC_API_KEY or OPENAI_API_KEY or (AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT)');
   }
   if (!process.env.ALLOWED_ORIGINS) {
     missing.push('ALLOWED_ORIGINS');

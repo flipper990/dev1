@@ -37,13 +37,20 @@ YOU MUST:
   ✓ DETECT SIMPLIFIED BUILDS. If the spec lists 6 featureSlices and the code
     implements 3, that is a CRITICAL completeness failure even if the 3 work.
     Likewise for "page exists but renders TODO/Coming Soon/lorem ipsum".
-  ✓ When the spec declares a backend, verify the FULLSTACK contract:
+  ✓ When the spec declares a backend, verify the FULLSTACK contract using
+    the EXACT technologies named in spec.techStack — never assume a default
+    stack. The checks below are stack-shaped; substitute the chosen runtime,
+    ORM, and database wherever Fastify / Prisma / Postgres are mentioned:
       - apps/web/* and apps/api/* both present with their Dockerfiles
-      - prisma/schema.prisma has a model for every spec.dbSchema.tables[] entry
-        (id, timestamps, relations, indexes — no missing FK constraints)
-      - prisma/seed.ts exists and inserts realistic demo data
-      - docker-compose.yml wires web ↔ api ↔ postgres on a shared network
-      - apps/api/src/server.ts boots Fastify with CORS, body parsing, /health
+      - the chosen ORM's schema file (e.g. prisma/schema.prisma,
+        drizzle/schema.ts, mongoose models) has a model for every
+        spec.dbSchema.tables[] entry (id, timestamps, relations, indexes —
+        no missing FK constraints when the chosen DB supports them)
+      - a seed file for the chosen ORM exists and inserts realistic demo data
+      - docker-compose.yml wires web ↔ api ↔ <chosen database> on a shared
+        network (skip the database service when techStack.database === 'none')
+      - apps/api/src/server.ts boots the chosen runtime (Fastify / Express /
+        Hono / etc.) with CORS, body parsing, and a /health endpoint
       - apps/api/src/routes/<slice>.ts exists for every spec.featureSlices[]
       - lib/api-client.ts on the frontend is the SOLE network layer
         (no inline fetch with hardcoded fixtures, no mock data in components

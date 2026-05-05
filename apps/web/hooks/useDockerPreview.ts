@@ -41,8 +41,26 @@ export type DockerPreviewPhase =
   | 'failed'       // boot failed
   | 'stopped';     // intentionally stopped (manual / unmount)
 
+/**
+ * Public preview state — independent of `project.status`. UI components
+ * MUST drive preview-related labels off this enum, not the generation
+ * status, so we don't leak "still building" while the preview is live.
+ */
+export type PreviewState =
+  | 'idle'
+  | 'preparing'    // checking Docker / waiting for project files
+  | 'installing'   // backend reports state='building' (npm install + image build)
+  | 'building'     // backend reports state='building' (compile)
+  | 'starting'    // dev server launching
+  | 'ready'
+  | 'failed';
+
 export interface UseDockerPreviewResult {
   phase: DockerPreviewPhase;
+  /** Decoupled preview lifecycle state (drives UI labels). */
+  previewState: PreviewState;
+  /** True the moment the iframe has a non-null `src` it can attempt to load. */
+  previewReady: boolean;
   status: PreviewStatus | null;
   url: string | null;
   error: string | null;
@@ -94,7 +112,9 @@ export function useDockerPreview(
       // 1. Is Docker available on the API host at all?
       const health = await getPreviewHealth();
       if (cancelledRef.current || !mounted) return;
-      if (!health.docker) {
+      // Either Docker OR the local-runner fallback works — only flip to
+      // 'unavailable' if neither is available.
+      if (!health.any) {
         setPhase('unavailable');
         return;
       }
@@ -126,6 +146,12 @@ export function useDockerPreview(
           if (s.state === 'ready') {
             setPhase('ready');
             return; // stop polling
+          }
+          if (s.state === 'fallback') {
+            // API reported Docker unavailable mid-flight — switch to
+            // frontend-only static preview.
+            setPhase('unavailable');
+            return;
           }
           if (s.state === 'failed') {
             setPhase('failed');
@@ -185,9 +211,50 @@ export function useDockerPreview(
     setPhase('stopped');
   }, [projectId]);
 
-  const url = phase === 'ready' && projectId
-    ? previewIframeUrl(projectId, status?.hostPort ?? null)
+  // The iframe URL is exposed the MOMENT the backend allocates a host port
+  // (i.e. while state is still 'starting'). The dev server inside the
+  // container often becomes responsive before our 2s poll catches up — we
+  // therefore let the iframe attempt to load eagerly. The "Booting…" overlay
+  // is cleared by the iframe's onLoad handler in the consumer.
+  const url = projectId && status?.hostPort != null
+    ? previewIframeUrl(projectId, status.hostPort)
     : null;
 
-  return { phase, status, url, error, refresh, stop };
+  // Derived public preview state — decoupled from project.status.
+  const previewState: PreviewState = (() => {
+    if (phase === 'ready') return 'ready';
+    if (phase === 'failed' || phase === 'unavailable') return 'failed';
+    if (phase === 'idle' || phase === 'stopped') return 'idle';
+    if (phase === 'checking') return 'preparing';
+    // phase === 'starting' — refine using backend status if known.
+    const s = status?.state;
+    if (s === 'detecting') return 'preparing';
+    if (s === 'building')  return 'installing';
+    if (s === 'starting')  return 'starting';
+    if (s === 'failed')    return 'failed';
+    return 'preparing';
+  })();
+
+  // Verbose logging on every phase / preview-state / url transition. Keeps
+  // a debug trail for the "blank iframe for a minute" class of bugs.
+  const lastLogRef = useRef<string>('');
+  useEffect(() => {
+    const fingerprint = `${phase}|${previewState}|${status?.state ?? 'n/a'}|url=${url ? 'set' : 'null'}|err=${error ? '1' : '0'}`;
+    if (fingerprint !== lastLogRef.current) {
+      // eslint-disable-next-line no-console
+      console.info('[preview]', fingerprint, status?.hostPort ? `port=${status.hostPort}` : '');
+      lastLogRef.current = fingerprint;
+    }
+  }, [phase, previewState, status?.state, status?.hostPort, url, error]);
+
+  return {
+    phase,
+    previewState,
+    previewReady: previewState === 'ready' || (url !== null && previewState !== 'failed'),
+    status,
+    url,
+    error,
+    refresh,
+    stop,
+  };
 }

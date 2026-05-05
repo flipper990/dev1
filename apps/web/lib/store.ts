@@ -47,6 +47,8 @@ interface DashboardState {
 
   // Actions
   setProjects: (projects: GeneratedProject[]) => void;
+  /** Upsert a single project record by id (no merge by name). */
+  upsertProject: (project: GeneratedProject) => void;
   setSelectedProjectId: (id: string | null) => void;
   setProjectMode: (mode: 'create' | 'edit') => void;
   setFiles: (files: ProjectFileEntry[]) => void;
@@ -90,8 +92,91 @@ export const useStore = create<DashboardState>((set) => ({
   templateGalleryOpen: false,
   pendingPrompt: null,
 
-  setProjects: (projects) => set({ projects }),
-  setSelectedProjectId: (id) => set({ selectedProjectId: id }),
+  setProjects: (projects) =>
+    set((s) => {
+      // Reconcile per-id: if backend says `completed`/`generating`, that
+      // ALWAYS wins over a previously cached `failed` for the same id
+      // (stale-failed bug). Identity is by `id` only — never by name.
+      const prevById = new Map(s.projects.map((p) => [p.id, p] as const));
+      const next = projects.map((incoming) => {
+        const prev = prevById.get(incoming.id);
+        if (
+          prev &&
+          prev.status === 'failed' &&
+          (incoming.status === 'completed' || incoming.status === 'generating')
+        ) {
+          // eslint-disable-next-line no-console
+          console.info('[store] backend overrides stale failed', {
+            projectId: incoming.id,
+            previous: prev.status,
+            next: incoming.status,
+          });
+        }
+        return incoming;
+      });
+      return { projects: next };
+    }),
+
+  upsertProject: (project) =>
+    set((s) => {
+      const idx = s.projects.findIndex((p) => p.id === project.id);
+      if (idx === -1) {
+        // eslint-disable-next-line no-console
+        console.info('[store] upsertProject (new)', { projectId: project.id, status: project.status });
+        return { projects: [project, ...s.projects] };
+      }
+      const prev = s.projects[idx];
+      // Never let a fresher `completed` be replaced by a stale `failed` from
+      // a slow in-flight handler. Identity is by id; merging by name is
+      // explicitly forbidden.
+      if (prev.status === 'completed' && project.status === 'failed') {
+        // eslint-disable-next-line no-console
+        console.warn('[store] ignoring stale failed for completed project', { projectId: project.id });
+        return s;
+      }
+      const next = s.projects.slice();
+      next[idx] = { ...prev, ...project };
+      // eslint-disable-next-line no-console
+      console.info('[store] upsertProject (merge)', {
+        projectId: project.id,
+        prev: prev.status,
+        next: project.status,
+      });
+      return { projects: next };
+    }),
+  setSelectedProjectId: (id) => {
+    // eslint-disable-next-line no-console
+    console.info('[store] setSelectedProjectId', { selectedProjectId: id });
+    set((s) => {
+      // Project switch: aggressively clear ALL per-project state that
+      // isn't keyed by id in the store. Anything keyed by id (the
+      // `projects[]` array, each row's status / preview / techStack) is
+      // already isolated by id and stays untouched. The fields cleared
+      // below are the ones that historically leaked across projects
+      // with the same name (status badge from a stale `progress`,
+      // file viewer showing the prior project's open file, logs panel
+      // bleeding warnings from a previous session).
+      if (s.selectedProjectId === id) return { selectedProjectId: id };
+      // eslint-disable-next-line no-console
+      console.info('[store] selection change \u2014 clearing per-project state', {
+        from: s.selectedProjectId,
+        to: id,
+      });
+      return {
+        selectedProjectId: id,
+        // Agent / pipeline progress is per-session; the new selection
+        // will receive its own SessionProgress via WS reattachment.
+        progress: null,
+        // File viewer is per-project; the new selection will refetch.
+        files: [],
+        selectedFilePath: null,
+        fileContent: null,
+        // Logs panel is a rolling buffer tagged by source; clear so
+        // the user doesn't see warnings from the previous project.
+        logs: [],
+      };
+    });
+  },
   setProjectMode: (projectMode) => set({ projectMode }),
   setFiles: (files) => set({ files }),
   setSelectedFilePath: (path) => set({ selectedFilePath: path }),

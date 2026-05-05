@@ -22,6 +22,7 @@ export { ROLE_TO_CATEGORY } from './types.js';
 // Providers
 export { AnthropicClient } from './anthropic-client.js';
 export { OpenAIClient } from './openai-client.js';
+export { AzureOpenAIClient } from './azure-openai-client.js';
 
 // Registry
 export { ProviderRegistry } from './provider-registry.js';

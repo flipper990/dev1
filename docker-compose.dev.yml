@@ -1,16 +1,18 @@
 version: '3.9'
 
-# Local development: mounts source, uses tsx for hot-reload
+# Local development: mounts source, hot-reload via tsx (api) and next dev (web).
+# Active stack: apps/api + apps/web. Use this with `docker compose -f docker-compose.dev.yml up`.
+
 services:
-  backend:
+  api:
     image: node:20-alpine
     working_dir: /app
-    command: sh -c "npm install && npm run dev --workspace=@devteam/backend"
+    command: sh -c "npm install && npm run dev --workspace=@devteam/api"
     ports:
-      - '3001:3001'
+      - '3003:3003'
     environment:
       NODE_ENV: development
-      PORT: 3001
+      PORT: 3003
       STORAGE_PATH: /app/data
     env_file: .env
     volumes:
@@ -18,18 +20,18 @@ services:
       - /app/node_modules
     restart: unless-stopped
 
-  frontend:
+  web:
     image: node:20-alpine
     working_dir: /app
-    command: sh -c "npm install && npm run dev --workspace=@devteam/frontend"
+    command: sh -c "npm install && npm run dev --workspace=@devteam/web"
     ports:
       - '3000:3000'
     environment:
-      NEXT_PUBLIC_API_BASE: http://localhost:3001
-      NEXT_PUBLIC_WS_BASE: ws://localhost:3001
+      NEXT_PUBLIC_API_BASE: http://localhost:3003
+      NEXT_PUBLIC_WS_BASE: ws://localhost:3003
     env_file: .env
     volumes:
       - .:/app
       - /app/node_modules
     depends_on:
-      - backend
+      - api

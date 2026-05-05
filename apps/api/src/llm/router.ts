@@ -10,6 +10,7 @@ import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import type { RouterConfig } from './types.js';
 import { AnthropicClient } from './anthropic-client.js';
 import { OpenAIClient } from './openai-client.js';
+import { AzureOpenAIClient } from './azure-openai-client.js';
 import { ProviderRegistry } from './provider-registry.js';
 import { SmartLLMRouter } from './smart-router.js';
 import { config } from '../config.js';
@@ -36,6 +37,23 @@ export function createLLMRouter(logger: Logger, routerConfig?: Partial<RouterCon
     registry.register(new OpenAIClient(config.llm.openaiApiKey, logger));
   } else {
     logger.warn('OPENAI_API_KEY not set â€” OpenAI provider unavailable');
+  }
+
+  // Register Azure OpenAI if key + endpoint are set
+  if (config.llm.azure.apiKey && config.llm.azure.endpoint) {
+    registry.register(
+      new AzureOpenAIClient(
+        {
+          apiKey: config.llm.azure.apiKey,
+          endpoint: config.llm.azure.endpoint,
+          apiVersion: config.llm.azure.apiVersion,
+          healthCheckDeployment: config.llm.azure.healthCheckDeployment || undefined,
+        },
+        logger,
+      ),
+    );
+  } else if (config.llm.azure.apiKey || config.llm.azure.endpoint) {
+    logger.warn('Azure OpenAI partially configured â€” need both AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT');
   }
 
   // Register Google if key is set

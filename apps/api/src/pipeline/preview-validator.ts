@@ -192,11 +192,21 @@ function classifyLog(log: string): ValidationIssue[] {
   for (const m of log.matchAll(/Cannot find module ['"]([^'"\n]+)['"]/g)) {
     dedupe({ category: 'missing-module', message: `Cannot find module '${m[1]}'`, hint: m[1] });
   }
-  // Next.js / Webpack: `Module not found: Can't resolve 'X'` — match only same-line specifier.
-  for (const m of log.matchAll(/Module not found:[^\n]*?['"]([^'"\n]{1,200})['"]/g)) {
+  // Next.js / Webpack: `Module not found: Can't resolve 'X'`. We anchor
+  // explicitly on `Can't resolve` first because the apostrophe inside `Can't`
+  // would otherwise be matched as the opening quote of the specifier — that
+  // produced bogus hints like `t resolve` in earlier runs.
+  for (const m of log.matchAll(/Module not found:\s*(?:Error:\s*)?Can(?:'|’|&#39;)t resolve\s+['"]([^'"\n]{1,200})['"]/g)) {
     const spec = m[1].trim();
-    // Reject obvious garbage (multi-line bleed-through).
-    if (!spec || spec.length < 1 || /[\n\r]/.test(spec)) continue;
+    if (!spec || /[\n\r]/.test(spec)) continue;
+    dedupe({ category: 'missing-module', message: `Module not found: '${spec}'`, hint: spec });
+  }
+  // Generic `Module not found: '<spec>'` fallback (some bundlers emit this
+  // form directly, without the `Can't resolve` preamble). Skip lines that
+  // contain `Can't resolve` — those are handled above with stricter parsing.
+  for (const m of log.matchAll(/Module not found:(?![^\n]*Can(?:'|’|&#39;)t resolve)[^\n]*?['"]([^'"\n]{1,200})['"]/g)) {
+    const spec = m[1].trim();
+    if (!spec || /[\n\r]/.test(spec)) continue;
     dedupe({ category: 'missing-module', message: `Module not found: '${spec}'`, hint: spec });
   }
   // Next.js client-component diagnostic (LLM frequently forgets "use client").

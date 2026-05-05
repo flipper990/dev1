@@ -4,9 +4,8 @@
   "private": true,
   "packageManager": "npm@11.7.0",
   "workspaces": [
-    "core",
-    "services/*",
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
     "build": "turbo run build",
@@ -14,6 +13,7 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "type-check": "turbo run type-check",
+    "test:generations": "tsx apps/api/src/testing/generation-runner.ts",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "devDependencies": {

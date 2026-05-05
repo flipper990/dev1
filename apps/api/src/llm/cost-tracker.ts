@@ -28,6 +28,10 @@ const PRICING: Record<string, ModelPricing> = {
   'gpt-4o-mini':                  { inputPer1M: 0.15,   outputPer1M: 0.60   },
   'gpt-4o-mini-2024-07-18':       { inputPer1M: 0.15,   outputPer1M: 0.60   },
   'gpt-4-turbo':                  { inputPer1M: 10.00,  outputPer1M: 30.00  },
+  'gpt-4.1':                      { inputPer1M: 2.00,   outputPer1M: 8.00   },
+  'gpt-4.1-mini':                 { inputPer1M: 0.40,   outputPer1M: 1.60   },
+  'gpt-4.1-nano':                 { inputPer1M: 0.10,   outputPer1M: 0.40   },
+  'codex-5.3':                    { inputPer1M: 2.00,   outputPer1M: 8.00   },
   'o1':                           { inputPer1M: 15.00,  outputPer1M: 60.00  },
   'o1-mini':                      { inputPer1M: 3.00,   outputPer1M: 12.00  },
 

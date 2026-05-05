@@ -11,6 +11,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { request as httpRequest } from 'node:http';
 import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
+import { instrumentChild } from './spawn-logger.js';
 
 export interface SpawnResult {
   code: number;
@@ -26,7 +27,7 @@ const DEFAULT_MAX_LOG_BYTES = 64_000;
 function runOnce(
   cmd: string,
   args: string[],
-  opts: { cwd?: string; timeoutMs?: number; maxLogBytes?: number } = {},
+  opts: { cwd?: string; timeoutMs?: number; maxLogBytes?: number; logger?: Logger; label?: string } = {},
 ): Promise<SpawnResult> {
   return new Promise((resolve) => {
     const max = opts.maxLogBytes ?? DEFAULT_MAX_LOG_BYTES;
@@ -41,6 +42,12 @@ function runOnce(
       shell: false,
       windowsHide: true,
     });
+    const lifecycle = opts.logger
+      ? instrumentChild(proc, {
+          label: opts.label ?? 'docker-cli',
+          cmd, args, cwd: opts.cwd,
+        }, opts.logger)
+      : null;
 
     const append = (target: 'stdout' | 'stderr', chunk: Buffer) => {
       const str = chunk.toString('utf8');
@@ -55,24 +62,34 @@ function runOnce(
     if (opts.timeoutMs) {
       timer = setTimeout(() => {
         timedOut = true;
+        lifecycle?.markStopRequested();
         try { proc.kill('SIGKILL'); } catch { /* best-effort */ }
       }, opts.timeoutMs);
     }
 
-    proc.on('close', (code) => {
+    let resolved = false;
+    const finalize = (result: SpawnResult) => {
+      if (resolved) return;
+      resolved = true;
       if (timer) clearTimeout(timer);
+      resolve(result);
+    };
+
+    proc.on('close', (code) => {
       if (timedOut) {
         stderr += `\n[runner] killed after ${opts.timeoutMs}ms timeout`;
         combined += `\n[runner] killed after ${opts.timeoutMs}ms timeout`;
       }
-      resolve({ code: code ?? -1, stdout, stderr, combined });
+      finalize({ code: code ?? -1, stdout, stderr, combined });
     });
 
+    // Note: the floor 'error' listener attached by instrumentChild
+    // ensures EventEmitter never throws. We add OUR resolver as a
+    // separate listener so the promise still resolves on ENOENT et al.
     proc.on('error', (err) => {
-      if (timer) clearTimeout(timer);
       stderr += `\n[runner] spawn error: ${err.message}`;
       combined += `\n[runner] spawn error: ${err.message}`;
-      resolve({ code: -1, stdout, stderr, combined });
+      finalize({ code: -1, stdout, stderr, combined });
     });
   });
 }
@@ -136,7 +153,7 @@ export interface DockerRunner {
 export function createDockerRunner(logger: Logger, dockerBin = 'docker'): DockerRunner {
   return {
     async isAvailable() {
-      const r = await runOnce(dockerBin, ['info', '--format', '{{.ServerVersion}}'], { timeoutMs: 5_000 });
+      const r = await runOnce(dockerBin, ['info', '--format', '{{.ServerVersion}}'], { timeoutMs: 5_000, logger, label: 'docker-info' });
       return r.code === 0 && r.stdout.trim().length > 0;
     },
 
@@ -163,7 +180,7 @@ export function createDockerRunner(logger: Logger, dockerBin = 'docker'): Docker
         opts.contextDir,
       ];
       logger.info('docker build starting', { imageTag: opts.imageTag });
-      const r = await runOnce(dockerBin, args, { timeoutMs: opts.timeoutMs ?? 240_000, maxLogBytes: 200_000 });
+      const r = await runOnce(dockerBin, args, { timeoutMs: opts.timeoutMs ?? 240_000, maxLogBytes: 200_000, logger, label: 'docker-build' });
       const ok = r.code === 0;
       logger.info('docker build finished', { imageTag: opts.imageTag, ok, code: r.code });
       return { ok, log: r.combined };
@@ -174,7 +191,7 @@ export function createDockerRunner(logger: Logger, dockerBin = 'docker'): Docker
       // over from a previous API process crash / restart), remove it first.
       // `docker rm -f` is safe to call against missing containers — it returns
       // a non-zero exit code we ignore.
-      await runOnce(dockerBin, ['rm', '-f', opts.containerName], { timeoutMs: 8_000 });
+      await runOnce(dockerBin, ['rm', '-f', opts.containerName], { timeoutMs: 8_000, logger, label: 'docker-rm-pre' });
 
       // Detached, port-published, auto-removed on stop.
       const args: string[] = [
@@ -191,7 +208,7 @@ export function createDockerRunner(logger: Logger, dockerBin = 'docker'): Docker
       }
       args.push(opts.imageTag);
 
-      const r = await runOnce(dockerBin, args, { timeoutMs: 30_000 });
+      const r = await runOnce(dockerBin, args, { timeoutMs: 30_000, logger, label: 'docker-run' });
       if (r.code !== 0) {
         return { ok: false, containerId: null, log: r.combined };
       }
@@ -201,19 +218,19 @@ export function createDockerRunner(logger: Logger, dockerBin = 'docker'): Docker
 
     async stop(containerId) {
       // --time 2 = grace period before SIGKILL. Errors swallowed (idempotent).
-      await runOnce(dockerBin, ['stop', '--time', '2', containerId], { timeoutMs: 10_000 });
+      await runOnce(dockerBin, ['stop', '--time', '2', containerId], { timeoutMs: 10_000, logger, label: 'docker-stop' });
       // --rm at run time removes the container automatically; this is belt-and-braces.
-      await runOnce(dockerBin, ['rm', '-f', containerId], { timeoutMs: 5_000 });
+      await runOnce(dockerBin, ['rm', '-f', containerId], { timeoutMs: 5_000, logger, label: 'docker-rm' });
     },
 
     async logs(containerId, opts) {
       const tail = opts?.tail ?? 200;
-      const r = await runOnce(dockerBin, ['logs', '--tail', String(tail), containerId], { timeoutMs: 5_000 });
+      const r = await runOnce(dockerBin, ['logs', '--tail', String(tail), containerId], { timeoutMs: 5_000, logger, label: 'docker-logs' });
       return r.combined;
     },
 
     async inspectState(containerId) {
-      const r = await runOnce(dockerBin, ['inspect', '-f', '{{.State.Status}}', containerId], { timeoutMs: 5_000 });
+      const r = await runOnce(dockerBin, ['inspect', '-f', '{{.State.Status}}', containerId], { timeoutMs: 5_000, logger, label: 'docker-inspect' });
       if (r.code !== 0) return 'missing';
       const status = r.stdout.trim();
       if (status === 'running') return 'running';
@@ -285,6 +302,8 @@ export function createDockerRunner(logger: Logger, dockerBin = 'docker'): Docker
         cwd: opts.contextDir,
         timeoutMs: opts.timeoutMs ?? 480_000,
         maxLogBytes: 200_000,
+        logger,
+        label: 'docker-compose-up',
       });
       const ok = r.code === 0;
       logger.info('docker compose up finished', { projectName: opts.projectName, ok, code: r.code });
@@ -296,6 +315,8 @@ export function createDockerRunner(logger: Logger, dockerBin = 'docker'): Docker
       await runOnce(dockerBin, ['compose', '-p', projectName, 'down', '-v', '--remove-orphans'], {
         cwd: contextDir,
         timeoutMs: 30_000,
+        logger,
+        label: 'docker-compose-down',
       });
     },
 
@@ -303,7 +324,7 @@ export function createDockerRunner(logger: Logger, dockerBin = 'docker'): Docker
       const r = await runOnce(
         dockerBin,
         ['compose', '-p', projectName, 'logs', '--tail', String(tail), '--no-color', service],
-        { cwd: contextDir, timeoutMs: 8_000 },
+        { cwd: contextDir, timeoutMs: 8_000, logger, label: 'docker-compose-logs' },
       );
       return r.combined;
     },

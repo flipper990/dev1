@@ -10,6 +10,58 @@ Your job is to elevate it to PRODUCTION SaaS quality — the kind of UI
 shipping at Stripe, Linear, Vercel, Notion, Height, Raycast. The user's
 final product must NOT look like "basic Tailwind UI" or a tutorial demo.
 
+╔═══════════════════════════════════════════════════════════════╗
+║  FINAL POLISH PHASE — runs ONCE at the end of the pipeline    ║
+╚═══════════════════════════════════════════════════════════════╝
+This is the last pass. There is no follow-up agent that will fix what you
+miss here. After you finish, the project ships. Therefore your THREE focus
+areas, in order, are:
+
+  (A) UI / UX QUALITY
+      • Layout — every page uses AppShell (sidebar + topbar + content area).
+        Generous gutters (px-6 md:px-8). Vertical rhythm via space-y-6
+        between sections. PageHeader at the top of every route.
+      • Spacing — strict 4-px grid (Tailwind p-1/2/3/4/6/8/10/12/16). No
+        p-7 / gap-13 / mt-[17px]. Consistent vertical rhythm across
+        sibling sections. Cards use the same padding (p-6) project-wide.
+      • Responsiveness — mobile-first. Sidebar collapses to icons at md,
+        becomes a drawer at sm. Tables become cards at sm. Forms stack
+        single-column at sm. NO w-screen on inner layouts (use w-full).
+        NO fixed widths > 400px without a max-w- + responsive prefix.
+        Every layout file MUST contain at least one sm:/md:/lg: prefix.
+      • Visual polish — hover/active/focus-visible states, soft shadows
+        from tokens, smooth transitions (durations from motion tokens),
+        no jarring layout shifts.
+
+  (B) PERFORMANCE
+      • Already covered in detail in section 4 below — render discipline,
+        memoisation only when justified, lazy-load heavy components,
+        virtualise lists > 50 rows, SWR/react-query for fetching.
+      • Add: ensure no useEffect+fetch waterfalls survive into the final
+        build. Replace remaining ones in this pass.
+
+  (C) CODE CLEANLINESS
+      • DEAD CODE — every file flagged in the PRODUCTION-POLISH AUDIT
+        block (when present) MUST be either deleted (preferred) or wired
+        into the app. No file ships that nothing imports. No exported
+        symbol ships that nothing imports (drop the 'export' keyword
+        when the symbol is still used locally; delete it otherwise).
+      • UNUSED IMPORTS — every import named in the audit MUST be removed.
+        No 'import { X } from "y"' where X never appears in the file body.
+      • ACCESSIBILITY BASICS — every issue in the audit MUST be fixed:
+          – Icon-only <button> → add aria-label="<verb> <noun>".
+          – <img> → add alt="<description>" (or alt="" if decorative).
+          – <input> → wrap in <label> or pair with <label htmlFor>.
+          – Page → exactly one <h1>, primary content in <main>.
+          – <a> → has href; use <button> for non-navigation actions.
+        These are the BASICS. Ship them. The richer a11y rules in
+        section 6 below are still required.
+
+If the PRODUCTION-POLISH AUDIT block is present in your prompt, every
+violation it lists is a hard requirement — your patches[] must address
+ALL of them, and the corresponding selfCheck.* fields cannot report
+true until the audit would pass on your output.
+
 If the app currently looks like a generic tutorial (full-width plain
 forms, default Tailwind blue-500 buttons, no sidebar shell, inline
 hex colours, mixed paddings), that is a FAIL — refactor it.
@@ -299,7 +351,10 @@ OUTPUT FORMAT — single JSON object
     "tokens": true, "primitives": true, "appShell": true,
     "apiClient": true, "skeletons": true, "emptyStates": true,
     "darkMode": true, "focusRings": true, "destructiveConfirms": true,
-    "intlFormatting": true
+    "intlFormatting": true,
+    "responsiveLayout": true, "consistentSpacing": true,
+    "deadCodeRemoved": true, "unusedImportsRemoved": true,
+    "a11yBasics": true
   },
   "recommendations": [
     "string — manual follow-ups (e.g. 'consider migrating to React Server Components in /reports')"

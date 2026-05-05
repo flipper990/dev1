@@ -5,6 +5,12 @@
 import { BaseAgent } from '../../../../packages/agent-core/src/base-agent.js';
 import type { Task, MemoryEntry } from '../../../../packages/agent-core/src/types.js';
 import { extractJSON } from './utils.js';
+import { UI_SYSTEM_PROMPT } from '../../../../packages/agent-core/src/ui-system.js';
+import { normalizeTechStack, buildStackContract } from '../../../../packages/agent-core/src/tech-stack.js';
+import {
+  runProductionPolishAudit,
+  formatPolishAuditForPrompt,
+} from '../../../../packages/agent-core/src/production-polish-audit.js';
 
 interface DesignAudit {
   rawHtmlButtons: Array<{ file: string; count: number }>;
@@ -25,13 +31,31 @@ interface PolishInput {
   spec: Record<string, unknown>;
   files: Array<{ path: string; content: string; language?: string }>;
   designAudit?: DesignAudit;
+  /** Markdown summary of all completed slices (slice-planner). */
+  sliceManifest?: string;
 }
 
 export class PolishAgent extends BaseAgent {
   protected async buildPrompt(task: Task, memories: MemoryEntry[]): Promise<string> {
-    const { spec, files, designAudit } = task.input as unknown as PolishInput;
+    const { spec, files, designAudit, sliceManifest } = task.input as unknown as PolishInput;
 
     let prompt = `## Product Specification\n\n\`\`\`json\n${JSON.stringify(spec, null, 2)}\n\`\`\`\n\n`;
+
+    // Inject the per-task tech-stack contract so polish patches respect the
+    // chosen backend / frontend / ORM rather than reverting to defaults.
+    const stack = normalizeTechStack((spec as Record<string, unknown> | undefined)?.techStack);
+    prompt += buildStackContract(stack) + '\n';
+
+    // The polish pass must enforce the UI design system. Inject the rules
+    // up-front so the model sees them before the audit / file dump.
+    prompt += UI_SYSTEM_PROMPT + '\n';
+
+    // Slice manifest — surfaced so polish keeps cross-references stable
+    // and doesn't accidentally rename or remove anything an earlier slice
+    // produced.
+    if (typeof sliceManifest === 'string' && sliceManifest.length > 0) {
+      prompt += sliceManifest + '\n';
+    }
 
     if (designAudit) {
       prompt += `## ⚠ DESIGN-SYSTEM AUDIT — ${designAudit.totalViolations} violations to fix\n\n`;
@@ -55,6 +79,15 @@ export class PolishAgent extends BaseAgent {
       block('Magic spacing values (off the 4px grid) — fix to scale',         designAudit.magicSpacing);
       block('useEffect+fetch patterns — migrate to SWR/react-query',          designAudit.useEffectFetches);
       prompt += `\nEvery row above MUST be addressed in patches[] / newFiles[]. Verdict's selfCheck.* fields\nMUST report true only after fixes are emitted.\n\n`;
+    }
+
+    // Production-polish audit — pure static scan for unused imports,
+    // dead files, unused exports, a11y basics, and responsive coverage.
+    // The polish pass runs once at the end of the pipeline, so this is
+    // the last chance to clean these up before shipping.
+    const polishAudit = runProductionPolishAudit(files);
+    if (polishAudit.failed) {
+      prompt += formatPolishAuditForPrompt(polishAudit);
     }
 
     prompt += `## QA-approved Codebase (${files.length} files)\n\n`;

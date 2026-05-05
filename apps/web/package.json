@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@devteam/types": "*",
     "autoprefixer": "^10.5.0",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",

@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-05-06T15:53:21.081Z",
+  "timestamp": "2026-05-06T23:01:33.467Z",
   "projectId": "AH0QOxRHDYV9",
-  "previewId": "dc33db75ed1c",
-  "runtime": "local-fallback",
+  "previewId": "780aa4a82be1",
+  "runtime": "local",
   "stack": null,
-  "reason": "Local-fallback preview failed (after docker also failed): npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_20_803Z-debug-0.log",
+  "reason": "Local preview failed: Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react\".",
   "exitCode": null,
   "signal": null,
   "oomKilled": false,
@@ -14,104 +14,85 @@
   "cwd": null,
   "port": null,
   "envSafe": {
-    "PORT": "3001",
+    "PORT": "3003",
     "HOST": "0.0.0.0",
     "NODE_ENV": "development"
   },
   "imageTag": null,
   "containerName": null,
   "containerId": null,
-  "lastSuccessfulStep": "⚠ Both preview backends failed:\n\n── Docker attempt ──\nDocker build failed\nlast successful step: docker build started\nstderr tail:\nt/.npm/_logs/2026-05-06T15_53_17_470Z-debug-0.log\n#8 ERROR: process \"/",
+  "lastSuccessfulStep": "Local preview failed: Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove th",
   "stdoutTail": null,
   "stderrTail": null,
-  "errorStack": "Error: npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_20_803Z-debug-0.log\n    at LocalPreviewRunner.start (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\local-runner.ts:451:17)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async PreviewManager.doStartLocal (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:2722:16)\n    at async PreviewManager.startWithAutoFixRetry (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:1135:22)\n    at async PreviewManager.start (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:1055:14)\n    at async Object.<anonymous> (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\routes\\preview-routes.ts:66:22)",
+  "errorStack": "Error: Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react\".\n    at PreviewManager.doStartLocal (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:2584:15)\n    at async PreviewManager.startWithAutoFixRetry (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:1135:22)\n    at async PreviewManager.start (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:1055:14)\n    at async Object.<anonymous> (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\routes\\preview-routes.ts:66:22)",
   "currentStep": "preview:failed",
-  "stepStartedAt": "2026-05-06T15:53:21.081Z",
+  "stepStartedAt": "2026-05-06T23:01:33.466Z",
   "stepDurations": [
     {
       "step": "preview:queued",
-      "startedAt": "2026-05-06T15:53:18.055Z",
-      "completedAt": "2026-05-06T15:53:18.056Z",
+      "startedAt": "2026-05-06T23:01:33.428Z",
+      "completedAt": "2026-05-06T23:01:33.429Z",
       "durationMs": 1
     },
     {
       "step": "preview:staging-files",
-      "startedAt": "2026-05-06T15:53:18.056Z",
-      "completedAt": "2026-05-06T15:53:18.076Z",
-      "durationMs": 20
-    },
-    {
-      "step": "preview:installing",
-      "startedAt": "2026-05-06T15:53:18.076Z",
-      "completedAt": "2026-05-06T15:53:21.081Z",
-      "durationMs": 3005
+      "startedAt": "2026-05-06T23:01:33.429Z",
+      "completedAt": "2026-05-06T23:01:33.466Z",
+      "durationMs": 37
     }
   ],
   "previewStatusTransitions": [
     {
-      "step": "starting:local-fallback",
-      "at": "2026-05-06T15:53:18.055Z"
+      "step": "starting:local-runner",
+      "at": "2026-05-06T23:01:33.428Z"
     },
     {
-      "step": "failed:⚠ Both preview backends failed:\n\n── Docker attempt ──\nDocker build failed\nlast successful step: docker build started\nstderr tail:\nt/.npm/_logs/2026-05-06T15_53_17_470Z-debug-0.log\n#8 ERROR: process \"/",
-      "at": "2026-05-06T15:53:21.081Z"
+      "step": "failed:Local preview failed: Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove th",
+      "at": "2026-05-06T23:01:33.466Z"
     }
   ],
   "timeline": [
     {
       "event": "runner-start",
-      "at": "2026-05-06T15:53:18.056Z",
+      "at": "2026-05-06T23:01:33.429Z",
       "previewStatus": "starting",
       "durationMs": null,
       "details": {
-        "mode": "local-fallback",
-        "fileCount": 44,
-        "fallbackFromDocker": true
+        "mode": "local",
+        "fileCount": 44
       }
     },
     {
       "event": "install-start",
-      "at": "2026-05-06T15:53:18.056Z",
+      "at": "2026-05-06T23:01:33.429Z",
       "previewStatus": "starting",
       "durationMs": null,
       "details": {
-        "mode": "local-fallback"
+        "mode": "local"
       }
     },
     {
       "event": "install-end",
-      "at": "2026-05-06T15:53:18.571Z",
+      "at": "2026-05-06T23:01:33.463Z",
       "previewStatus": "starting",
-      "durationMs": 515,
+      "durationMs": 34,
       "details": {
         "ok": false,
-        "error": "npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_18_298Z-debug-0.log",
-        "attempt": 1,
-        "willRetry": true
-      }
-    },
-    {
-      "event": "install-end",
-      "at": "2026-05-06T15:53:21.074Z",
-      "previewStatus": "starting",
-      "durationMs": 3018,
-      "details": {
-        "ok": false,
-        "error": "npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_20_803Z-debug-0.log"
+        "error": "Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react\"."
       }
     },
     {
       "event": "failed",
-      "at": "2026-05-06T15:53:21.081Z",
+      "at": "2026-05-06T23:01:33.467Z",
       "previewStatus": "failed",
-      "durationMs": 3025,
+      "durationMs": 38,
       "details": {
-        "message": "⚠ Both preview backends failed:\n\n── Docker attempt ──\nDocker build failed\nlast successful step: docker build started\nstderr tail:\nt/.npm/_logs/2026-05-06T15_53_17_470Z-debug-0.log\n#8 ERROR: process \"/bin/sh -c if [ -f package-lock.json ]; then npm ci --legacy-peer-deps --no-audit --no-fund || npm install --legacy-peer-deps --no-audit --no-fund; else npm install --legacy-peer-deps --no-audit --no-fund; fi\" did not complete successfully: exit code: 1\n------\n > [4/6] RUN if [ -f package-lock.json ]; then npm ci --legacy-peer-deps --no-audit --no-fund || npm install --legacy-peer-deps --no-audit --no-fund; else npm install --legacy-peer-deps --no-audit --no-fund; fi:\n0.977 npm error code EOVERRIDE\n0.977 npm error Override for react@^19.0.0 conflicts with direct dependency\n0.978 npm error A complete log of this run can be found in: /root/.npm/_logs/2026-05-06T15_53_17_470Z-debug-0.log\n------\nDockerfile.preview:7\n--------------------\n   5 |     # Copy lockfiles first for better cache hits\n   6 |     COPY package*.json ./\n   7 | >>> RUN if [ -f package-lock.json ]; then npm ci --legacy-peer-deps --no-audit --no-fund || npm install --legacy-peer-deps --no-audit --no-fund; else npm install --legacy-peer-deps --no-audit --no-fund; fi\n   8 |     # Copy the rest of the project\n   9 |     COPY . .\n--------------------\nERROR: failed to build: failed to solve: process \"/bin/sh -c if [ -f package-lock.json ]; then npm ci --legacy-peer-deps --no-audit --no-fund || npm install --legacy-peer-deps --no-audit --no-fund; else npm install --legacy-peer-deps --no-audit --no-fund; fi\" did not complete successfully: exit code: 1\n\n── Local fallback attempt ──\nLocal-fallback preview failed (after docker also failed): npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_20_803Z-debug-0.log",
-        "reason": "Local-fallback preview failed (after docker also failed): npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_20_803Z-debug-0.log",
+        "message": "Local preview failed: Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react\".",
+        "reason": "Local preview failed: Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react\".",
         "exitCode": null,
         "signal": null,
         "oomKilled": false,
-        "lastSuccessfulStep": "⚠ Both preview backends failed:\n\n── Docker attempt ──\nDocker build failed\nlast successful step: docker build started\nstderr tail:\nt/.npm/_logs/2026-05-06T15_53_17_470Z-debug-0.log\n#8 ERROR: process \"/"
+        "lastSuccessfulStep": "Local preview failed: Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove th"
       }
     }
   ]

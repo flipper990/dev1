@@ -60,14 +60,13 @@ export interface CompatibilityBundle {
    *  map overrides KNOWN_VERSIONS / "latest" when the bundle is
    *  selected. */
   versions: Record<string, string>;
-  /** Hard-pinned `overrides` block written into the root package.json.
-   *  npm respects this for ALL transitive resolution, including
-   *  packages installed only because they're declared as peers. This
-   *  is the only reliable way to stop `next@15.5.x` from auto-pulling
-   *  `react-dom@19.x` (whose own `react ^19` peer then ERESOLVEs
-   *  against the root's `react ^18`). The reconciler injects this
-   *  whenever the bundle is selected, regardless of whether the
-   *  emitted package.json already declared its own overrides. */
+  /** npm overrides that are safe to emit for this bundle.
+   *
+   *  npm rejects an override for a direct dependency unless the override
+   *  exactly matches the direct dependency spec (or uses `$dependency`).
+   *  React/Next bundles therefore solve compatibility by writing complete
+   *  direct dependencies first; overrides are for non-conflicting
+   *  transitive pins only. */
   overrides: Record<string, string>;
   /** Cross-package rules that MUST hold for this bundle to install.
    *  The reconciler verifies these and forces alignment when violated.
@@ -136,6 +135,11 @@ const PEER_SENSITIVE_PACKAGES: readonly string[] = [
   'autoprefixer',
   'postcss',
   'tailwindcss-animate',
+  'class-variance-authority',
+  'clsx',
+  'tailwind-merge',
+  'lucide-react',
+  'typescript',
   // Radix primitives: their react peer-range moves over time and a
   // `@radix-ui/react-dialog@latest` happily installs against React 19,
   // breaking a React 18 root.
@@ -173,10 +177,10 @@ export const REACT_18_NEXT_15: CompatibilityBundle = {
   description: 'React 18.3 + Next 15 + Tailwind 3 LTS — the default for generator-emitted React/Next apps.',
   versions: {
     // Core React runtime — tied tightly via peer rules below.
-    'react':                  '^18.3.1',
-    'react-dom':              '^18.3.1',
-    '@types/react':           '^18.3.12',
-    '@types/react-dom':       '^18.3.1',
+    'react':                  '18.3.1',
+    'react-dom':              '18.3.1',
+    '@types/react':           '18.3.12',
+    '@types/react-dom':       '18.3.1',
     // Next.js — peer-requires `react ^18.2 || ^19.0`. Pinning to the
     // 15.0.x patch line (NOT a wide ^15.x caret) — every Next 15.5+
     // release tightened its own auto-pulled react-dom peer to
@@ -184,79 +188,99 @@ export const REACT_18_NEXT_15: CompatibilityBundle = {
     // to declare react-dom (the npm-implicit-peer install path that
     // produced the reference dump). 15.0.x stays compatible with
     // React 18 even when the root underspecifies react-dom.
-    'next':                   '~15.0.4',
+    'next':                   '15.0.4',
     // Vite alternative for non-Next React apps.
-    'vite':                   '^5.4.0',
-    '@vitejs/plugin-react':   '^4.3.0',
+    'vite':                   '5.4.11',
+    '@vitejs/plugin-react':   '4.3.3',
     // CSS toolchain — Tailwind 3 LTS. Tailwind 4 has a different
     // PostCSS plugin contract; emitting it as a fallback breaks generated
     // postcss.config.js files.
-    'tailwindcss':            '^3.4.14',
-    'autoprefixer':           '^10.4.20',
-    'postcss':                '^8.4.49',
-    'tailwindcss-animate':    '^1.0.7',
+    'tailwindcss':            '3.4.14',
+    'autoprefixer':           '10.4.20',
+    'postcss':                '8.4.49',
+    'tailwindcss-animate':    '1.0.7',
     // Common UI deps with React peer constraints. Pinned to versions
     // whose react peer satisfies ^18.
-    'class-variance-authority':'^0.7.0',
-    'clsx':                   '^2.1.1',
-    'tailwind-merge':         '^2.5.4',
-    'lucide-react':           '^0.460.0',
-    'sonner':                 '^1.7.0',
-    'cmdk':                   '^1.0.0',
-    'vaul':                   '^1.1.1',
-    'react-hook-form':        '^7.53.2',
-    '@hookform/resolvers':    '^3.9.1',
-    'react-day-picker':       '^9.4.0',
-    'recharts':               '^2.13.0',
-    'embla-carousel-react':   '^8.3.1',
-    'input-otp':              '^1.4.1',
-    'react-resizable-panels': '^2.1.7',
+    'class-variance-authority':'0.7.0',
+    'clsx':                   '2.1.1',
+    'tailwind-merge':         '2.5.4',
+    'lucide-react':           '0.460.0',
+    'sonner':                 '1.7.0',
+    'cmdk':                   '1.0.0',
+    'vaul':                   '1.1.1',
+    'react-hook-form':        '7.53.2',
+    '@hookform/resolvers':    '3.9.1',
+    'react-day-picker':       '9.4.0',
+    'recharts':               '2.13.0',
+    'embla-carousel-react':   '8.3.1',
+    'input-otp':              '1.4.1',
+    'react-resizable-panels': '2.1.7',
     // Radix UI primitives. Pinned to the v1 LTS line whose react peer
     // is ^16.8 || ^17 || ^18 — explicitly compatible with React 18.3.
-    '@radix-ui/react-accordion':       '^1.2.1',
-    '@radix-ui/react-alert-dialog':    '^1.1.2',
-    '@radix-ui/react-aspect-ratio':    '^1.1.0',
-    '@radix-ui/react-avatar':          '^1.1.1',
-    '@radix-ui/react-checkbox':        '^1.1.2',
-    '@radix-ui/react-collapsible':     '^1.1.1',
-    '@radix-ui/react-context-menu':    '^2.2.2',
-    '@radix-ui/react-dialog':          '^1.1.2',
-    '@radix-ui/react-dropdown-menu':   '^2.1.2',
-    '@radix-ui/react-hover-card':      '^1.1.2',
-    '@radix-ui/react-label':           '^2.1.0',
-    '@radix-ui/react-menubar':         '^1.1.2',
-    '@radix-ui/react-navigation-menu': '^1.2.1',
-    '@radix-ui/react-popover':         '^1.1.2',
-    '@radix-ui/react-progress':        '^1.1.0',
-    '@radix-ui/react-radio-group':     '^1.2.1',
-    '@radix-ui/react-scroll-area':     '^1.2.1',
-    '@radix-ui/react-select':          '^2.1.2',
-    '@radix-ui/react-separator':       '^1.1.0',
-    '@radix-ui/react-slider':          '^1.2.1',
-    '@radix-ui/react-slot':            '^1.1.0',
-    '@radix-ui/react-switch':          '^1.1.1',
-    '@radix-ui/react-tabs':            '^1.1.1',
-    '@radix-ui/react-toast':           '^1.2.2',
-    '@radix-ui/react-toggle':          '^1.1.0',
-    '@radix-ui/react-toggle-group':    '^1.1.0',
-    '@radix-ui/react-tooltip':         '^1.1.4',
+    '@radix-ui/react-accordion':       '1.2.1',
+    '@radix-ui/react-alert-dialog':    '1.1.2',
+    '@radix-ui/react-aspect-ratio':    '1.1.0',
+    '@radix-ui/react-avatar':          '1.1.1',
+    '@radix-ui/react-checkbox':        '1.1.2',
+    '@radix-ui/react-collapsible':     '1.1.1',
+    '@radix-ui/react-context-menu':    '2.2.2',
+    '@radix-ui/react-dialog':          '1.1.2',
+    '@radix-ui/react-dropdown-menu':   '2.1.2',
+    '@radix-ui/react-hover-card':      '1.1.2',
+    '@radix-ui/react-label':           '2.1.0',
+    '@radix-ui/react-menubar':         '1.1.2',
+    '@radix-ui/react-navigation-menu': '1.2.1',
+    '@radix-ui/react-popover':         '1.1.2',
+    '@radix-ui/react-progress':        '1.1.0',
+    '@radix-ui/react-radio-group':     '1.2.1',
+    '@radix-ui/react-scroll-area':     '1.2.1',
+    '@radix-ui/react-select':          '2.1.2',
+    '@radix-ui/react-separator':       '1.1.0',
+    '@radix-ui/react-slider':          '1.2.1',
+    '@radix-ui/react-slot':            '1.1.0',
+    '@radix-ui/react-switch':          '1.1.1',
+    '@radix-ui/react-tabs':            '1.1.1',
+    '@radix-ui/react-toast':           '1.2.2',
+    '@radix-ui/react-toggle':          '1.1.0',
+    '@radix-ui/react-toggle-group':    '1.1.0',
+    '@radix-ui/react-tooltip':         '1.1.4',
     // TypeScript and types.
-    'typescript':             '^5.6.3',
-    'tsx':                    '^4.19.2',
-    '@types/node':            '^22.9.0',
+    'typescript':             '5.6.3',
+    'tsx':                    '4.19.2',
+    '@types/node':            '22.9.0',
   },
-  // Hard `overrides` injected into the root package.json. Pins every
-  // transitive resolution of these packages — even those introduced
-  // by sub-deps (e.g. next → react-dom) — to versions that share a
-  // major with the root's react. This is the canonical npm fix for
-  // "sub-dep wants react-dom@19, root wants react@18".
-  overrides: {
-    'react':            '^18.3.1',
-    'react-dom':        '^18.3.1',
-    '@types/react':     '^18.3.12',
-    '@types/react-dom': '^18.3.1',
-  },
+  // Do not emit root-level React overrides. npm rejects conflicting
+  // overrides for direct dependencies with EOVERRIDE, so the bundle
+  // keeps React/React-DOM/Next installable by normalising direct deps.
+  overrides: {},
   rules: [
+    // Rule R0: the active React/Next bundle is strict. If the LLM emits
+    // any peer-sensitive package with a different spec (for example
+    // react@^19.0.0), rewrite it to the known-good bundle pin before
+    // package.json is persisted.
+    {
+      id: 'strict-react-next-bundle-pins',
+      description: 'React/Next/Tailwind peer-sensitive packages must use the exact bundle pins.',
+      packages: PEER_SENSITIVE_PACKAGES,
+      enforce(versions, bundle) {
+        const effects: RuleEffect[] = [];
+        const onReactStack = !!(versions['react'] || versions['react-dom'] || versions['next'] || versions['@vitejs/plugin-react']);
+        if (!onReactStack) return effects;
+        for (const pkg of PEER_SENSITIVE_PACKAGES) {
+          const current = versions[pkg];
+          const desired = bundle.versions[pkg];
+          if (!current || !desired || current === desired) continue;
+          versions[pkg] = desired;
+          effects.push({
+            packageName: pkg,
+            previousVersion: current,
+            newVersion: desired,
+            reason: `strict bundle ${bundle.id} requires ${pkg}@${desired}; saw ${current}.`,
+          });
+        }
+        return effects;
+      },
+    },
     // Rule R1: react and react-dom MUST be the same major.
     // Mismatch is THE most common cause of generator ERESOLVE failures
     // (see apps/api/src/testing/last-npm-eresolve.json — `react ^18.3.0`

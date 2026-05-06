@@ -198,11 +198,22 @@ export interface ProjectRecord {
       specifier: string;
       triedPaths: string[];
     }>;
+    packageJsonViolations?: Array<{
+      packageJson: string;
+      bundleId: string;
+      ruleId: string;
+      severity: 'error' | 'warning';
+      message: string;
+      packages: string[];
+      foundVersions: Record<string, string | null>;
+      expectedVersions?: Record<string, string>;
+    }>;
     counts: {
       sourceFilesScanned: number;
       bareImportsScanned: number;
       missingPackages: number;
       danglingInternalImports: number;
+      packageJsonViolations?: number;
     };
   };
   tasks: TaskSummary[];

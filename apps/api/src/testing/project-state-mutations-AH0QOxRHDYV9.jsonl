@@ -38,3 +38,5 @@
 {"ts":"2026-05-06T15:53:18.043Z","projectId":"AH0QOxRHDYV9","caller":"preview-manager","reason":"","op":"updatePreview","stateVersion":602,"fields":{"preview.previewStatus":{"prev":"building","next":"failed"}}}
 {"ts":"2026-05-06T15:53:18.061Z","projectId":"AH0QOxRHDYV9","caller":"preview-manager","reason":"","op":"updatePreview","stateVersion":605,"fields":{"preview.previewStatus":{"prev":"failed","next":"starting"}}}
 {"ts":"2026-05-06T15:53:21.097Z","projectId":"AH0QOxRHDYV9","caller":"preview-manager","reason":"","op":"updatePreview","stateVersion":614,"fields":{"preview.previewStatus":{"prev":"starting","next":"failed"}}}
+{"ts":"2026-05-06T23:01:33.436Z","projectId":"AH0QOxRHDYV9","caller":"preview-manager","reason":"","op":"updatePreview","stateVersion":618,"fields":{"preview.previewStatus":{"prev":"failed","next":"starting"}}}
+{"ts":"2026-05-06T23:01:33.479Z","projectId":"AH0QOxRHDYV9","caller":"preview-manager","reason":"","op":"updatePreview","stateVersion":623,"fields":{"preview.previewStatus":{"prev":"starting","next":"failed"}}}

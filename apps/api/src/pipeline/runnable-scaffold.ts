@@ -21,8 +21,60 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { ProjectFile } from './generator-types.js';
+import { REACT_18_NEXT_15 } from '../../../../packages/agent-core/src/stack-compatibility.js';
 
 type ScaffoldStack = 'nextjs' | 'vite-react' | 'plain-react' | 'node-express' | 'fullstack' | 'unknown';
+
+const SAFE_NEXT_BUNDLE = REACT_18_NEXT_15.versions;
+
+function safeNextDependencies(): Record<string, string> {
+  return {
+    next: SAFE_NEXT_BUNDLE.next,
+    react: SAFE_NEXT_BUNDLE.react,
+    'react-dom': SAFE_NEXT_BUNDLE['react-dom'],
+    tailwindcss: SAFE_NEXT_BUNDLE.tailwindcss,
+    autoprefixer: SAFE_NEXT_BUNDLE.autoprefixer,
+    postcss: SAFE_NEXT_BUNDLE.postcss,
+    'tailwindcss-animate': SAFE_NEXT_BUNDLE['tailwindcss-animate'],
+    'class-variance-authority': SAFE_NEXT_BUNDLE['class-variance-authority'],
+    clsx: SAFE_NEXT_BUNDLE.clsx,
+    'tailwind-merge': SAFE_NEXT_BUNDLE['tailwind-merge'],
+    'lucide-react': SAFE_NEXT_BUNDLE['lucide-react'],
+  };
+}
+
+function safeNextDevDependencies(): Record<string, string> {
+  return {
+    '@types/node': SAFE_NEXT_BUNDLE['@types/node'],
+    '@types/react': SAFE_NEXT_BUNDLE['@types/react'],
+    '@types/react-dom': SAFE_NEXT_BUNDLE['@types/react-dom'],
+    typescript: SAFE_NEXT_BUNDLE.typescript,
+    eslint: '^8.57.1',
+    'eslint-config-next': SAFE_NEXT_BUNDLE.next,
+  };
+}
+
+function safeViteDependencies(): Record<string, string> {
+  return {
+    react: SAFE_NEXT_BUNDLE.react,
+    'react-dom': SAFE_NEXT_BUNDLE['react-dom'],
+    'lucide-react': SAFE_NEXT_BUNDLE['lucide-react'],
+    clsx: SAFE_NEXT_BUNDLE.clsx,
+  };
+}
+
+function safeViteDevDependencies(): Record<string, string> {
+  return {
+    '@types/react': SAFE_NEXT_BUNDLE['@types/react'],
+    '@types/react-dom': SAFE_NEXT_BUNDLE['@types/react-dom'],
+    '@vitejs/plugin-react': SAFE_NEXT_BUNDLE['@vitejs/plugin-react'],
+    typescript: SAFE_NEXT_BUNDLE.typescript,
+    vite: SAFE_NEXT_BUNDLE.vite,
+    tailwindcss: SAFE_NEXT_BUNDLE.tailwindcss,
+    autoprefixer: SAFE_NEXT_BUNDLE.autoprefixer,
+    postcss: SAFE_NEXT_BUNDLE.postcss,
+  };
+}
 
 export function ensureRunnableScaffold(fileMap: Map<string, ProjectFile>): void {
   const has = (p: string): boolean => fileMap.has(p);
@@ -120,27 +172,8 @@ function ensureNextScaffold(fileMap: Map<string, ProjectFile>): void {
           start: 'next start',
           lint: 'next lint',
         },
-        dependencies: {
-          next: '^15.0.0',
-          react: '^18.3.1',
-          'react-dom': '^18.3.1',
-          tailwindcss: '^3.4.0',
-          autoprefixer: '^10.4.20',
-          postcss: '^8.4.47',
-          'tailwindcss-animate': '^1.0.7',
-          'class-variance-authority': '^0.7.0',
-          clsx: '^2.1.1',
-          'tailwind-merge': '^2.5.4',
-          'lucide-react': '^0.469.0',
-        },
-        devDependencies: {
-          '@types/node': '^22.10.0',
-          '@types/react': '^18.3.0',
-          '@types/react-dom': '^18.3.0',
-          typescript: '^5.7.0',
-          eslint: '^8.57.1',
-          'eslint-config-next': '^15.0.0',
-        },
+        dependencies: safeNextDependencies(),
+        devDependencies: safeNextDevDependencies(),
       }, null, 2) + '\n',
     });
   }
@@ -237,22 +270,8 @@ function ensureViteScaffold(fileMap: Map<string, ProjectFile>): void {
           build: 'tsc -b && vite build',
           preview: 'vite preview',
         },
-        dependencies: {
-          react: '^18.3.1',
-          'react-dom': '^18.3.1',
-          'lucide-react': '^0.469.0',
-          clsx: '^2.1.1',
-        },
-        devDependencies: {
-          '@types/react': '^18.3.0',
-          '@types/react-dom': '^18.3.0',
-          '@vitejs/plugin-react': '^4.3.0',
-          typescript: '^5.7.0',
-          vite: '^5.4.0',
-          tailwindcss: '^3.4.0',
-          autoprefixer: '^10.4.20',
-          postcss: '^8.4.47',
-        },
+        dependencies: safeViteDependencies(),
+        devDependencies: safeViteDevDependencies(),
       }, null, 2) + '\n',
     });
   }
@@ -404,27 +423,8 @@ function ensureFullstackWeb(fileMap: Map<string, ProjectFile>): void {
           start: 'next start -p 3000',
           lint: 'next lint',
         },
-        dependencies: {
-          next: '^15.0.0',
-          react: '^18.3.1',
-          'react-dom': '^18.3.1',
-          tailwindcss: '^3.4.0',
-          autoprefixer: '^10.4.20',
-          postcss: '^8.4.47',
-          'tailwindcss-animate': '^1.0.7',
-          'class-variance-authority': '^0.7.0',
-          clsx: '^2.1.1',
-          'tailwind-merge': '^2.5.4',
-          'lucide-react': '^0.469.0',
-        },
-        devDependencies: {
-          '@types/node': '^22.10.0',
-          '@types/react': '^18.3.0',
-          '@types/react-dom': '^18.3.0',
-          typescript: '^5.7.0',
-          eslint: '^8.57.1',
-          'eslint-config-next': '^15.0.0',
-        },
+        dependencies: safeNextDependencies(),
+        devDependencies: safeNextDevDependencies(),
       }, null, 2) + '\n',
     });
   }

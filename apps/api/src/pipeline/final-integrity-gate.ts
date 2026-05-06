@@ -31,6 +31,10 @@ import {
   validateImportIntegrity,
   type MissingImport,
 } from '../../../../packages/agent-core/src/import-integrity.js';
+import {
+  validatePackageJsonString,
+  type PackageJsonViolation,
+} from '../../../../packages/agent-core/src/package-json-validator.js';
 import type { FileLike } from '../../../../packages/agent-core/src/agent-input-builder.js';
 
 export interface FinalIntegrityReport {
@@ -57,12 +61,25 @@ export interface FinalIntegrityReport {
     specifier: string;
     triedPaths: string[];
   }>;
+  /** Static package.json compatibility violations that would make npm
+   *  install fail before preview starts, including EOVERRIDE conflicts. */
+  packageJsonViolations: Array<{
+    packageJson: string;
+    bundleId: string;
+    ruleId: string;
+    severity: PackageJsonViolation['severity'];
+    message: string;
+    packages: string[];
+    foundVersions: Record<string, string | null>;
+    expectedVersions?: Record<string, string>;
+  }>;
   /** Summary counts for log scale / dashboard chips. */
   counts: {
     sourceFilesScanned: number;
     bareImportsScanned: number;
     missingPackages: number;
     danglingInternalImports: number;
+    packageJsonViolations: number;
   };
 }
 
@@ -92,6 +109,16 @@ export function describeIntegrityFailure(report: FinalIntegrityReport): string {
   if (report.unparseablePackageJsons.length > 0) {
     parts.push(`${report.unparseablePackageJsons.length} unparseable package.json file(s): ${report.unparseablePackageJsons.join(', ')}`);
   }
+  if (report.packageJsonViolations.length > 0) {
+    const names = report.packageJsonViolations
+      .slice(0, 3)
+      .map((v) => `${v.packageJson}: ${v.ruleId}`)
+      .join('; ');
+    const suffix = report.packageJsonViolations.length > 3
+      ? `, +${report.packageJsonViolations.length - 3} more`
+      : '';
+    parts.push(`${report.packageJsonViolations.length} package.json compatibility violation(s): ${names}${suffix}`);
+  }
   return `Final integrity gate FAILED — ${parts.join(' | ')}`;
 }
 
@@ -106,6 +133,23 @@ export function runFinalIntegrityGate(files: FileLike[]): FinalIntegrityReport {
 
   const depAudit = auditDependencies(files);
   const dangling: MissingImport[] = validateImportIntegrity(files);
+  const packageJsonViolations = files
+    .filter((f) => f.path.replace(/\\/g, '/').endsWith('package.json'))
+    .flatMap((f) => {
+      const validation = validatePackageJsonString(f.content);
+      return validation.violations
+        .filter((v) => v.severity === 'error')
+        .map((v) => ({
+          packageJson: f.path,
+          bundleId: validation.bundleId,
+          ruleId: v.ruleId,
+          severity: v.severity,
+          message: v.message,
+          packages: v.detail.packages,
+          foundVersions: v.detail.foundVersions,
+          expectedVersions: v.detail.expectedVersions,
+        }));
+    });
 
   const missingPackages = depAudit.missing.map((m) => ({
     name: m.name,
@@ -125,7 +169,8 @@ export function runFinalIntegrityGate(files: FileLike[]): FinalIntegrityReport {
   const verdict: 'pass' | 'fail' =
     missingPackages.length === 0 &&
     danglingInternalImports.length === 0 &&
-    depAudit.unparseablePackageJsons.length === 0
+    depAudit.unparseablePackageJsons.length === 0 &&
+    packageJsonViolations.length === 0
       ? 'pass'
       : 'fail';
 
@@ -136,11 +181,13 @@ export function runFinalIntegrityGate(files: FileLike[]): FinalIntegrityReport {
     missingPackages,
     unparseablePackageJsons: depAudit.unparseablePackageJsons,
     danglingInternalImports,
+    packageJsonViolations,
     counts: {
       sourceFilesScanned,
       bareImportsScanned: depAudit.imports,
       missingPackages: missingPackages.length,
       danglingInternalImports: danglingInternalImports.length,
+      packageJsonViolations: packageJsonViolations.length,
     },
   };
 }

@@ -27,6 +27,7 @@ import {
   REACT_18_NEXT_15,
   selectBundle,
   parseMajor,
+  PEER_SENSITIVE_PACKAGES,
   type CompatibilityBundle,
 } from './stack-compatibility.js';
 
@@ -65,7 +66,7 @@ export interface PackageJsonInput {
   devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
-  overrides?: Record<string, string>;
+  overrides?: Record<string, unknown>;
 }
 
 /** Combine all dep blocks into one map. Later blocks win — same order
@@ -77,6 +78,22 @@ function flatten(pkg: PackageJsonInput): Record<string, string> {
     ...(pkg.optionalDependencies ?? {}),
     ...(pkg.dependencies ?? {}),
   };
+}
+
+function directDependencies(pkg: PackageJsonInput): Record<string, string> {
+  return {
+    ...(pkg.devDependencies ?? {}),
+    ...(pkg.dependencies ?? {}),
+  };
+}
+
+function directOverrideSpec(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const dot = (value as Record<string, unknown>)['.'];
+    return typeof dot === 'string' ? dot : null;
+  }
+  return null;
 }
 
 /** Validate a parsed package.json against its compatibility bundle.
@@ -106,6 +123,30 @@ export function validatePackageJson(
           packages: [name],
           foundVersions: { [name]: ver },
           expectedVersions: { [name]: bundle.versions[name] },
+        },
+      });
+    }
+  }
+
+  // CHECK 1b: peer-sensitive package specs must match the selected
+  // compatibility bundle exactly. This catches a missed generator
+  // reconciliation before npm gets a chance to resolve an unsafe set.
+  const onBundledReactStack = !!(versions['react'] || versions['react-dom'] || versions['next'] || versions['@vitejs/plugin-react']);
+  if (onBundledReactStack) {
+    for (const name of PEER_SENSITIVE_PACKAGES) {
+      const expected = bundle.versions[name];
+      const found = versions[name];
+      if (!expected || !found || found === expected) continue;
+      violations.push({
+        ruleId: 'strict-react-next-bundle-pins',
+        severity: 'error',
+        message:
+          `${name}="${found}" does not match compatible bundle ${bundle.id} ` +
+          `pin "${expected}".`,
+        detail: {
+          packages: [name],
+          foundVersions: { [name]: found },
+          expectedVersions: { [name]: expected },
         },
       });
     }
@@ -242,7 +283,9 @@ export function validatePackageJson(
   if (onReactStack && bundle.overrides) {
     const declaredOverrides = pkg.overrides ?? {};
     for (const [name, expected] of Object.entries(bundle.overrides)) {
-      const found = declaredOverrides[name];
+      const found = typeof declaredOverrides[name] === 'string'
+        ? declaredOverrides[name]
+        : directOverrideSpec(declaredOverrides[name]);
       if (!found) {
         violations.push({
           ruleId: 'bundle-overrides-required',
@@ -272,6 +315,30 @@ export function validatePackageJson(
         });
       }
     }
+  }
+
+  // CHECK 8: overrides must not conflict with direct dependencies.
+  // npm throws EOVERRIDE before install resolution when an override for
+  // a direct dependency differs from that dependency's declared spec.
+  const directOverrides = pkg.overrides ?? {};
+  const directDeps = directDependencies(pkg);
+  for (const [name, directSpec] of Object.entries(directDeps)) {
+    if (!(name in directOverrides)) continue;
+    const overrideSpec = directOverrideSpec(directOverrides[name]);
+    if (!overrideSpec || overrideSpec === directSpec || overrideSpec === `$${name}`) continue;
+    violations.push({
+      ruleId: 'override-conflicts-with-direct-dependency',
+      severity: 'error',
+      message:
+        `overrides.${name}="${overrideSpec}" conflicts with direct dependency ` +
+        `${name}="${directSpec}"; npm will fail with EOVERRIDE. ` +
+        `Remove the override or use "$${name}".`,
+      detail: {
+        packages: ['overrides', name],
+        foundVersions: { [name]: directSpec, [`overrides.${name}`]: overrideSpec },
+        expectedVersions: { [`overrides.${name}`]: `$${name}` },
+      },
+    });
   }
 
   const blocking = violations.filter((v) => v.severity === 'error');

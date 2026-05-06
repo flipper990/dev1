@@ -48,6 +48,16 @@ export interface DependencyValidationReport {
    *  match react's major). Empty when the package set was already
    *  coherent. */
   reconciled: Array<{ packageJson: string; bundleId: string; effects: RuleEffect[] }>;
+  /** Final emitted dependency bundle per package.json after all
+   *  auto-add/reconcile/override work. Logged by the generator so every
+   *  project has an exact package/version audit trail. */
+  finalBundles: Array<{
+    packageJson: string;
+    bundleId: string;
+    dependencies: Record<string, string>;
+    devDependencies: Record<string, string>;
+    overrides: Record<string, unknown>;
+  }>;
 }
 
 export interface DependencyValidationResult {
@@ -339,15 +349,37 @@ function isDevDep(name: string): boolean {
   return DEV_DEP_PATTERNS.some((rx) => rx.test(name));
 }
 
+function directOverrideSpec(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const dot = (value as Record<string, unknown>)['.'];
+    return typeof dot === 'string' ? dot : null;
+  }
+  return null;
+}
+
+function overrideConflictsWithDirectDependency(name: string, directSpec: string, overrideValue: unknown): boolean {
+  const overrideSpec = directOverrideSpec(overrideValue);
+  if (!overrideSpec) return false;
+  return overrideSpec !== directSpec && overrideSpec !== `$${name}`;
+}
+
 /**
  * Insert `name: version` into the appropriate dependency block of pkg.json
  * while preserving formatting. Returns the new file contents.
  */
 function addDependency(pkg: ParsedPkg, name: string, version: string, dev: boolean): string {
   const block = dev ? 'devDependencies' : 'dependencies';
+  const otherBlock = dev ? 'dependencies' : 'devDependencies';
   const json = JSON.parse(pkg.raw) as Record<string, unknown>;
   const existing = (json[block] as Record<string, string> | undefined) ?? {};
   existing[name] = version;
+  const other = json[otherBlock] as Record<string, string> | undefined;
+  if (other && Object.prototype.hasOwnProperty.call(other, name)) {
+    delete other[name];
+    if (Object.keys(other).length > 0) json[otherBlock] = other;
+    else delete json[otherBlock];
+  }
   // Sort alphabetically — matches npm/yarn/pnpm convention.
   const sorted: Record<string, string> = {};
   for (const k of Object.keys(existing).sort((a, b) => a.localeCompare(b))) sorted[k] = existing[k];
@@ -566,7 +598,78 @@ export function validateAndFixDependencies(input: FileLike[]): DependencyValidat
     }
   }
 
+  // ── Remove npm overrides that conflict with direct dependencies ──
+  // npm fails with EOVERRIDE when overrides.react differs from a direct
+  // dependencies.react spec. The generator owns direct dependency pins via
+  // the compatibility bundle, so conflicting direct overrides are removed
+  // instead of emitted.
+  for (const pkg of parsed) {
+    const idx = files.findIndex((f) => f.path === pkg.path);
+    if (idx < 0) continue;
+    const currentRaw = files[idx].content;
+    let parsedJson: Record<string, unknown>;
+    try { parsedJson = JSON.parse(currentRaw) as Record<string, unknown>; } catch { continue; }
+    const overrides = parsedJson.overrides as Record<string, unknown> | undefined;
+    if (!overrides || typeof overrides !== 'object') continue;
+    const directDeps = {
+      ...((parsedJson.devDependencies as Record<string, string> | undefined) ?? {}),
+      ...((parsedJson.dependencies as Record<string, string> | undefined) ?? {}),
+    };
+    const effects: RuleEffect[] = [];
+    const nextOverrides: Record<string, unknown> = { ...overrides };
+    for (const [name, directSpec] of Object.entries(directDeps)) {
+      if (!(name in nextOverrides)) continue;
+      if (!overrideConflictsWithDirectDependency(name, directSpec, nextOverrides[name])) continue;
+      effects.push({
+        packageName: name,
+        previousVersion: directOverrideSpec(nextOverrides[name]),
+        newVersion: directSpec,
+        reason:
+          `[override-conflict] removed overrides.${name} because npm rejects ` +
+          `overrides that conflict with direct dependency ${name}@${directSpec}.`,
+      });
+      delete nextOverrides[name];
+    }
+    if (effects.length === 0) continue;
+    if (Object.keys(nextOverrides).length > 0) parsedJson.overrides = nextOverrides;
+    else delete parsedJson.overrides;
+    let out = JSON.stringify(parsedJson, null, pkg.indent);
+    if (pkg.trailingNewline) out += '\n';
+    files[idx] = { ...files[idx], content: out };
+    if (!patched.includes(pkg.path)) patched.push(pkg.path);
+    const bundle = selectBundle({
+      dependencies: parsedJson.dependencies as Record<string, string> | undefined,
+      devDependencies: parsedJson.devDependencies as Record<string, string> | undefined,
+    });
+    const existingReconcile = reconciled.find((r) => r.packageJson === pkg.path);
+    if (existingReconcile) {
+      existingReconcile.effects.push(...effects);
+    } else {
+      reconciled.push({ packageJson: pkg.path, bundleId: bundle.id, effects });
+    }
+  }
+
   const rootPkg = parsed.find((p) => p.path === 'package.json' || p.path.replace(/\\/g, '/') === 'package.json') ?? null;
+  const finalBundles: DependencyValidationReport['finalBundles'] = [];
+  for (const f of files) {
+    if (!f.path.replace(/\\/g, '/').endsWith('package.json')) continue;
+    try {
+      const parsedJson = JSON.parse(f.content) as Record<string, unknown>;
+      const deps = (parsedJson.dependencies as Record<string, string> | undefined) ?? {};
+      const devDeps = (parsedJson.devDependencies as Record<string, string> | undefined) ?? {};
+      const overrides = (parsedJson.overrides as Record<string, unknown> | undefined) ?? {};
+      const bundle = selectBundle({ dependencies: deps, devDependencies: devDeps });
+      finalBundles.push({
+        packageJson: f.path,
+        bundleId: bundle.id,
+        dependencies: { ...deps },
+        devDependencies: { ...devDeps },
+        overrides: { ...overrides },
+      });
+    } catch {
+      // Unparseable package.json is already surfaced through unresolved.
+    }
+  }
   const report: DependencyValidationReport = {
     imports: importCount,
     added,
@@ -574,6 +677,7 @@ export function validateAndFixDependencies(input: FileLike[]): DependencyValidat
     patched,
     packageManager: detectPackageManager(files, rootPkg),
     reconciled,
+    finalBundles,
   };
 
   return { files, report };

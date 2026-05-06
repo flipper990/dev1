@@ -2348,14 +2348,14 @@ export class ProjectGenerator {
         // moment the importing file is added — instead of waiting until
         // the docker preview crashes with `Cannot find module '…'`.
         const cumDep = validateAndFixDependencies(cumulativeFiles);
-        if (cumDep.report.added.length > 0) {
+        if (cumDep.report.patched.length > 0) {
           const patchedByPath = new Map(cumDep.files.map((f) => [f.path, f]));
           cumulativeFiles = cumulativeFiles.map((f) => {
             const patched = patchedByPath.get(f.path);
             return patched && patched.content !== f.content ? patched : f;
           });
           this.logger.info(
-            `[deps] Slice ${sliceLabel} cumulative dep-fix: added ${cumDep.report.added.length} dep(s) across ${cumDep.report.patched.length} package.json file(s) [pm=${cumDep.report.packageManager}]`,
+            `[deps] Slice ${sliceLabel} cumulative dep-fix: patched ${cumDep.report.patched.length} package.json file(s), added ${cumDep.report.added.length} dep(s), reconciled ${cumDep.report.reconciled.reduce((n, r) => n + r.effects.length, 0)} package pin(s) [pm=${cumDep.report.packageManager}]`,
             {
               event: 'deps:auto-fix-slice',
               sliceLabel,
@@ -2558,6 +2558,18 @@ export class ProjectGenerator {
           },
         );
       }
+      this.logger.info('[deps:final-bundle] final emitted dependency bundle(s)', {
+        event: 'deps:final-bundle',
+        projectId,
+        packageManager: depFix.report.packageManager,
+        bundles: depFix.report.finalBundles.map((b) => ({
+          packageJson: b.packageJson,
+          bundleId: b.bundleId,
+          dependencies: b.dependencies,
+          devDependencies: b.devDependencies,
+          overrides: b.overrides,
+        })),
+      });
       const taskSummaries = await this.runPostPersistStep(
         phaseRef, { projectId, sliceId: finalSliceTag, step: 'final-assembly:buildTaskSummaries' },
         () => buildTaskSummaries(pipelineState),
@@ -3007,6 +3019,7 @@ export class ProjectGenerator {
             verdict: integrityReport.verdict,
             missingPackages: integrityReport.counts.missingPackages,
             danglingInternalImports: integrityReport.counts.danglingInternalImports,
+            packageJsonViolations: integrityReport.counts.packageJsonViolations,
             sourceFilesScanned: integrityReport.counts.sourceFilesScanned,
             bareImportsScanned: integrityReport.counts.bareImportsScanned,
           },
@@ -3018,6 +3031,14 @@ export class ProjectGenerator {
             projectId,
             missingPackages: integrityReport.missingPackages.map((m) => m.name),
             missingPackagesCount: integrityReport.counts.missingPackages,
+            packageJsonViolations: integrityReport.packageJsonViolations.map((v) => ({
+              packageJson: v.packageJson,
+              ruleId: v.ruleId,
+              message: v.message,
+              foundVersions: v.foundVersions,
+              expectedVersions: v.expectedVersions ?? {},
+            })),
+            packageJsonViolationsCount: integrityReport.counts.packageJsonViolations,
             danglingInternalImports: integrityReport.danglingInternalImports
               .slice(0, 6)
               .map((d) => `${d.importer} → '${d.specifier}'`),
@@ -3269,9 +3290,9 @@ export class ProjectGenerator {
     const merged = getMergedFiles(artifacts, /* applyPolish */ false);
     if (merged.length === 0) return;
     const { files: patchedFiles, report } = validateAndFixDependencies(merged);
-    if (report.added.length === 0 && report.unresolved.length === 0) return;
+    if (report.patched.length === 0 && report.unresolved.length === 0) return;
 
-    if (report.added.length > 0) {
+    if (report.patched.length > 0) {
       // Write the patched package.json files back into the builder artifact
       // so subsequent QA / rebuild iterations see the corrected manifest.
       const builder = (artifacts.get('builder') as { files?: Array<{ path: string; content: string; language?: string }> } | undefined) ?? {};
@@ -3288,7 +3309,7 @@ export class ProjectGenerator {
       artifacts.set('builder', { ...builder, files: Array.from(byPath.values()) });
 
       this.logger.info(
-        `Dep validator on slice ${sliceLabel}: added ${report.added.length} dep(s) across ${report.patched.length} package.json file(s) [pm=${report.packageManager}]`,
+        `Dep validator on slice ${sliceLabel}: patched ${report.patched.length} package.json file(s), added ${report.added.length} dep(s), reconciled ${report.reconciled.reduce((n, r) => n + r.effects.length, 0)} package pin(s) [pm=${report.packageManager}]`,
         {
           event: 'deps:auto-fix',
           sliceLabel,

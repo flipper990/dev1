@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-05-06T15:53:21.075Z",
+  "timestamp": "2026-05-06T23:01:33.463Z",
   "projectId": "AH0QOxRHDYV9",
-  "previewId": "dc33db75ed1c",
-  "runtime": "local-fallback",
-  "reason": "npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_20_803Z-debug-0.log",
+  "previewId": "780aa4a82be1",
+  "runtime": "local",
+  "reason": "Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react\".",
   "timeoutCause": null,
   "timeoutLifecycle": null,
   "command": null,
@@ -25,13 +25,13 @@
   "host": "127.0.0.1",
   "port": null,
   "envSafe": {
-    "PORT": "3001",
+    "PORT": "3003",
     "HOST": "0.0.0.0",
     "NODE_ENV": "development"
   },
   "pid": null,
-  "currentStep": "preview:installing",
-  "lastSuccessfulStep": "local-fallback runner starting",
+  "currentStep": "preview:staging-files",
+  "lastSuccessfulStep": "local runner starting",
   "installCompleted": false,
   "installMode": null,
   "serverSpawned": false,
@@ -50,42 +50,17 @@
   "stepDurations": [
     {
       "step": "preview:queued",
-      "startedAt": "2026-05-06T15:53:18.055Z",
-      "completedAt": "2026-05-06T15:53:18.056Z",
+      "startedAt": "2026-05-06T23:01:33.428Z",
+      "completedAt": "2026-05-06T23:01:33.429Z",
       "durationMs": 1
-    },
-    {
-      "step": "preview:staging-files",
-      "startedAt": "2026-05-06T15:53:18.056Z",
-      "completedAt": "2026-05-06T15:53:18.076Z",
-      "durationMs": 20
     }
   ],
   "previewStatusTransitions": [
     {
-      "step": "starting:local-fallback",
-      "at": "2026-05-06T15:53:18.055Z"
+      "step": "starting:local-runner",
+      "at": "2026-05-06T23:01:33.428Z"
     }
   ],
-  "localStartAttempts": [
-    {
-      "attempt": 1,
-      "ok": false,
-      "error": "npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_18_298Z-debug-0.log",
-      "portOpened": false,
-      "durationMs": 495,
-      "startedAtIso": "2026-05-06T15:53:18.076Z",
-      "endedAtIso": "2026-05-06T15:53:18.571Z"
-    },
-    {
-      "attempt": 2,
-      "ok": false,
-      "error": "npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_20_803Z-debug-0.log",
-      "portOpened": false,
-      "durationMs": 494,
-      "startedAtIso": "2026-05-06T15:53:20.580Z",
-      "endedAtIso": "2026-05-06T15:53:21.074Z"
-    }
-  ],
-  "localRetrySucceeded": false
+  "localStartAttempts": [],
+  "localRetrySucceeded": null
 }

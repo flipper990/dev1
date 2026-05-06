@@ -1,0 +1,184 @@
+{
+  "timestamp": "2026-05-06T23:01:33.461Z",
+  "projectId": "AH0QOxRHDYV9",
+  "code": "DEPENDENCY_PREFLIGHT_FAILED",
+  "headline": "Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react\".",
+  "bundleId": "react-18-next-15",
+  "projectStatus": "completed",
+  "previewStatus": "starting",
+  "packageJson": {
+    "dependencies": {
+      "class-variance-authority": "^0.7.0",
+      "clsx": "^2.1.1",
+      "next": "15.0.4",
+      "react": "18.3.1",
+      "react-dom": "18.3.1",
+      "tailwind-merge": "^2.5.4"
+    },
+    "devDependencies": {
+      "@types/node": "^22.10.1",
+      "@types/react": "18.3.12",
+      "@types/react-dom": "18.3.1",
+      "autoprefixer": "10.4.20",
+      "postcss": "8.4.49",
+      "tailwindcss": "3.4.14",
+      "typescript": "^5.7.2"
+    }
+  },
+  "conflicts": [
+    {
+      "ruleId": "override-conflicts-with-direct-dependency",
+      "severity": "error",
+      "message": "overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react\".",
+      "packageA": {
+        "name": "overrides",
+        "version": null
+      },
+      "packageB": {
+        "name": "@types/react",
+        "version": "18.3.12"
+      },
+      "peerRequirement": "overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react\".",
+      "suggestedFix": [
+        {
+          "name": "overrides.@types/react",
+          "version": "$@types/react"
+        }
+      ]
+    },
+    {
+      "ruleId": "override-conflicts-with-direct-dependency",
+      "severity": "error",
+      "message": "overrides.@types/react-dom=\"^18.3.1\" conflicts with direct dependency @types/react-dom=\"18.3.1\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react-dom\".",
+      "packageA": {
+        "name": "overrides",
+        "version": null
+      },
+      "packageB": {
+        "name": "@types/react-dom",
+        "version": "18.3.1"
+      },
+      "peerRequirement": "overrides.@types/react-dom=\"^18.3.1\" conflicts with direct dependency @types/react-dom=\"18.3.1\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react-dom\".",
+      "suggestedFix": [
+        {
+          "name": "overrides.@types/react-dom",
+          "version": "$@types/react-dom"
+        }
+      ]
+    },
+    {
+      "ruleId": "override-conflicts-with-direct-dependency",
+      "severity": "error",
+      "message": "overrides.react=\"^18.3.1\" conflicts with direct dependency react=\"18.3.1\"; npm will fail with EOVERRIDE. Remove the override or use \"$react\".",
+      "packageA": {
+        "name": "overrides",
+        "version": null
+      },
+      "packageB": {
+        "name": "react",
+        "version": "18.3.1"
+      },
+      "peerRequirement": "overrides.react=\"^18.3.1\" conflicts with direct dependency react=\"18.3.1\"; npm will fail with EOVERRIDE. Remove the override or use \"$react\".",
+      "suggestedFix": [
+        {
+          "name": "overrides.react",
+          "version": "$react"
+        }
+      ]
+    },
+    {
+      "ruleId": "override-conflicts-with-direct-dependency",
+      "severity": "error",
+      "message": "overrides.react-dom=\"^18.3.1\" conflicts with direct dependency react-dom=\"18.3.1\"; npm will fail with EOVERRIDE. Remove the override or use \"$react-dom\".",
+      "packageA": {
+        "name": "overrides",
+        "version": null
+      },
+      "packageB": {
+        "name": "react-dom",
+        "version": "18.3.1"
+      },
+      "peerRequirement": "overrides.react-dom=\"^18.3.1\" conflicts with direct dependency react-dom=\"18.3.1\"; npm will fail with EOVERRIDE. Remove the override or use \"$react-dom\".",
+      "suggestedFix": [
+        {
+          "name": "overrides.react-dom",
+          "version": "$react-dom"
+        }
+      ]
+    }
+  ],
+  "violations": [
+    {
+      "ruleId": "override-conflicts-with-direct-dependency",
+      "severity": "error",
+      "message": "overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react\".",
+      "detail": {
+        "packages": [
+          "overrides",
+          "@types/react"
+        ],
+        "foundVersions": {
+          "@types/react": "18.3.12",
+          "overrides.@types/react": "^18.3.12"
+        },
+        "expectedVersions": {
+          "overrides.@types/react": "$@types/react"
+        }
+      }
+    },
+    {
+      "ruleId": "override-conflicts-with-direct-dependency",
+      "severity": "error",
+      "message": "overrides.@types/react-dom=\"^18.3.1\" conflicts with direct dependency @types/react-dom=\"18.3.1\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react-dom\".",
+      "detail": {
+        "packages": [
+          "overrides",
+          "@types/react-dom"
+        ],
+        "foundVersions": {
+          "@types/react-dom": "18.3.1",
+          "overrides.@types/react-dom": "^18.3.1"
+        },
+        "expectedVersions": {
+          "overrides.@types/react-dom": "$@types/react-dom"
+        }
+      }
+    },
+    {
+      "ruleId": "override-conflicts-with-direct-dependency",
+      "severity": "error",
+      "message": "overrides.react=\"^18.3.1\" conflicts with direct dependency react=\"18.3.1\"; npm will fail with EOVERRIDE. Remove the override or use \"$react\".",
+      "detail": {
+        "packages": [
+          "overrides",
+          "react"
+        ],
+        "foundVersions": {
+          "react": "18.3.1",
+          "overrides.react": "^18.3.1"
+        },
+        "expectedVersions": {
+          "overrides.react": "$react"
+        }
+      }
+    },
+    {
+      "ruleId": "override-conflicts-with-direct-dependency",
+      "severity": "error",
+      "message": "overrides.react-dom=\"^18.3.1\" conflicts with direct dependency react-dom=\"18.3.1\"; npm will fail with EOVERRIDE. Remove the override or use \"$react-dom\".",
+      "detail": {
+        "packages": [
+          "overrides",
+          "react-dom"
+        ],
+        "foundVersions": {
+          "react-dom": "18.3.1",
+          "overrides.react-dom": "^18.3.1"
+        },
+        "expectedVersions": {
+          "overrides.react-dom": "$react-dom"
+        }
+      }
+    }
+  ]
+}

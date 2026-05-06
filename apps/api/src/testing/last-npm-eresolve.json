@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-05-06T13:23:49.425Z",
+  "projectId": "aKURPARBBVYC",
+  "errorCode": "ERESOLVE",
+  "headline": "npm install failed: ERESOLVE on react@18.3.1 — react-dom@19.2.5 requires react ^19.2.5, but root requested react ^18.3.0.",
+  "resolvingFor": "generated-app@0.0.0",
+  "packageJson": {
+    "dependencies": {
+      "@tailwindcss/forms": "latest",
+      "class-variance-authority": "^0.7.0",
+      "clsx": "^2.1.0",
+      "next": "^15.0.0",
+      "react": "^18.3.0",
+      "sonner": "^1.7.0",
+      "tailwind-merge": "^2.5.0"
+    },
+    "devDependencies": {
+      "tailwindcss": "^3.4.0"
+    }
+  },
+  "conflicts": [
+    {
+      "conflictingPackage": "react",
+      "foundVersion": "18.3.1",
+      "rootRequest": "^18.3.0",
+      "peerRequester": "react-dom@19.2.5",
+      "peerRequirement": "^19.2.5",
+      "introducedBy": [
+        "react@\"^19.2.5\" required by react-dom@19.2.5",
+        "react-dom@\"^18.2.0 || 19.0.0-rc-de68d2f4-20241204 || ^19.0.0\" from next@15.5.15",
+        "next@\"^15.0.0\" from the root project"
+      ]
+    }
+  ],
+  "recommendedFix": "Pin react-dom to a version that matches react ^18.3.0. Current react-dom (react-dom@19.2.5) requires react ^19.2.5, but root requested react ^18.3.0. Either downgrade react-dom (e.g. \"react-dom\": \"^18.3.0\") or upgrade react to ^19.2.5.",
+  "npmReportPath": "C:/Users/AJ/npm-cache/_logs/2026-05-06T13_11_26_318Z-eresolve-report.txt",
+  "npmDebugLogPath": "C:/Users/AJ/npm-cache/_logs/2026-05-06T13_11_26_318Z-debug-0.log",
+  "rawReportTail": "While resolving: generated-app@0.0.0\nFound: react@18.3.1\nnode_modules/react\n  react@\"^18.3.0\" from the root project\n  peer react@\"^18.2.0 || 19.0.0-rc-de68d2f4-20241204 || ^19.0.0\" from next@15.5.15\n  node_modules/next\n    next@\"^15.0.0\" from the root project\n\nCould not resolve dependency:\npeer react@\"^19.2.5\" from react-dom@19.2.5\nnode_modules/react-dom\n  peer react-dom@\"^18.2.0 || 19.0.0-rc-de68d2f4-20241204 || ^19.0.0\" from next@15.5.15\n  node_modules/next\n    next@\"^15.0.0\" from the root project"
+}

@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { request as httpRequest } from 'node:http';
 import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import { instrumentChild } from './spawn-logger.js';
+import { recordProbe, type ProbeAttempt } from './probe-recorder.js';
 
 export interface SpawnResult {
   code: number;
@@ -153,8 +154,22 @@ export interface DockerRunner {
   }>;
   /** GET against http://127.0.0.1:hostPort{path} with a short timeout. */
   httpProbe(hostPort: number, path: string, timeoutMs: number): Promise<{ ok: boolean; status: number | null }>;
-  /** Wait until httpProbe returns ok=true OR budget elapses. */
-  awaitHealthy(hostPort: number, path: string, budgetMs: number): Promise<{ ok: boolean; lastStatus: number | null }>;
+  /**
+   * Wait until httpProbe returns ok=true OR budget elapses. Each
+   * underlying probe attempt is captured as a structured
+   * `ProbeAttempt` (timestamp / URL / connection result / status /
+   * body sample / error code+message) and surfaced via the optional
+   * `onProbe` callback so the PreviewManager can mirror the history
+   * onto the persisted preview record. The final probe (just before
+   * giving up, OR the first successful one) requests with GET so a
+   * body sample is always available for the timeout dump.
+   */
+  awaitHealthy(
+    hostPort: number,
+    path: string,
+    budgetMs: number,
+    onProbe?: (attempt: ProbeAttempt) => void,
+  ): Promise<{ ok: boolean; lastStatus: number | null }>;
   /** Bring up a docker compose stack scoped by projectName. Returns build/up log. */
   composeUp(opts: DockerComposeUpOptions): Promise<{ ok: boolean; log: string }>;
   /** Tear down a compose stack (containers + volumes). Idempotent. */
@@ -302,15 +317,26 @@ export function createDockerRunner(logger: Logger, dockerBin = 'docker'): Docker
       });
     },
 
-    async awaitHealthy(hostPort, path, budgetMs) {
+    async awaitHealthy(hostPort, path, budgetMs, onProbe) {
       const deadline = Date.now() + budgetMs;
       let lastStatus: number | null = null;
+      let attemptIdx = 0;
       // First few seconds: probe quickly. Then back off to once per 2s.
       let delay = 500;
       while (Date.now() < deadline) {
-        const probe = await this.httpProbe(hostPort, path, 3_000);
-        lastStatus = probe.status;
-        if (probe.ok) return { ok: true, lastStatus };
+        // Capture body on the FIRST attempt and every 4th attempt
+        // thereafter so the probe history always has at least one
+        // bodySample for the timeout dump.
+        const captureBody = attemptIdx === 0 || attemptIdx % 4 === 0;
+        const attempt = await recordProbe({
+          host: '127.0.0.1', port: hostPort, path,
+          timeoutMs: 3_000,
+          captureBody,
+        });
+        attemptIdx++;
+        lastStatus = attempt.status;
+        try { onProbe?.(attempt); } catch { /* mirror callbacks must never abort boot */ }
+        if (attempt.ok) return { ok: true, lastStatus };
         await new Promise((r) => setTimeout(r, delay));
         if (delay < 2_000) delay = Math.min(delay * 1.5, 2_000);
       }

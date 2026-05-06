@@ -38,9 +38,47 @@
 // Idempotent: a clean codebase produces zero fixes and zero writes.
 // ─────────────────────────────────────────────────────────────
 
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { validateAndFixDependencies, pickKnownVersion } from '../../../../packages/agent-core/src/dependency-validator.js';
+import {
+  validatePackageJson,
+  type PackageJsonViolation,
+} from '../../../../packages/agent-core/src/package-json-validator.js';
 import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import type { ProjectStore } from '../storage/project-store.js';
+
+/** Error thrown by the preflight when the package.json fails the
+ *  static peer-conflict gate. Carries the structured payload that the
+ *  preview manager surfaces as `previewError` and persists alongside
+ *  the project for the dashboard postmortem.
+ *
+ *  The shape mirrors `last-npm-eresolve.json` so engineers diagnosing
+ *  install failures can read the same fields whether the failure was
+ *  caught pre-install (this gate) or post-install (npm ERESOLVE). */
+export class DependencyPreflightError extends Error {
+  readonly code = 'DEPENDENCY_PREFLIGHT_FAILED';
+  readonly projectId: string;
+  readonly headline: string;
+  readonly violations: PackageJsonViolation[];
+  readonly bundleId: string | null;
+  readonly dumpPath: string | null;
+  constructor(args: {
+    projectId: string;
+    headline: string;
+    violations: PackageJsonViolation[];
+    bundleId: string | null;
+    dumpPath: string | null;
+  }) {
+    super(args.headline);
+    this.name = 'DependencyPreflightError';
+    this.projectId = args.projectId;
+    this.headline = args.headline;
+    this.violations = args.violations;
+    this.bundleId = args.bundleId;
+    this.dumpPath = args.dumpPath;
+  }
+}
 
 export interface DependencyFix {
   /** npm package name as it appears in package.json (e.g. `@radix-ui/react-dialog`). */
@@ -79,6 +117,18 @@ export interface DependencyPreflightResult {
   patchedFiles: Array<{ path: string; content: string; language?: string }>;
   /** Total bare-module imports scanned (for log scale). */
   importsScanned: number;
+  /** Static peer-conflict violations detected on the *post-reconcile*
+   *  package.json. Empty array means the package set should install
+   *  cleanly without `--legacy-peer-deps`. A non-empty `severity:
+   *  'error'` entry means npm install WILL ERESOLVE — the caller
+   *  should fail-fast rather than waste time on `npm install`. */
+  packageJsonViolations: PackageJsonViolation[];
+  /** True when at least one violation has severity `error`. The
+   *  preview manager uses this to short-circuit before spawning npm. */
+  hasBlockingViolation: boolean;
+  /** Single-line headline derived from the first blocking violation,
+   *  ready to use as `previewError`. `null` when no blocking error. */
+  blockingHeadline: string | null;
 }
 
 interface PreflightArgs {
@@ -119,7 +169,64 @@ export async function runPreviewDependencyPreflight(
   const { projectId, projectStore, logger } = args;
   const project = await projectStore.get(projectId);
   if (!project || !Array.isArray(project.files) || project.files.length === 0) {
-    return { fixes: [], unresolved: [], filesPersisted: false, patchedFiles: [], importsScanned: 0 };
+    // No files at all — almost always means the generator never wrote
+    // its output. Fail-fast with a structured error so the dashboard
+    // shows "no project files" rather than "npm install failed".
+    const headline = 'Preflight failed: project has no files on disk (generation may have aborted).';
+    const violation: PackageJsonViolation = {
+      ruleId: 'project-files-missing',
+      severity: 'error',
+      message: headline,
+      detail: { packages: [], foundVersions: {} },
+    };
+    const dumpPath = await persistPreflightFailureDump({
+      projectId,
+      headline,
+      violations: [violation],
+      bundleId: null,
+      packageJson: null,
+      logger,
+      projectStore,
+    });
+    throw new DependencyPreflightError({
+      projectId,
+      headline,
+      violations: [violation],
+      bundleId: null,
+      dumpPath,
+    });
+  }
+
+  // Hard prerequisite: a root package.json must exist. Without one
+  // there is nothing to validate and `npm install` would fail with an
+  // opaque "ENOENT: package.json" anyway.
+  const rootPkgFileEarly = project.files.find(
+    (f) => f.path === 'package.json' || f.path === './package.json',
+  );
+  if (!rootPkgFileEarly) {
+    const headline = 'Preflight failed: root package.json is missing from the generated project.';
+    const violation: PackageJsonViolation = {
+      ruleId: 'package-json-missing',
+      severity: 'error',
+      message: headline,
+      detail: { packages: ['package.json'], foundVersions: {} },
+    };
+    const dumpPath = await persistPreflightFailureDump({
+      projectId,
+      headline,
+      violations: [violation],
+      bundleId: null,
+      packageJson: null,
+      logger,
+      projectStore,
+    });
+    throw new DependencyPreflightError({
+      projectId,
+      headline,
+      violations: [violation],
+      bundleId: null,
+      dumpPath,
+    });
   }
 
   const { files: patchedFiles, report } = validateAndFixDependencies(project.files);
@@ -141,14 +248,110 @@ export async function runPreviewDependencyPreflight(
     reason: u.reason,
   }));
 
-  // No-op fast path — clean codebase, don't rewrite output/.
-  if (fixes.length === 0) {
+  // Static peer-compatibility validator. Runs on the *post-reconcile*
+  // file tree (i.e. after validateAndFixDependencies has applied any
+  // bundle rules) so violations here mean either:
+  //   1. The reconciler missed something (bundle scope was too narrow), OR
+  //   2. The package.json has a problem the bundle can't fix
+  //      automatically (e.g. user-edited file with a hand-pinned
+  //      "react-dom": "*" that no rule whitelists for replacement).
+  // Either way, we want to fail-fast with a precise message rather
+  // than waste 30s on `npm install` only to surface ERESOLVE.
+  const rootPkgFile = (patchedFiles.length ? patchedFiles : project.files).find(
+    (f) => f.path === 'package.json' || f.path === './package.json',
+  );
+  let packageJsonViolations: PackageJsonViolation[] = [];
+  let hasBlockingViolation = false;
+  let blockingHeadline: string | null = null;
+  let validationBundleId: string | null = null;
+  let parsedPackageJson: Record<string, unknown> | null = null;
+  if (rootPkgFile) {
+    try {
+      const parsed = JSON.parse(rootPkgFile.content) as Record<string, unknown>;
+      parsedPackageJson = parsed;
+      const validation = validatePackageJson({
+        dependencies: parsed.dependencies as Record<string, string> | undefined,
+        devDependencies: parsed.devDependencies as Record<string, string> | undefined,
+        peerDependencies: parsed.peerDependencies as Record<string, string> | undefined,
+        optionalDependencies: parsed.optionalDependencies as Record<string, string> | undefined,
+        overrides: parsed.overrides as Record<string, string> | undefined,
+      });
+      packageJsonViolations = validation.violations;
+      hasBlockingViolation = validation.hasBlockingError;
+      blockingHeadline = validation.headline;
+      validationBundleId = validation.bundleId;
+      if (validation.violations.length > 0) {
+        logger.warn('preview dep preflight: package.json validation flagged issues', {
+          event: 'preview:dep-preflight-violations',
+          projectId,
+          bundleId: validation.bundleId,
+          blockingCount: validation.violations.filter((v) => v.severity === 'error').length,
+          warningCount: validation.violations.filter((v) => v.severity === 'warning').length,
+          violations: validation.violations.slice(0, 8).map((v) => ({
+            ruleId: v.ruleId,
+            severity: v.severity,
+            message: v.message,
+          })),
+        });
+      }
+    } catch (err) {
+      logger.warn('preview dep preflight: root package.json parse failed', {
+        projectId,
+        error: (err as Error).message,
+      });
+      hasBlockingViolation = true;
+      blockingHeadline = `package.json parse failed: ${(err as Error).message}`;
+      packageJsonViolations = [
+        {
+          ruleId: 'package-json-parse-error',
+          severity: 'error',
+          message: blockingHeadline,
+          detail: { packages: ['package.json'], foundVersions: {} },
+        },
+      ];
+    }
+  }
+
+  // Hard stop: blocking violations mean `npm install` would ERESOLVE.
+  // Persist a structured dump (mirrors last-npm-eresolve.json) and
+  // throw a typed error the preview manager maps onto
+  // previewStatus=failed + previewError=<headline>.
+  if (hasBlockingViolation && blockingHeadline) {
+    const dumpPath = await persistPreflightFailureDump({
+      projectId,
+      headline: blockingHeadline,
+      violations: packageJsonViolations,
+      bundleId: validationBundleId,
+      packageJson: parsedPackageJson,
+      logger,
+      projectStore,
+    });
+    throw new DependencyPreflightError({
+      projectId,
+      headline: blockingHeadline,
+      violations: packageJsonViolations,
+      bundleId: validationBundleId,
+      dumpPath,
+    });
+  }
+
+  // Did the reconciler rewrite any versions? Even when no fixes
+  // (import-add) were needed, R1–R6 may have rewritten "latest"
+  // pins or fixed major mismatches; we MUST persist those rewrites
+  // so the staged tree the runner installs reflects them.
+  const reconcilerTouched = report.reconciled.some((r) => r.effects.length > 0);
+
+  // No-op fast path — clean codebase AND no reconciler effects.
+  if (fixes.length === 0 && !reconcilerTouched) {
     return {
       fixes: [],
       unresolved,
       filesPersisted: false,
       patchedFiles: project.files,
       importsScanned: report.imports,
+      packageJsonViolations,
+      hasBlockingViolation,
+      blockingHeadline,
     };
   }
 
@@ -164,7 +367,13 @@ export async function runPreviewDependencyPreflight(
     await projectStore.update(projectId, (current) => {
       current.files = patchedFiles;
       return current;
-    }, { phase: 'preview-dep-preflight', persistFiles: true });
+    }, {
+      phase: 'preview-dep-preflight',
+      persistFiles: true,
+      caller: 'preview-dep-preflight',
+      reason: 'auto-add missing dependencies before npm install',
+      previewWriter: true,
+    });
   } catch (err) {
     logger.error('preview dep preflight: failed to persist patched files', {
       projectId,
@@ -183,6 +392,7 @@ export async function runPreviewDependencyPreflight(
     event: 'preview:dep-preflight',
     projectId,
     fixCount: fixes.length,
+    reconcilerEffects: report.reconciled.reduce((n, r) => n + r.effects.length, 0),
     importsScanned: report.imports,
     packageManager: report.packageManager,
     sample: fixes.slice(0, 8).map((f) => ({
@@ -199,6 +409,9 @@ export async function runPreviewDependencyPreflight(
     filesPersisted: true,
     patchedFiles,
     importsScanned: report.imports,
+    packageJsonViolations,
+    hasBlockingViolation,
+    blockingHeadline,
   };
 }
 
@@ -343,7 +556,13 @@ export async function applyForcedDependencyFix(
     await projectStore.update(projectId, (current) => {
       current.files = patchedFiles;
       return current;
-    }, { phase: 'preview-forced-fix', persistFiles: true });
+    }, {
+      phase: 'preview-forced-fix',
+      persistFiles: true,
+      caller: 'preview-forced-fix',
+      reason: `forced-add ${name} after dev-server overlay surfaced it`,
+      previewWriter: true,
+    });
   } catch (err) {
     logger.error('preview forced-fix: failed to persist package.json patch', {
       event: 'preview:forced-fix:persist-failed',
@@ -376,3 +595,128 @@ export async function applyForcedDependencyFix(
     appliedAt,
   };
 }
+
+// ─────────────────────────────────────────────────────────────
+// Structured failure dump
+//
+// Mirrors the shape of `last-npm-eresolve.json` so the dashboard's
+// postmortem renderer (and engineers tailing the testing/ folder)
+// can read pre-install vs post-install failures with the same parser.
+//
+// Always written to apps/api/src/testing/last-preflight-failure.json
+// so the most-recent failure is trivially inspectable. Best-effort —
+// a write failure is logged but never blocks the throw above (the
+// thrown DependencyPreflightError carries the same payload in memory).
+// ─────────────────────────────────────────────────────────────
+
+interface PersistFailureArgs {
+  projectId: string;
+  headline: string;
+  violations: PackageJsonViolation[];
+  bundleId: string | null;
+  packageJson: Record<string, unknown> | null;
+  logger: Logger;
+  /** Optional store reference so the dump can include both
+   *  `projectStatus` and `previewStatus` from the persisted record —
+   *  this is the "final diagnostics show both clearly" requirement.
+   *  Best-effort: a read failure is silently ignored. */
+  projectStore?: ProjectStore;
+}
+
+async function persistPreflightFailureDump(args: PersistFailureArgs): Promise<string | null> {
+  const { projectId, headline, violations, bundleId, packageJson, logger, projectStore } = args;
+
+  // Strip everything from the package.json except the dep blocks —
+  // scripts/engines/etc. are noise for a peer-conflict postmortem.
+  let depsBlocks: Record<string, Record<string, string>> | null = null;
+  if (packageJson && typeof packageJson === 'object') {
+    depsBlocks = {};
+    for (const k of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const) {
+      const v = packageJson[k];
+      if (v && typeof v === 'object') {
+        depsBlocks[k] = v as Record<string, string>;
+      }
+    }
+  }
+
+  // Build the structured "packageA / packageB / peer requirement /
+  // suggested fix" rows the dashboard expects. One row per violation.
+  const conflicts = violations.map((v) => {
+    const packages = v.detail.packages;
+    const found = v.detail.foundVersions ?? {};
+    const expected = v.detail.expectedVersions ?? {};
+    const packageA = packages[0] ?? null;
+    const packageB = packages[1] ?? null;
+    return {
+      ruleId: v.ruleId,
+      severity: v.severity,
+      message: v.message,
+      packageA: packageA
+        ? { name: packageA, version: found[packageA] ?? null }
+        : null,
+      packageB: packageB
+        ? { name: packageB, version: found[packageB] ?? null }
+        : null,
+      peerRequirement: v.message,
+      suggestedFix: Object.entries(expected).map(([name, version]) => ({ name, version })),
+    };
+  });
+
+  // Status snapshot: read both `project.status` and
+  // `project.preview.previewStatus` from disk so the dump shows the
+  // separation between generation outcome and preview outcome. This
+  // is the "final diagnostics show both clearly" rule.
+  let projectStatusSnapshot: string | null = null;
+  let previewStatusSnapshot: string | null = null;
+  if (projectStore) {
+    try {
+      const rec = await projectStore.get(projectId);
+      if (rec) {
+        projectStatusSnapshot = rec.status ?? null;
+        previewStatusSnapshot = rec.preview?.previewStatus ?? null;
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  const dump = {
+    timestamp: new Date().toISOString(),
+    projectId,
+    code: 'DEPENDENCY_PREFLIGHT_FAILED',
+    headline,
+    bundleId,
+    // Status separation: the gate fails preview but never touches
+    // generation status. Surface both fields explicitly so the
+    // postmortem makes the separation visible. `projectStatus` is
+    // the persisted ProjectRecord.status; `previewStatus` is the
+    // current ProjectRecord.preview.previewStatus (whatever the
+    // PreviewManager last wrote). Read AT dump time, best-effort.
+    projectStatus: projectStatusSnapshot,
+    previewStatus: previewStatusSnapshot,
+    packageJson: depsBlocks,
+    conflicts,
+    violations,
+  };
+
+  const dumpPath = join(process.cwd(), 'apps/api/src/testing/last-preflight-failure.json');
+  try {
+    await mkdir(dirname(dumpPath), { recursive: true });
+    await writeFile(dumpPath, JSON.stringify(dump, null, 2), 'utf8');
+    logger.info('preview dep preflight: failure dump persisted', {
+      event: 'preview:dep-preflight:dump',
+      projectId,
+      dumpPath,
+      violationCount: violations.length,
+    });
+    return dumpPath;
+  } catch (err) {
+    logger.warn('preview dep preflight: failed to write failure dump', {
+      projectId,
+      dumpPath,
+      error: (err as Error).message,
+    });
+    return null;
+  }
+}
+

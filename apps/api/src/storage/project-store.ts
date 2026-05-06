@@ -326,6 +326,34 @@ export interface ProjectRecord {
      *  preview-failed card so the user can tell "stuck dev server"
      *  apart from "process died silently". */
     previewChildAlive?: boolean | null;
+    /** Precise classification of WHERE in the boot pipeline a timeout
+     *  stalled. Set in tandem with `previewTimeoutAt` by the
+     *  boot-watchdog classifier. One of:
+     *    install-hung | build-hung | server-not-spawned |
+     *    server-not-listening | http-probe-failed | unknown
+     *  Lets the dashboard render an exact category badge instead of
+     *  parsing the free-form `previewError` string. */
+    previewTimeoutCause?:
+      | 'install-hung'
+      | 'build-hung'
+      | 'server-not-spawned'
+      | 'server-not-listening'
+      | 'http-probe-failed'
+      | 'unknown'
+      | null;
+    /** Lifecycle booleans the timeout-cause classifier consumed.
+     *  Persisted alongside `previewTimeoutCause` so the dashboard +
+     *  triage tooling can show the raw signals the verdict was
+     *  derived from. */
+    previewTimeoutLifecycle?: {
+      installStarted: boolean;
+      installCompleted: boolean;
+      buildStarted: boolean;
+      buildCompleted: boolean;
+      serverSpawned: boolean;
+      portOpened: boolean;
+      firstProbeAttempted: boolean;
+    } | null;
     /** Server-process liveness snapshot — classifies a stuck/failed
      *  boot into one of: no-process / crashed / exited-clean /
      *  alive-hanging / alive-not-reachable / alive-healthy. Captured
@@ -424,6 +452,27 @@ export interface ProjectRecord {
       docker?: string | null;
       local?: string | null;
     } | null;
+    /** Per-attempt history of the local-runner start() call. Capped at
+     *  two entries: the initial attempt and an optional safe retry
+     *  that fires only when the first attempt failed BEFORE any TCP
+     *  probe connected (intermittent class only — peer-dep mismatches
+     *  and post-bind crashes are NOT retried). Each row carries
+     *  `attempt` (1|2), `ok`, `error`, `portOpened`, `durationMs`,
+     *  and the start/end ISO timestamps. */
+    previewLocalStartAttempts?: Array<{
+      attempt: 1 | 2;
+      ok: boolean;
+      error: string | null;
+      portOpened: boolean;
+      durationMs: number;
+      startedAtIso: string;
+      endedAtIso: string;
+    }> | null;
+    /** Outcome of the safe retry. `true` = the second attempt
+     *  succeeded (preview reached ready); `false` = the second
+     *  attempt also failed; `null` = no retry was attempted (first
+     *  attempt either succeeded or was ineligible for retry). */
+    previewLocalRetrySucceeded?: boolean | null;
     /** Set by the readiness gate's content-health probe when the dev
      *  server responded 2xx but the rendered HTML carried a Next.js /
      *  Vite / generic build-error overlay. Whenever this is set, the
@@ -585,6 +634,21 @@ export interface WriteOpts {
   reason?: string;
   allowPreviewOverwrite?: boolean;
   allowStatusDowngrade?: boolean;
+  /**
+   * Marks the writer as part of the preview lifecycle (preflight,
+   * runner, manager). Preview-side writers are STRUCTURALLY forbidden
+   * from mutating `project.status` — the preview lifecycle must only
+   * touch the `preview` block via `updatePreview()`. If a preview
+   * writer accidentally produces a `next.status` that differs from
+   * the on-disk value, the guard restores the disk value and emits a
+   * loud STALE_WRITE log instead of allowing the mutation.
+   *
+   * This is the structural enforcement of the rule "preview failures
+   * must never revert project.status back to generating": even if a
+   * future preview code path forgets to preserve status in its
+   * mutator, the store refuses to write the bad value.
+   */
+  previewWriter?: boolean;
 }
 
 interface MutationDiff {
@@ -898,12 +962,13 @@ export class ProjectStore {
     if (existing && existing.status !== next.status) {
       const prev = existing.status;
       const cur = next.status;
-      const downgrade =
-        (prev === 'completed' && cur !== 'completed') ||
-        (prev === 'failed' && cur === 'generating');
-      if (downgrade && !opts.allowStatusDowngrade) {
-        this.logger.error('project-store: STALE_WRITE status downgrade BLOCKED — preserving on-disk status', {
-          event: 'project-store:stale-write-status-blocked',
+      // (2a) Preview-side writers are FORBIDDEN from mutating status,
+      // full stop. The preview lifecycle must only write the
+      // `preview` block via updatePreview(). This is the structural
+      // fix for "preview failures must never revert project.status".
+      if (opts.previewWriter) {
+        this.logger.error('project-store: STALE_WRITE preview writer attempted status mutation — BLOCKED', {
+          event: 'project-store:preview-writer-status-blocked',
           projectId: next.id,
           caller,
           reason,
@@ -911,22 +976,40 @@ export class ProjectStore {
           attempted: cur,
         });
         next.status = prev;
-        // Also restore error/completedAt to disk values to keep the
-        // record consistent with the preserved status.
         next.error = existing.error;
         next.completedAt = existing.completedAt;
-        fields.status_blocked = { prev: cur, next: prev };
+        fields.status_blocked_preview_writer = { prev: cur, next: prev };
       } else {
-        fields.status = { prev, next: cur };
-        if (downgrade) {
-          this.logger.warn('project-store: status downgrade ALLOWED (caller passed allowStatusDowngrade)', {
-            event: 'project-store:status-downgrade-allowed',
+        const downgrade =
+          (prev === 'completed' && cur !== 'completed') ||
+          (prev === 'failed' && cur === 'generating');
+        if (downgrade && !opts.allowStatusDowngrade) {
+          this.logger.error('project-store: STALE_WRITE status downgrade BLOCKED — preserving on-disk status', {
+            event: 'project-store:stale-write-status-blocked',
             projectId: next.id,
             caller,
             reason,
-            from: prev,
-            to: cur,
+            onDisk: prev,
+            attempted: cur,
           });
+          next.status = prev;
+          // Also restore error/completedAt to disk values to keep the
+          // record consistent with the preserved status.
+          next.error = existing.error;
+          next.completedAt = existing.completedAt;
+          fields.status_blocked = { prev: cur, next: prev };
+        } else {
+          fields.status = { prev, next: cur };
+          if (downgrade) {
+            this.logger.warn('project-store: status downgrade ALLOWED (caller passed allowStatusDowngrade)', {
+              event: 'project-store:status-downgrade-allowed',
+              projectId: next.id,
+              caller,
+              reason,
+              from: prev,
+              to: cur,
+            });
+          }
         }
       }
     }
@@ -1379,9 +1462,17 @@ export class ProjectStore {
     projectId: string,
     patch: NonNullable<ProjectRecord['preview']>,
     opts: WriteOpts = {},
-  ): Promise<void> {
+  ): Promise<{
+    ok: boolean;
+    prevPreviewStatus: string | null;
+    nextPreviewStatus: string | null;
+    stateVersion: number;
+    error?: string;
+  }> {
     const metaPath = join(this.baseDir, projectId, 'project.json');
-    if (!existsSync(metaPath)) return;
+    if (!existsSync(metaPath)) {
+      return { ok: false, prevPreviewStatus: null, nextPreviewStatus: null, stateVersion: 0, error: 'project.json missing' };
+    }
     // Read-modify-write MUST be atomic w.r.t. save() and any other
     // updatePreview(). Without the lock two concurrent preview
     // transitions could each read the same baseline, apply different
@@ -1390,6 +1481,7 @@ export class ProjectStore {
     let prevPreviewStatus: string | null = null;
     let nextPreviewStatus: string | null = null;
     let stateVersion = 0;
+    let writeError: string | undefined;
     await this.withProjectLock(projectId, async () => {
       try {
         const raw = await readFile(metaPath, 'utf-8');
@@ -1410,11 +1502,17 @@ export class ProjectStore {
           backup: true,
         });
       } catch (err) {
-        this.logger.warn(`updatePreview(${projectId}) failed: ${(err as Error).message}`);
+        writeError = (err as Error).message;
+        this.logger.error('updatePreview: write failed — preview state may be stale', {
+          event: 'project-store:update-preview-failed',
+          projectId,
+          error: writeError,
+          attemptedPreviewStatus: patch.previewStatus ?? null,
+        });
       }
     }, 'updatePreview');
 
-    if (prevPreviewStatus !== nextPreviewStatus) {
+    if (!writeError && prevPreviewStatus !== nextPreviewStatus) {
       await this.appendMutationLog(projectId, {
         ts: new Date().toISOString(),
         projectId,
@@ -1427,6 +1525,14 @@ export class ProjectStore {
         },
       });
     }
+
+    return {
+      ok: !writeError,
+      prevPreviewStatus,
+      nextPreviewStatus,
+      stateVersion,
+      error: writeError,
+    };
   }
 
   /** List all projects (metadata only, no file contents) */

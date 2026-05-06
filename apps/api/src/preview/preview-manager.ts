@@ -195,6 +195,155 @@ function pickSafeEnv(env: NodeJS.ProcessEnv | Record<string, string | undefined>
   return out;
 }
 
+/**
+ * Lifecycle booleans the timeout-cause classifier consumes. Computed
+ * from the union of the manager-side `PreviewRecord` (timeline + step
+ * history + probe attempts) and the local-runner's record (when
+ * present — local previews carry richer install/spawn signal than
+ * docker). Pure function; no side effects.
+ */
+interface TimeoutLifecycleSignals {
+  installStarted: boolean;
+  installCompleted: boolean;
+  buildStarted: boolean;
+  buildCompleted: boolean;
+  serverSpawned: boolean;
+  portOpened: boolean;
+  firstProbeAttempted: boolean;
+}
+
+type TimeoutCause =
+  | 'install-hung'
+  | 'build-hung'
+  | 'server-not-spawned'
+  | 'server-not-listening'
+  | 'http-probe-failed'
+  | 'unknown';
+
+/**
+ * Derive the lifecycle booleans from a PreviewRecord + (optional)
+ * LocalPreviewRecord. Each field reflects "did the named phase
+ * START / COMPLETE successfully before the watchdog tripped?".
+ *
+ * The local-runner's own state takes precedence for install/spawn
+ * because it observes those phases directly (vs the manager which
+ * only sees the timeline events the manager itself records).
+ */
+function computeTimeoutLifecycle(
+  record: PreviewRecord,
+  lr: { installMode: 'standard' | 'legacy-peer-deps-fallback' | null;
+        processStartedAt: string | null;
+        child: { pid?: number } | null;
+        probeAttempts: ProbeAttempt[];
+        lastSuccessfulStep: string;
+      } | null,
+): TimeoutLifecycleSignals {
+  const timeline = record.timeline ?? [];
+  const has = (name: string) => timeline.some((e) => e.event === name);
+  const hasOk = (name: string) => timeline.some((e) => {
+    if (e.event !== name) return false;
+    const details = e.details as { ok?: unknown } | undefined;
+    return details?.ok !== false;
+  });
+  const stepReached = (steps: PreviewStep[]) => {
+    const history = record.history ?? [];
+    return history.some((h) => steps.some((s) => h.step === s));
+  };
+
+  // Install: started either when the timeline event fired or when
+  // the manager actually entered preview:installing. Completed when
+  // install-end timeline event landed with ok!==false, OR when the
+  // local runner stamped an installMode (covers both standard and
+  // --legacy-peer-deps fallback success), OR when the runner's own
+  // lastSuccessfulStep mentions install completion / cache hit.
+  const installStarted =
+    has('install-start')
+    || stepReached(['preview:installing', 'preview:building', 'preview:spawning-server', 'preview:waiting-for-port', 'preview:http-probing']);
+  const installCompleted =
+    hasOk('install-end')
+    || (lr?.installMode != null)
+    || /install completed/i.test(lr?.lastSuccessfulStep ?? '')
+    || /install cache hit/i.test(lr?.lastSuccessfulStep ?? '')
+    || stepReached(['preview:building', 'preview:spawning-server', 'preview:waiting-for-port', 'preview:http-probing']);
+
+  // Build: docker-only phase. Local runner skips it entirely so
+  // `buildStarted` stays false there — that's correct; the
+  // classifier prioritises install-hung over build-hung anyway.
+  const buildStarted = has('build-start') || stepReached(['preview:building']);
+  const buildCompleted = hasOk('build-end')
+    || stepReached(['preview:spawning-server', 'preview:waiting-for-port', 'preview:http-probing']);
+
+  // Server spawned: local-runner stamps processStartedAt the moment
+  // child.pid is populated; manager records a devserver-start
+  // timeline event when it issues the spawn. EITHER signal counts
+  // (docker doesn't emit processStartedAt; local doesn't always
+  // emit devserver-start before exit).
+  const serverSpawned =
+    (lr?.processStartedAt != null)
+    || (typeof lr?.child?.pid === 'number')
+    || has('devserver-start')
+    || stepReached(['preview:waiting-for-port', 'preview:http-probing']);
+
+  // Port opened: any probe attempt reported tcpConnected=true (or
+  // the rarer ok=true). Driven by the unified probe-attempts buffer
+  // mirrored onto `record.probeAttempts`. Local-runner attempts are
+  // mirrored there too.
+  const probeAttempts = record.probeAttempts ?? [];
+  const portOpened = probeAttempts.some((a) => a.tcpConnected || a.ok)
+    || (lr?.probeAttempts ?? []).some((a) => a.tcpConnected || a.ok);
+
+  // First probe attempted: did we ever even *try* an HTTP probe? A
+  // 'true' here with portOpened=false is the canonical
+  // "server-not-listening" signature.
+  const firstProbeAttempted = probeAttempts.length > 0
+    || (lr?.probeAttempts ?? []).length > 0
+    || stepReached(['preview:http-probing']);
+
+  return {
+    installStarted,
+    installCompleted,
+    buildStarted,
+    buildCompleted,
+    serverSpawned,
+    portOpened,
+    firstProbeAttempted,
+  };
+}
+
+/**
+ * Map lifecycle signals to a single timeout cause. Order matters —
+ * earlier-failing phases mask later ones (an install-hung run never
+ * gets a chance to spawn the server, so we should NOT classify it as
+ * `server-not-spawned`).
+ */
+function classifyTimeoutCause(s: TimeoutLifecycleSignals): TimeoutCause {
+  if (s.installStarted && !s.installCompleted) return 'install-hung';
+  if (s.buildStarted && !s.buildCompleted) return 'build-hung';
+  if (!s.serverSpawned) return 'server-not-spawned';
+  if (!s.portOpened) return 'server-not-listening';
+  // serverSpawned && portOpened — TCP responded but readiness still
+  // never resolved. Either HTTP attempts kept failing, or the
+  // content-health gate kept rejecting responses.
+  if (s.firstProbeAttempted) return 'http-probe-failed';
+  // Spawned + (port marked opened?) but never even tried a probe.
+  // Vanishingly rare; investigate via the dump.
+  return 'unknown';
+}
+
+/** Single-line human-readable explanation per cause. Used inside the
+ *  composed `previewError` headline so the dashboard quote leads
+ *  with the precise category. */
+function describeTimeoutCause(cause: TimeoutCause): string {
+  switch (cause) {
+    case 'install-hung':         return 'install never finished (npm install started but did not complete before the budget)';
+    case 'build-hung':           return 'build never finished (docker build started but did not complete before the budget)';
+    case 'server-not-spawned':   return 'dev server was never spawned (no PID was handed back by the OS)';
+    case 'server-not-listening': return 'dev server was spawned but never opened its TCP port (alive but not listening)';
+    case 'http-probe-failed':    return 'TCP port opened but HTTP never returned a usable response (probes connected but readiness never resolved)';
+    case 'unknown':              return 'cause indeterminate from lifecycle signals — see last-preview-timeout.json';
+  }
+}
+
 function newPreviewId(): string {
   return randomBytes(6).toString('hex');
 }
@@ -229,6 +378,22 @@ const MAX_PREVIEW_FIX_ATTEMPTS = 2;
  * "preview never reached ready".
  */
 const PREVIEW_BOOT_TIMEOUT_MS = 150_000;
+
+/**
+ * Overall wall-clock budget for `startWithAutoFixRetry` — i.e. the
+ * sum of every retry attempt + auto-fix work in between. Distinct
+ * from `PREVIEW_BOOT_TIMEOUT_MS` (which is per-attempt) because the
+ * auto-fix loop can run up to `MAX_PREVIEW_FIX_ATTEMPTS` attempts
+ * back-to-back; without a global cap, two consecutive 150s attempts
+ * would race past the diagnostic harness's 180s preview gate, leaving
+ * `last-preview-timeout.json` unwritten and the project record stuck
+ * showing previewStatus='starting'.
+ *
+ * Set to 165s so the manager-side watchdog reliably wins the race
+ * against the harness's `PREVIEW_READY_TIMEOUT_MS` (180s) and the
+ * timeout dump is always captured before the harness gives up.
+ */
+const PREVIEW_OVERALL_BOOT_BUDGET_MS = 165_000;
 
 /** Path of the on-timeout forensic dump. Always written to a single
  *  fixed path (no per-run fan-out) so the most recent timeout is easy
@@ -281,6 +446,9 @@ export class PreviewManager {
     step: string,
   ): void {
     const at = new Date().toISOString();
+    const prevState = record.state;
+    const prevPublic = this.toPublicPreviewStatus(prevState);
+    const nextPublic = this.toPublicPreviewStatus(nextState);
     record.state = nextState;
     record.lastMeaningfulStep = step;
     if (nextState === 'ready' && !record.readyAtIso) record.readyAtIso = at;
@@ -289,20 +457,31 @@ export class PreviewManager {
     record.history.push({ step: `${nextState}:${step}`, at });
     if (record.history.length > 32) record.history = record.history.slice(-32);
     this.opts.logger.info('preview:step', {
-      projectId: record.projectId, state: nextState, step,
-      llmCalled: false, // placeholder so log shape is consistent across systems
+      projectId: record.projectId,
+      state: nextState,
+      step,
+      // Status transition surfaced explicitly so a single grep on
+      // `previewStatus` shows the full trajectory queued → building →
+      // starting → ready (or → failed) without needing to translate
+      // PreviewState → public previewStatus mentally.
+      prevPreviewStatus: prevPublic,
+      newPreviewStatus: nextPublic,
+      llmCalled: false,
     });
 
     // Mirror onto ProjectRecord.preview so polling clients of GET
-    // /api/projects/:id can drive UI off a single source of truth without
-    // having to fan-out a second request to /preview/status. Decoupled
-    // from project.status (which stays generation-only). Best-effort:
-    // failures are non-fatal — preview lifecycle continues either way.
-    void this.syncPreviewToProject(record).catch((err) => {
-      this.opts.logger.warn('syncPreviewToProject failed', {
-        projectId: record.projectId, error: (err as Error).message,
-      });
-    });
+    // /api/projects/:id can drive UI off a single source of truth
+    // without having to fan-out a second request to /preview/status.
+    // Decoupled from project.status (which stays generation-only).
+    //
+    // The promise is stored on `record.pendingSync` so that callers
+    // who NEED durability before returning to the client (the ready /
+    // failed terminal paths) can `await record.pendingSync` instead
+    // of issuing a redundant write. Per-project lock in the store
+    // serialises queued writes, so awaiting the latest also waits for
+    // anything previously queued. Errors are surfaced via the result
+    // object — `syncPreviewToProject` itself never throws.
+    record.pendingSync = this.syncPreviewToProject(record);
   }
 
   /** Translate internal PreviewState → public previewStatus vocabulary. */
@@ -324,21 +503,36 @@ export class PreviewManager {
     }
   }
 
-  private async syncPreviewToProject(record: PreviewRecord): Promise<void> {
+  private async syncPreviewToProject(record: PreviewRecord): Promise<{
+    ok: boolean;
+    prevPreviewStatus: string | null;
+    nextPreviewStatus: string | null;
+    error?: string;
+  }> {
     const previewStatus = this.toPublicPreviewStatus(record.state);
     const url = record.state === 'ready' && record.hostPort != null
       ? `/preview/${record.projectId}/`
       : null;
-    await this.opts.projectStore.updatePreview(record.projectId, {
-      previewStatus,
-      previewReady: previewStatus === 'ready',
-      previewUrl: url,
+    let result: {
+      ok: boolean;
+      prevPreviewStatus: string | null;
+      nextPreviewStatus: string | null;
+      stateVersion: number;
+      error?: string;
+    };
+    try {
+      result = await this.opts.projectStore.updatePreview(record.projectId, {
+        previewStatus,
+        previewReady: previewStatus === 'ready',
+        previewUrl: url,
       previewStartedAt: record.startedAtIso ?? null,
       previewReadyAt: record.readyAtIso ?? null,
       previewFailedAt: record.failedAtIso ?? null,
       previewTimeoutAt: record.timeoutAtIso ?? null,
       previewTimeoutDurationMs: record.timeoutDurationMs ?? null,
       previewChildAlive: record.childAliveAtTimeout ?? null,
+      previewTimeoutCause: record.timeoutCause ?? null,
+      previewTimeoutLifecycle: record.timeoutLifecycle ?? null,
       previewProcessLifecycle: record.processLifecycle
         ? {
             startedAt: record.processLifecycle.startedAt,
@@ -388,6 +582,9 @@ export class PreviewManager {
             local: record.fallbackErrors.local ?? null,
           }
         : null,
+      previewLocalStartAttempts: record.localStartAttempts ?? null,
+      previewLocalRetrySucceeded:
+        typeof record.localRetrySucceeded === 'boolean' ? record.localRetrySucceeded : null,
       overlayDetection: record.overlayDetection
         ? {
             detectedErrorType: record.overlayDetection.detectedErrorType,
@@ -464,6 +661,44 @@ export class PreviewManager {
           }
         : null,
     });
+    } catch (err) {
+      // updatePreview is itself try/catch'd at the store layer so it
+      // shouldn't throw, but surface unexpected failures defensively.
+      const message = (err as Error).message;
+      this.opts.logger.error('preview:sync-persisted', {
+        event: 'preview:sync-persisted',
+        projectId: record.projectId,
+        prevPreviewStatus: null,
+        newPreviewStatus: previewStatus,
+        previewUrl: url,
+        writeOk: false,
+        error: message,
+      });
+      return { ok: false, prevPreviewStatus: null, nextPreviewStatus: previewStatus, error: message };
+    }
+
+    // Single canonical "did the durable write happen?" log line.
+    // Engineers grepping `event:preview:sync-persisted` get the full
+    // status trajectory plus the writeOk flag — the ground truth for
+    // "is the dashboard now seeing what the runner saw?".
+    const logFn = result.ok ? this.opts.logger.info.bind(this.opts.logger)
+                              : this.opts.logger.error.bind(this.opts.logger);
+    logFn('preview:sync-persisted', {
+      event: 'preview:sync-persisted',
+      projectId: record.projectId,
+      prevPreviewStatus: result.prevPreviewStatus,
+      newPreviewStatus: result.nextPreviewStatus,
+      previewUrl: url,
+      writeOk: result.ok,
+      stateVersion: result.stateVersion,
+      error: result.error,
+    });
+    return {
+      ok: result.ok,
+      prevPreviewStatus: result.prevPreviewStatus,
+      nextPreviewStatus: result.nextPreviewStatus,
+      error: result.error,
+    };
   }
 
   /** Tail-truncate a string to `max` chars, keeping the trailing portion. */
@@ -528,10 +763,43 @@ export class PreviewManager {
           unresolved: result.unresolved.slice(0, 16),
         });
       }
+      // Defensive only: the preflight itself throws DependencyPreflightError
+      // on blocking violations after persisting the failure dump. If a
+      // blocking violation somehow surfaces here without throwing
+      // (e.g. dump-write failure path), short-circuit before npm install.
+      if (result.hasBlockingViolation && result.blockingHeadline) {
+        this.opts.logger.error('preview: package.json has blocking peer conflict — aborting before npm install', {
+          event: 'preview:dep-preflight-blocked',
+          projectId: record.projectId,
+          previewId: record.previewId,
+          headline: result.blockingHeadline,
+          violations: result.packageJsonViolations.slice(0, 8).map((v) => ({
+            ruleId: v.ruleId,
+            severity: v.severity,
+            message: v.message,
+          })),
+        });
+        throw new Error(result.blockingHeadline);
+      }
       return { patchedFiles: result.patchedFiles, fixCount: result.fixes.length };
     } catch (err) {
-      // Don't swallow — the caller's catch will map this to a
-      // preview:failed transition with a clear message.
+      // Preserve DependencyPreflightError verbatim so the caller can
+      // surface its precise headline as `previewError` (rather than
+      // wrapping it in a generic "Dependency preflight failed: ..."
+      // prefix that hides the conflicting-package detail).
+      if (err && typeof err === 'object' && (err as { code?: string }).code === 'DEPENDENCY_PREFLIGHT_FAILED') {
+        const dpe = err as Error & { code: string; violations?: unknown[]; dumpPath?: string | null };
+        this.opts.logger.error('preview: dependency preflight blocked install', {
+          event: 'preview:dep-preflight:blocked',
+          projectId: record.projectId,
+          previewId: record.previewId,
+          headline: dpe.message,
+          violationCount: Array.isArray(dpe.violations) ? dpe.violations.length : 0,
+          dumpPath: dpe.dumpPath ?? null,
+        });
+        throw dpe;
+      }
+      // Other errors (filesystem, project store) keep the wrapper.
       throw new Error(`Dependency preflight failed: ${(err as Error).message}`);
     }
   }
@@ -831,10 +1099,40 @@ export class PreviewManager {
     const attempts: PreviewFixAttempt[] = [];
     const attemptedFixes = new Set<string>();
     let lastStatus: PreviewStatus | null = null;
+    // Overall wall-clock deadline — the manager-side equivalent of
+    // the harness's PREVIEW_READY_TIMEOUT_MS. Ensures we ALWAYS win
+    // the race to write `last-preview-timeout.json` even when the
+    // per-attempt watchdog would otherwise re-arm into the harness's
+    // give-up window.
+    const loopStartedAt = Date.now();
+    const overallDeadline = loopStartedAt + PREVIEW_OVERALL_BOOT_BUDGET_MS;
 
     for (let attempt = 1; attempt <= MAX_PREVIEW_FIX_ATTEMPTS; attempt++) {
+      // Bail out before launching a new attempt if the overall budget
+      // is exhausted (or there's not enough left to make meaningful
+      // progress — we treat <2s as "no time left"). Forces a structured
+      // timeout dump regardless of which inner phase we're in so the
+      // harness never sees a mute "still starting".
+      const remaining = overallDeadline - Date.now();
+      if (remaining <= 2_000) {
+        this.opts.logger.error('preview auto-fix loop: overall boot budget exhausted before next attempt', {
+          event: 'preview:overall-boot-timeout',
+          projectId,
+          attempt,
+          elapsedMs: Date.now() - loopStartedAt,
+          budgetMs: PREVIEW_OVERALL_BOOT_BUDGET_MS,
+          completedAttempts: attempt - 1,
+        });
+        await this.handleBootTimeout(projectId).catch((err) => {
+          this.opts.logger.error('preview overall-boot-timeout handler threw', {
+            projectId, error: (err as Error).message,
+          });
+        });
+        break;
+      }
+
       const startedAt = new Date().toISOString();
-      const status = await this.runOneStartAttempt(projectId);
+      const status = await this.runOneStartAttempt(projectId, remaining);
       const finishedAt = new Date().toISOString();
       lastStatus = status;
 
@@ -991,9 +1289,32 @@ export class PreviewManager {
     // record currently exists for this project, then return the most
     // recent failed status to the caller.
     await this.attachAttemptsToRecord(projectId, attempts);
-    // `lastStatus` is guaranteed non-null because the loop runs at
-    // least once (MAX_PREVIEW_FIX_ATTEMPTS >= 1).
-    return lastStatus!;
+    // `lastStatus` may be null if the overall-budget bail-out fired
+    // before the very first attempt had a chance to run. Synthesise
+    // a status from the in-memory record (handleBootTimeout has
+    // already stamped previewStatus=failed + step=preview:timeout +
+    // a non-empty error). Last-resort fallback: a structurally valid
+    // PreviewStatus with the headline so callers NEVER see an
+    // undefined error field.
+    if (lastStatus) return lastStatus;
+    const liveRecord = this.records.get(projectId);
+    if (liveRecord) return this.toStatus(liveRecord);
+    return {
+      projectId,
+      state: 'failed',
+      stack: null,
+      url: null,
+      hostPort: null,
+      apiHostPort: null,
+      error: 'Preview startup timed out before any attempt could begin (overall boot budget exhausted).',
+      log: '',
+      uptimeMs: 0,
+      mode: this.dockerAvailable ? 'docker' : 'local',
+      startedAtIso: undefined,
+      readyAtIso: null,
+      lastMeaningfulStep: 'preview:timeout',
+      step: 'preview:timeout',
+    } as PreviewStatus;
   }
 
   /**
@@ -1001,8 +1322,18 @@ export class PreviewManager {
    * (docker-with-fallback OR local-only) and returns its `PreviewStatus`.
    * Extracted so the auto-fix retry loop can call it once per
    * iteration without duplicating the routing logic.
+   *
+   * `remainingBudgetMs` is the wall-clock budget the caller (the
+   * outer auto-fix loop) still has under its overall deadline. The
+   * per-attempt watchdog is armed at `min(PREVIEW_BOOT_TIMEOUT_MS,
+   * remainingBudgetMs)` so the FINAL attempt's watchdog always fires
+   * before the outer overall-boot deadline elapses (and therefore
+   * always before the diagnostic harness gives up at 180s).
    */
-  private runOneStartAttempt(projectId: string): Promise<PreviewStatus> {
+  private runOneStartAttempt(
+    projectId: string,
+    remainingBudgetMs: number = PREVIEW_BOOT_TIMEOUT_MS,
+  ): Promise<PreviewStatus> {
     // Boot-watchdog: arms a wall-clock timer over the entire attempt
     // (across stack-detect / stage / install / build / spawn / probe).
     // When it fires AND the record hasn't reached a terminal state
@@ -1013,13 +1344,14 @@ export class PreviewManager {
     // promise resolves promptly. The boot promise itself is NOT
     // rejected — we let it resolve naturally so the auto-fix retry
     // loop and the final `attachAttemptsToRecord` can run.
+    const watchdogMs = Math.max(1_000, Math.min(PREVIEW_BOOT_TIMEOUT_MS, remainingBudgetMs));
     const watchdog = setTimeout(() => {
       void this.handleBootTimeout(projectId).catch((err) => {
         this.opts.logger.error('preview boot-watchdog handler threw', {
           projectId, error: (err as Error).message,
         });
       });
-    }, PREVIEW_BOOT_TIMEOUT_MS);
+    }, watchdogMs);
     const inner = this.dockerAvailable
       ? this.startWithDockerThenLocalFallback(projectId)
       : this.doStartLocal(projectId);
@@ -1058,7 +1390,8 @@ export class PreviewManager {
       // the dashboard never sees a mute timeout.
       const headline =
         `Preview startup timed out after ${PREVIEW_BOOT_TIMEOUT_MS / 1000}s ` +
-        `(in-memory record was already evicted; see last-preview-timeout.json for forensics).`;
+        `[cause=unknown] — in-memory record was already evicted; ` +
+        `see last-preview-timeout.json for forensics.`;
       try {
         await this.opts.projectStore.updatePreview(projectId, {
           previewStatus: 'failed',
@@ -1067,6 +1400,8 @@ export class PreviewManager {
           previewTimeoutAt: new Date().toISOString(),
           previewTimeoutDurationMs: PREVIEW_BOOT_TIMEOUT_MS,
           previewChildAlive: null,
+          previewTimeoutCause: 'unknown',
+          previewTimeoutLifecycle: null,
           previewStep: 'preview:timeout',
         });
       } catch (err) {
@@ -1107,6 +1442,16 @@ export class PreviewManager {
     // can be folded into the error message.
     this.snapshotProcessLifecycle(record);
     const lifecycle = record.processLifecycle ?? null;
+    // ── Precise timeout-cause classification ─────────────────
+    // Compute lifecycle booleans (install/build/spawn/probe) and
+    // map them to a single category. Persisted on the record (and
+    // mirrored to ProjectRecord.preview by syncPreviewToProject)
+    // so downstream consumers don't have to parse the free-form
+    // headline.
+    const timeoutLifecycle = computeTimeoutLifecycle(record, lr);
+    const timeoutCause = classifyTimeoutCause(timeoutLifecycle);
+    record.timeoutLifecycle = timeoutLifecycle;
+    record.timeoutCause = timeoutCause;
     // Compose a diagnosis-led headline from the probe history when
     // available. The raw rollup `kind` answers "what kind of HTTP
     // failure did we see?" — far more useful than "stuck in
@@ -1153,8 +1498,14 @@ export class PreviewManager {
     })();
     const headline =
       `Preview startup timed out after ${PREVIEW_BOOT_TIMEOUT_MS / 1000}s ` +
-      `while in step ${record.step ?? '<no-step>'} ` +
+      `[cause=${timeoutCause}] — ${describeTimeoutCause(timeoutCause)}. ` +
+      `Step at timeout: ${record.step ?? '<no-step>'} ` +
       `(last successful: ${record.lastMeaningfulStep ?? '<none>'}). ` +
+      `Lifecycle: install ${timeoutLifecycle.installStarted ? (timeoutLifecycle.installCompleted ? 'completed' : 'STARTED-NOT-FINISHED') : 'not-started'}` +
+      `, build ${timeoutLifecycle.buildStarted ? (timeoutLifecycle.buildCompleted ? 'completed' : 'STARTED-NOT-FINISHED') : 'not-started'}` +
+      `, server ${timeoutLifecycle.serverSpawned ? 'spawned' : 'NOT-SPAWNED'}` +
+      `, port ${timeoutLifecycle.portOpened ? 'opened' : 'NOT-OPENED'}` +
+      `, probes ${timeoutLifecycle.firstProbeAttempted ? 'attempted' : 'NEVER-ATTEMPTED'}. ` +
       `Last probe: ${probeReason}. ` +
       `Process: ${lifecycleLabel}.`;
     record.error = headline;
@@ -1198,6 +1549,8 @@ export class PreviewManager {
       processUptimeMs: lifecycle?.uptimeMs ?? null,
       processExitCode: lifecycle?.exitCode ?? null,
       processSignal: lifecycle?.signal ?? null,
+      timeoutCause,
+      timeoutLifecycle,
       headline,
     });
 
@@ -1209,6 +1562,26 @@ export class PreviewManager {
       this.opts.logger.error('failed to write last-preview-timeout.json', {
         projectId, error: (err as Error).message,
       });
+    }
+    // Local-runner-specific timeout dump — same writer used by the
+    // doStartLocal catch block. Lets engineers see the LOCAL
+    // lifecycle facts (install completed, server spawned, port ever
+    // opened, exact cmd/args/cwd/env) on every timeout, not just
+    // explicit runtime failures. Skipped when the runtime isn't
+    // local.
+    const isLocal = record.runtime?.type === 'local'
+      || record.runtime?.type === 'local-fallback'
+      || record.mode === 'local'
+      || record.mode === 'local-fallback';
+    if (isLocal) {
+      const lr = this.opts.localRunner?.get(projectId) ?? null;
+      try {
+        await this.dumpLocalPreviewFailure(record, lr, headline);
+      } catch (err) {
+        this.opts.logger.warn('preview: failed to write last-local-preview-failure.json (timeout path)', {
+          projectId, error: (err as Error).message,
+        });
+      }
     }
 
     // Tear down the underlying runtime so the awaiting promise
@@ -1450,6 +1823,12 @@ export class PreviewManager {
       previewTimeoutAt: record.timeoutAtIso ?? null,
       lastSuccessfulStep: record.lastMeaningfulStep ?? null,
       runtime: record.runtime?.type ?? record.mode ?? null,
+      // Precise timeout-cause classification + the lifecycle booleans
+      // it was derived from. Lets `last-preview-timeout.json` carry the
+      // verdict directly instead of forcing triage tooling to re-derive
+      // it from the timeline.
+      timeoutCause: record.timeoutCause ?? null,
+      timeoutLifecycle: record.timeoutLifecycle ?? null,
       child: {
         pid,
         alive: processAlive,
@@ -1498,6 +1877,21 @@ export class PreviewManager {
         lastErrorMessage: probeRollup.lastAttempt?.errorMessage ?? null,
         lastBodySample: probeRollup.lastAttempt?.bodySample ?? null,
       },
+      // True iff content-health detected a framework error page
+      // (Next.js / Vite / React build-error overlay etc.) in any
+      // probe response body. Distinct from `probeRollup.kind ===
+      // 'http-not-ready'` because the rollup only knows the readiness
+      // gate rejected the response — this field surfaces the
+      // overlay-classifier's specific verdict.
+      contentIndicatedFrameworkError: !!record.overlayDetection,
+      overlayDetection: record.overlayDetection
+        ? {
+            detectedErrorType: record.overlayDetection.detectedErrorType,
+            detectedErrorMessage: record.overlayDetection.detectedErrorMessage,
+            affectedModule: record.overlayDetection.affectedModule,
+            detectedAt: record.overlayDetection.detectedAt,
+          }
+        : null,
       probeAttempts: probeAttempts.slice(-32),
       stepDurations: record.stepDurations ?? [],
       historyTail: (record.history ?? []).slice(-32),
@@ -2020,7 +2414,22 @@ export class PreviewManager {
       }
     }, 1_500);
     const budget = bootBudgetMs(stack.kind);
-    const healthy = await this.opts.docker.awaitHealthy(hostPort, stack.healthPath, budget);
+    const healthy = await this.opts.docker.awaitHealthy(
+      hostPort,
+      stack.healthPath,
+      budget,
+      (attempt) => {
+        // Mirror every probe onto the manager record so the timeout
+        // dump and the persisted preview state see the same probe
+        // history that the local-runner path already provides.
+        try { this.recordProbeAttempt(record, attempt); }
+        catch (err) {
+          this.opts.logger.warn('preview: docker awaitHealthy probe-mirror threw', {
+            projectId, error: (err as Error).message,
+          });
+        }
+      },
+    );
     clearTimeout(probeFlipTimer);
     if (record.step === 'preview:waiting-for-port') {
       this.enterStep(record, 'preview:http-probing');
@@ -2061,6 +2470,12 @@ export class PreviewManager {
       details: { url: `/preview/${projectId}/`, hostPort, stack: stack.kind },
     });
     record.lastAccessedAt = Date.now();
+    // DURABILITY GATE: don't return 'ready' to the caller until the
+    // ProjectRecord.preview write has landed on disk. Without this,
+    // the in-memory record reports ready/url but a /api/projects/:id
+    // poll could still read previewStatus='starting' for the brief
+    // window before the fire-and-forget syncPreviewToProject lands.
+    await record.pendingSync;
     this.opts.logger.info('Preview ready', { projectId, hostPort, stack: stack.kind });
     return this.toStatus(record);
   }
@@ -2212,52 +2627,213 @@ export class PreviewManager {
       // `preview:building` is a docker-only concept (image build); it
       // never appears for the local runner.
       this.enterStep(record, 'preview:installing');
-      const lr = await this.opts.localRunner.start(
-        projectId,
-        validation.staged,
-        (phase, meta) => {
-          // Best-effort: never let a progress callback abort boot.
-          try {
-            // Stamp every meta field we receive onto record.runtime so
-            // the persisted dump reflects the live spawn args even
-            // before the child actually binds a port.
-            record.runtime = {
-              ...(record.runtime ?? { type: 'local' }),
-              type: record.runtime?.type ?? 'local',
-              cmd: meta?.cmd ?? record.runtime?.cmd,
-              cwd: meta?.cwd ?? record.runtime?.cwd,
-              port: meta?.port ?? record.runtime?.port ?? null,
-              envSafe: record.runtime?.envSafe ?? pickSafeEnv(process.env),
-            };
-            this.captureRuntimeLog(record, meta?.pid ?? null);
-            if (phase === 'spawning-server') {
-              this.enterStep(record, 'preview:spawning-server');
-            } else if (phase === 'waiting-for-port') {
-              this.enterStep(record, 'preview:waiting-for-port');
+      // First-probe latch — used to promote step from
+      // preview:waiting-for-port → preview:http-probing the moment
+      // the readiness loop issues its first HTTP attempt. Lets the
+      // dump distinguish "TCP never opened" (stuck in waiting-for-port)
+      // from "HTTP never returned a usable response" (stuck in
+      // http-probing).
+      let firstProbeSeen = false;
+      const onPhase = (
+        phase: 'spawning-server' | 'waiting-for-port',
+        meta?: {
+          pid?: number | null;
+          port?: number | null;
+          host?: string;
+          cmd?: string;
+          args?: string[];
+          cwd?: string;
+          envSafe?: Record<string, string>;
+        },
+      ) => {
+        // Best-effort: never let a progress callback abort boot.
+        try {
+          // Stamp every meta field we receive onto record.runtime so
+          // the persisted dump reflects the live spawn args even
+          // before the child actually binds a port. We retain the
+          // structured `args` array (not just a flattened string)
+          // so the forensic dump can replay the exact argv.
+          record.runtime = {
+            ...(record.runtime ?? { type: 'local' }),
+            type: record.runtime?.type ?? 'local',
+            cmd: meta?.cmd ?? record.runtime?.cmd,
+            args: meta?.args ?? record.runtime?.args,
+            cwd: meta?.cwd ?? record.runtime?.cwd,
+            port: meta?.port ?? record.runtime?.port ?? null,
+            envSafe: meta?.envSafe ?? record.runtime?.envSafe ?? pickSafeEnv(process.env),
+          };
+          this.captureRuntimeLog(record, meta?.pid ?? null);
+          if (phase === 'spawning-server') {
+            this.enterStep(record, 'preview:spawning-server');
+          } else if (phase === 'waiting-for-port') {
+            this.enterStep(record, 'preview:waiting-for-port');
+          }
+        } catch (err) {
+          this.opts.logger.warn('preview: local-runner onPhase callback threw', {
+            projectId,
+            phase,
+            error: (err as Error).message,
+          });
+        }
+      };
+      const onProbe = (attempt: ProbeAttempt) => {
+        // Mirror every probe onto the manager-side record so the
+        // forensic dump (which reads from PreviewRecord, not the
+        // local-runner buffers) sees the same attempt history.
+        // Best-effort: never let mirror failures abort boot.
+        try {
+          // Promote step on the first probe — once the readiness
+          // loop has actually started issuing HTTP attempts we are
+          // no longer "waiting for the port to open"; we're
+          // probing it.
+          if (!firstProbeSeen) {
+            firstProbeSeen = true;
+            this.enterStep(record, 'preview:http-probing');
+          }
+          this.recordProbeAttempt(record, attempt);
+        } catch (err) {
+          this.opts.logger.warn('preview: probe-attempt mirror threw', {
+            projectId,
+            error: (err as Error).message,
+          });
+        }
+      };
+
+      // ── ONE SAFE RETRY ─────────────────────────────────────
+      // Local startup is occasionally flaky for transient reasons
+      // (port-bind race after install, dev-server crash on first
+      // boot, EBUSY on Windows). Retry exactly once when the FIRST
+      // attempt failed BEFORE any TCP probe connected to the port.
+      // Once the port has accepted a connection the failure is
+      // deterministic (post-bind crash, overlay, content-health) and
+      // a retry would just mask a real bug, so we let it surface.
+      // The retry never runs more than once — a permanent failure
+      // (peer-dep mismatch, missing module) will fail the second
+      // attempt the same way and surface to the user.
+      record.localStartAttempts = [];
+      let lr: Awaited<ReturnType<typeof this.opts.localRunner.start>> | null = null;
+      for (let attempt = 1 as 1 | 2; attempt <= 2; attempt = (attempt + 1) as 1 | 2) {
+        const attemptStartedAt = Date.now();
+        const attemptStartedIso = new Date(attemptStartedAt).toISOString();
+        // Reset the first-probe latch so the second attempt's
+        // step-progression is independent of the first.
+        firstProbeSeen = false;
+        try {
+          lr = await this.opts.localRunner.start(
+            projectId,
+            validation.staged,
+            onPhase,
+            onProbe,
+          );
+          const attemptEndedAt = Date.now();
+          record.localStartAttempts.push({
+            attempt,
+            ok: true,
+            error: null,
+            portOpened: true,
+            durationMs: attemptEndedAt - attemptStartedAt,
+            startedAtIso: attemptStartedIso,
+            endedAtIso: new Date(attemptEndedAt).toISOString(),
+          });
+          if (attempt === 2) {
+            record.localRetrySucceeded = true;
+            this.opts.logger.info('preview: local-runner retry succeeded', {
+              event: 'preview:local-retry-succeeded',
+              projectId,
+              previewId,
+              durationMs: attemptEndedAt - attemptStartedAt,
+            });
+          }
+          break;
+        } catch (startErr) {
+          const attemptEndedAt = Date.now();
+          const startMsg = (startErr as Error).message;
+          // Determine whether the port was ever observed open during
+          // this attempt — single source of truth is the live runner
+          // record's probeAttempts plus our mirror.
+          const lrSnap = this.opts.localRunner.get(projectId);
+          const portOpened =
+            (lrSnap?.probeAttempts ?? []).some((a) => a.tcpConnected || a.ok)
+            || (record.probeAttempts ?? []).some((a) => a.tcpConnected || a.ok);
+          record.localStartAttempts.push({
+            attempt,
+            ok: false,
+            error: startMsg,
+            portOpened,
+            durationMs: attemptEndedAt - attemptStartedAt,
+            startedAtIso: attemptStartedIso,
+            endedAtIso: new Date(attemptEndedAt).toISOString(),
+          });
+          // Eligible for retry?
+          //   - first attempt only
+          //   - port never observed open
+          //   - error is not an ERESOLVE peer-dep conflict (deterministic;
+          //     retry would change nothing and just slow the failure path)
+          const isEresolve = Boolean((startErr as Error & { eresolve?: unknown }).eresolve);
+          const canRetry = attempt === 1 && !portOpened && !isEresolve;
+          if (!canRetry) {
+            if (attempt === 2) {
+              record.localRetrySucceeded = false;
+              this.opts.logger.warn('preview: local-runner retry also failed', {
+                event: 'preview:local-retry-failed',
+                projectId,
+                previewId,
+                firstError: record.localStartAttempts[0]?.error ?? null,
+                retryError: startMsg,
+              });
             }
-          } catch (err) {
-            this.opts.logger.warn('preview: local-runner onPhase callback threw', {
-              projectId,
-              phase,
-              error: (err as Error).message,
-            });
+            // Best-effort sync so the persisted preview block reflects
+            // the attempt history even though we're about to throw
+            // into the outer catch (which will fail() the record).
+            void this.syncPreviewToProject(record).catch(() => {});
+            throw startErr;
           }
-        },
-        (attempt) => {
-          // Mirror every probe onto the manager-side record so the
-          // forensic dump (which reads from PreviewRecord, not the
-          // local-runner buffers) sees the same attempt history.
-          // Best-effort: never let mirror failures abort boot.
+          this.opts.logger.warn('preview: local-runner first attempt failed before port opened — retrying once', {
+            event: 'preview:local-retry-scheduled',
+            projectId,
+            previewId,
+            error: startMsg,
+            durationMs: attemptEndedAt - attemptStartedAt,
+            isEresolve,
+            portOpened,
+          });
+          this.recordTimelineEvent(record, 'install-end', {
+            details: { ok: false, error: startMsg, attempt: 1, willRetry: true },
+          });
+          // Tear down whatever the runner left behind so the second
+          // attempt starts from a clean slate (no stale child, no
+          // half-bound port). stop() is idempotent and tolerates a
+          // record that never reached spawn.
           try {
-            this.recordProbeAttempt(record, attempt);
-          } catch (err) {
-            this.opts.logger.warn('preview: probe-attempt mirror threw', {
+            await this.opts.localRunner.stop(projectId);
+          } catch (stopErr) {
+            this.opts.logger.warn('preview: pre-retry stop() failed (non-fatal)', {
               projectId,
-              error: (err as Error).message,
+              error: (stopErr as Error).message,
             });
           }
-        },
-      );
+          // Fixed 2-second cool-off before the retry. Long enough for
+          // the OS to reclaim the port + for any flaky filesystem
+          // handle (.install.fp, .next cache) to settle, short enough
+          // that the user-perceived boot time stays bounded.
+          await new Promise((r) => setTimeout(r, 2000));
+          // Reset step so the retry shows a clean install→spawn
+          // progression instead of inheriting the failed attempt's
+          // last step.
+          this.enterStep(record, 'preview:installing');
+          // Mirror retry attempt onto the persisted preview block
+          // BEFORE the second start() so the dashboard sees the
+          // retry-in-progress state.
+          void this.syncPreviewToProject(record).catch(() => {});
+          continue;
+        }
+      }
+      if (!lr) {
+        // Defensive: the loop above either assigns `lr` or throws.
+        // This branch only runs if the control-flow invariant is
+        // violated by a future refactor.
+        throw new Error('Local runner start loop completed without producing a runner record');
+      }
       record.stack = lr.stack;
       record.hostPort = lr.port;
       record.log = lr.log;
@@ -2285,6 +2861,8 @@ export class PreviewManager {
         details: { url: `/preview/${projectId}/`, hostPort: lr.port, mode: 'local', stack: lr.stack.kind },
       });
       record.lastAccessedAt = Date.now();
+      // DURABILITY GATE — see equivalent block in doStart().
+      await record.pendingSync;
       this.opts.logger.info('Local preview ready', {
         projectId, hostPort: lr.port, stack: lr.stack.kind,
       });
@@ -2307,16 +2885,41 @@ export class PreviewManager {
         details: { ok: false, error: msg },
         stderr: lr?.stderrLog ?? lr?.log,
       });
+      // If the local-runner attached a structured ERESOLVE report onto
+      // the thrown error (see local-runner.runInstall), use the parser's
+      // headline directly as `previewError` instead of layering a
+      // "Local preview failed: npm install failed: <headline>" prefix
+      // chain. The conflict-naming headline is already self-describing
+      // and the dashboard quote would otherwise be cluttered with
+      // generic prefixes that obscure the actual peer-dep mismatch.
+      const eresolve = (err as Error & { eresolve?: unknown }).eresolve;
+      const failureReason = eresolve
+        ? (isFallback ? `Local-fallback preview failed: ${msg}` : msg)
+        : (isFallback
+            ? `Local-fallback preview failed (after docker also failed): ${msg}`
+            : `Local preview failed: ${msg}`);
       // If this was a fallback attempt, capture the local error onto
       // record.fallbackErrors.local BEFORE fail() composes the
       // user-facing message — fail() will surface both errors.
       if (isFallback && record.fallbackErrors) {
         record.fallbackErrors.local = `Local preview failed: ${msg}`;
       }
+      // Local-runner-specific forensic dump. Distinct from
+      // dumpRuntimeFailure (which fail() also writes) because this
+      // file carries the LOCAL lifecycle facts engineers need to make
+      // an intermittent local-fallback failure reproducible — exact
+      // command + args, child pid, install-completed flag,
+      // server-spawned flag, port-ever-opened flag, full stdout/stderr
+      // tails. Best-effort: never let dump-write failures mask the
+      // original preview failure.
+      void this.dumpLocalPreviewFailure(record, lr, msg).catch((dumpErr) => {
+        this.opts.logger.warn('preview: failed to write last-local-preview-failure.json', {
+          projectId,
+          error: (dumpErr as Error).message,
+        });
+      });
       return this.fail(record, {
-        reason: isFallback
-          ? `Local-fallback preview failed (after docker also failed): ${msg}`
-          : `Local preview failed: ${msg}`,
+        reason: failureReason,
         exitCode: lr?.exitCode ?? null,
         signal: lr?.exitSignal ?? null,
         stdoutTail: PreviewManager.tail(lr?.stdoutLog),
@@ -2437,7 +3040,19 @@ export class PreviewManager {
     });
     this.enterStep(record, 'preview:http-probing');
     const budget = bootBudgetMs('fullstack');
-    const webHealthy = await this.opts.docker.awaitHealthy(webHostPort, '/', budget);
+    const webHealthy = await this.opts.docker.awaitHealthy(
+      webHostPort,
+      '/',
+      budget,
+      (attempt) => {
+        try { this.recordProbeAttempt(record, attempt); }
+        catch (err) {
+          this.opts.logger.warn('preview: fullstack awaitHealthy probe-mirror threw', {
+            projectId, error: (err as Error).message,
+          });
+        }
+      },
+    );
     if (!webHealthy.ok) {
       const webLog = await this.opts.docker.composeLogs(composeProject, contextDir, 'web', 200).catch(() => '');
       const apiLog = await this.opts.docker.composeLogs(composeProject, contextDir, 'api', 200).catch(() => '');
@@ -2484,6 +3099,8 @@ export class PreviewManager {
       },
     });
     record.lastAccessedAt = Date.now();
+    // DURABILITY GATE — see equivalent block in doStart().
+    await record.pendingSync;
     this.opts.logger.info('Fullstack preview ready', {
       projectId, webHostPort, apiHostPort, composeProject, apiHealthy: apiProbe.ok,
     });
@@ -2574,10 +3191,49 @@ export class PreviewManager {
     });
   }
 
-  private fail(record: PreviewRecord, ctxOrMessage: string | FailureContext): PreviewStatus {
+  private async fail(record: PreviewRecord, ctxOrMessage: string | FailureContext): Promise<PreviewStatus> {
     const ctx: FailureContext = typeof ctxOrMessage === 'string'
       ? { reason: ctxOrMessage }
       : ctxOrMessage;
+
+    // If the boot watchdog already classified this run as a timeout,
+    // PRESERVE its structured verdict — the timeout headline
+    // ("Preview startup timed out while in step <step>. Last probe:
+    // <reason>. Process: <classification>.") is more actionable than
+    // any downstream catch-block message we'd compose here. Without
+    // this guard, a teardown-induced inner failure (e.g. "dev server
+    // exited before becoming ready") would clobber the timeout
+    // headline + flip step from `preview:timeout` back to
+    // `preview:failed`, leaving the persisted record with an empty /
+    // misleading reason. We still capture exitInfo + run the rest of
+    // the failure-side bookkeeping so forensics aren't lost.
+    if (record.timeoutAtIso && record.step === 'preview:timeout' && record.error) {
+      record.exitInfo = {
+        exitCode: ctx.exitCode ?? record.exitInfo?.exitCode ?? null,
+        signal: ctx.signal ?? record.exitInfo?.signal ?? null,
+        oomKilled: ctx.oomKilled ?? record.exitInfo?.oomKilled ?? false,
+        dockerError: ctx.dockerError ?? record.exitInfo?.dockerError ?? null,
+        stdoutTail: ctx.stdoutTail ?? record.exitInfo?.stdoutTail,
+        stderrTail: ctx.stderrTail ?? record.exitInfo?.stderrTail,
+        lastSuccessfulStep: ctx.lastSuccessfulStep ?? record.lastMeaningfulStep,
+        errorStack: ctx.stack ?? record.exitInfo?.errorStack,
+        capturedAt: new Date().toISOString(),
+      };
+      this.snapshotProcessLifecycle(record);
+      this.opts.logger.info('preview fail() suppressed by prior boot-timeout verdict', {
+        event: 'preview:fail-after-timeout',
+        projectId: record.projectId,
+        previewId: record.previewId,
+        downstreamReason: ctx.reason,
+        preservedError: record.error.slice(0, 200),
+      });
+      // Even on the suppressed path the failure metadata (exitInfo,
+      // process lifecycle) was just updated — durably persist it
+      // before returning to the caller. Without the await the HTTP
+      // response can race the disk write.
+      await this.syncPreviewToProject(record).catch(() => {});
+      return this.toStatus(record);
+    }
 
     // Compose a multi-line `record.error` that surfaces the real failure
     // reason verbatim — exit code, signal, last successful step, and the
@@ -2699,6 +3355,11 @@ export class PreviewManager {
       this.opts.ports.release(record.apiHostPort);
       record.apiHostPort = null;
     }
+    // DURABILITY GATE: the markPreviewStep('failed', …) call above
+    // queued a syncPreviewToProject — wait for it to land on disk
+    // before returning so polling clients observe previewStatus =
+    // 'failed' + previewError on the very next read.
+    await record.pendingSync;
     return this.toStatus(record);
   }
 
@@ -2760,6 +3421,228 @@ export class PreviewManager {
     } catch (writeErr) {
       this.opts.logger.error('failed to write preview runtime failure dump', {
         projectId: record.projectId, dumpPath, err: (writeErr as Error).message,
+      });
+    }
+  }
+
+  /**
+   * Local-runner-specific forensic dump. Written to
+   * `apps/api/src/testing/last-local-preview-failure.json` and
+   * single-file (overwrites the previous failure) so the most
+   * recent stuck/failed local preview is one path to check.
+   *
+   * Captures the LOCAL lifecycle facts an engineer needs to make
+   * an intermittent local-fallback failure reproducible:
+   *   • exact spawned command + args + cwd + port + host + envSafe
+   *   • child pid (when spawn succeeded)
+   *   • full rolling stdout / stderr tails (≤16 KB each)
+   *   • current step + last successful step
+   *   • install-completed flag (was node_modules ever populated?)
+   *   • server-spawned flag (did the OS hand us a PID?)
+   *   • port-ever-opened flag (did any TCP probe connect, even if
+   *     HTTP didn't respond?)
+   *   • install-fallback metadata (was --legacy-peer-deps used?)
+   *
+   * Distinct from `last-preview-runtime-failure.json` (shared
+   * docker+local writer) and `last-preview-timeout.json`
+   * (boot-watchdog writer) so triage tooling can land here without
+   * having to reason about which runtime was in flight. Best-effort
+   * — write failures must not mask the original preview failure.
+   */
+  private async dumpLocalPreviewFailure(
+    record: PreviewRecord,
+    lr: ReturnType<NonNullable<typeof this.opts.localRunner>['get']> | null,
+    reason: string,
+  ): Promise<void> {
+    const dumpPath = path.resolve(
+      fileURLToPath(import.meta.url),
+      '..', '..', 'testing', 'last-local-preview-failure.json',
+    );
+    // Lifecycle booleans — derived from the runner's record so the
+    // dump can answer the three "where did it die?" questions
+    // directly. `install-completed` is true when ANY install
+    // succeeded (standard OR --legacy-peer-deps fallback).
+    const installCompleted = lr
+      ? (lr.installMode !== null
+          || /install completed/i.test(lr.lastSuccessfulStep ?? '')
+          || /install cache hit/i.test(lr.lastSuccessfulStep ?? ''))
+      : false;
+    const serverSpawned = lr
+      ? (typeof lr.child?.pid === 'number' || lr.processStartedAt !== null)
+      : false;
+    const portEverOpened = lr
+      ? lr.probeAttempts.some((a) => a.tcpConnected || a.ok)
+      : false;
+    const httpEverResponded = lr
+      ? lr.probeAttempts.some((a) => a.ok || (typeof a.status === 'number' && a.status > 0))
+      : false;
+    // ── Manual reproduction block ────────────────────────
+    // The staging directory is INTENTIONALLY preserved across
+    // failures (writeFiles only wipes it at the start of the *next*
+    // staging) so an engineer can `cd` into it and reproduce the
+    // failure by hand. Surface every field the engineer needs to
+    // re-run install + dev exactly the way the runner did.
+    //
+    // Package manager is derived from the spawn cmd basename
+    // ('npm.cmd' → 'npm'), defaulting to npm when unavailable.
+    const runtimePath = record.runtime?.cwd ?? lr?.stagingDir ?? null;
+    const packageJsonPath = runtimePath ? path.join(runtimePath, 'package.json') : null;
+    const devCmdRaw = record.runtime?.cmd ?? null;
+    const devArgs = record.runtime?.args ?? null;
+    const pmFromCmd = devCmdRaw
+      ? path.basename(devCmdRaw).replace(/\.(cmd|exe|bat|ps1)$/i, '').toLowerCase()
+      : null;
+    const pm = (pmFromCmd === 'pnpm' || pmFromCmd === 'yarn') ? pmFromCmd : 'npm';
+    // Install command actually executed by the runner. When the
+    // --legacy-peer-deps fallback fired we surface BOTH attempts
+    // (first standard, then fallback) so the engineer can pick the
+    // one that matched the failure.
+    const installArgsStandard = pm === 'yarn'
+      ? ['install']
+      : ['install', '--no-audit', '--no-fund'];
+    const installCommandStandard = `${pm} ${installArgsStandard.join(' ')}`.trim();
+    const installCommandFallback = lr?.installFallback?.triggered
+      ? `${pm} install ${(lr.installFallback.fallbackArgs ?? []).join(' ')}`.trim()
+      : null;
+    // Start command — what the runner actually spawned. We use the
+    // human-friendly `<pm> run dev` form rather than the
+    // platform-specific `npm.cmd` so the block works on macOS/Linux
+    // too (engineers often inspect failures from a different host
+    // than the one that produced them).
+    const startCommand = devArgs && devArgs.length > 0
+      ? `${pm} ${devArgs.join(' ')}`.trim()
+      : `${pm} run dev`;
+    // Reproducible block — array of shell lines an engineer can
+    // copy-paste verbatim. We include both the standard install and
+    // the fallback (when triggered) as separate lines so the engineer
+    // can choose; the runner's behaviour is documented inline.
+    const reproduceCommand: string[] = [
+      runtimePath ? `cd "${runtimePath}"` : '# cd <runtimePath unavailable — staging never started>',
+      `# Install (the runner used: ${lr?.installMode ?? 'unknown'})`,
+      installCommandStandard,
+    ];
+    if (installCommandFallback) {
+      reproduceCommand.push(
+        `# Standard install failed with ERESOLVE — runner retried with --legacy-peer-deps:`,
+        installCommandFallback,
+      );
+    }
+    reproduceCommand.push(
+      `# Start dev server on the same port the runner used:`,
+      `$env:PORT="${record.runtime?.port ?? lr?.port ?? '<port>'}"; ${startCommand}`,
+    );
+    const payload = {
+      timestamp: new Date().toISOString(),
+      projectId: record.projectId,
+      previewId: record.previewId,
+      runtime: record.runtime?.type ?? record.mode ?? 'local-fallback',
+      reason,
+      // ── timeout classification (only populated on timeout path) ──
+      timeoutCause: record.timeoutCause ?? null,
+      timeoutLifecycle: record.timeoutLifecycle ?? null,
+      // ── exact spawned process ─────────────────────────────
+      command: record.runtime?.cmd ?? null,
+      commandArgs: record.runtime?.args ?? null,
+      cwd: record.runtime?.cwd ?? lr?.stagingDir ?? null,
+      // ── manual reproduction ──────────────────────────────
+      // Staging dir is preserved on failure (see writeFiles —
+      // wipe only happens at the start of the NEXT staging). An
+      // engineer can `cd` here, run the install command, then
+      // run the start command to reproduce the failure exactly.
+      runtimePath,
+      packageJsonPath,
+      packageManager: pm,
+      installCommand: installCommandStandard,
+      installCommandFallback,
+      startCommand,
+      reproduceCommand,
+      host: '127.0.0.1',
+      port: record.runtime?.port ?? lr?.port ?? record.hostPort ?? null,
+      envSafe: record.runtime?.envSafe ?? null,
+      pid: lr?.child?.pid ?? record.runtimeLog?.pid ?? null,
+      // ── lifecycle classification ──────────────────────────
+      currentStep: record.step ?? null,
+      lastSuccessfulStep: lr?.lastSuccessfulStep ?? record.lastMeaningfulStep ?? null,
+      installCompleted,
+      installMode: lr?.installMode ?? null,
+      serverSpawned,
+      portEverOpened,
+      httpEverResponded,
+      childAlive: lr ? !lr.exited : null,
+      processStartedAt: lr?.processStartedAt ?? null,
+      processExitedAt: lr?.processExitedAt ?? null,
+      exitCode: lr?.exitCode ?? null,
+      exitSignal: lr?.exitSignal ?? null,
+      // ── stdio tails ───────────────────────────────────────
+      // Cap at 16 KB each (the runner's ring buffer is 32 KB,
+      // half goes to each stream tail to keep the dump browsable).
+      stdoutTail: lr?.stdoutLog ? lr.stdoutLog.slice(-16_000) : null,
+      stderrTail: lr?.stderrLog ? lr.stderrLog.slice(-16_000) : null,
+      // ── probe history rollup ──────────────────────────────
+      probeAttemptsTotal: lr?.probeAttempts.length ?? 0,
+      probeAttemptsTail: (lr?.probeAttempts ?? []).slice(-16),
+      // ── install-fallback (TEMPORARY) audit trail ──────────
+      installFallback: lr?.installFallback
+        ? {
+            triggered: lr.installFallback.triggered,
+            firstAttemptHeadline: lr.installFallback.firstAttemptHeadline,
+            fallbackArgs: lr.installFallback.fallbackArgs,
+            fallbackSucceeded: lr.installFallback.fallbackSucceeded,
+            fallbackError: lr.installFallback.fallbackError,
+            dumpPath: lr.installFallback.dumpPath,
+          }
+        : null,
+      // ── step history (lightweight) ────────────────────────
+      stepDurations: record.stepDurations ?? [],
+      previewStatusTransitions: (record.history ?? []).map((h) => ({ step: h.step, at: h.at })),
+      // ── safe-retry history ────────────────────────────────
+      // One row per local-runner start() invocation. Capped at two.
+      // `localRetrySucceeded` mirrors the field of the same name on
+      // PreviewRecord and is `null`/undefined when no retry was
+      // attempted.
+      localStartAttempts: record.localStartAttempts ?? [],
+      localRetrySucceeded:
+        typeof record.localRetrySucceeded === 'boolean' ? record.localRetrySucceeded : null,
+    };
+    try {
+      await fs.mkdir(path.dirname(dumpPath), { recursive: true });
+      await fs.writeFile(dumpPath, JSON.stringify(payload, null, 2), 'utf8');
+      this.opts.logger.warn('local preview failure dump written', {
+        event: 'preview:local-failure-dump',
+        projectId: record.projectId,
+        previewId: record.previewId,
+        runtime: payload.runtime,
+        currentStep: payload.currentStep,
+        lastSuccessfulStep: payload.lastSuccessfulStep,
+        installCompleted,
+        serverSpawned,
+        portEverOpened,
+        pid: payload.pid,
+        // Reproduction surface — engineers can copy these directly
+        // from the structured log without opening the dump file.
+        runtimePath,
+        packageJsonPath,
+        installCommand: installCommandStandard,
+        startCommand,
+        dumpPath,
+      });
+      // Human-readable reproduction block, emitted as a separate
+      // single-line log so it shows up cleanly in the terminal /
+      // log aggregator without being buried inside a JSON blob.
+      this.opts.logger.warn(
+        `preview: to reproduce manually, run:\n${reproduceCommand.map((l) => `  ${l}`).join('\n')}`,
+        {
+          event: 'preview:local-failure-repro-block',
+          projectId: record.projectId,
+          previewId: record.previewId,
+          runtimePath,
+        },
+      );
+    } catch (writeErr) {
+      this.opts.logger.error('failed to write last-local-preview-failure.json', {
+        projectId: record.projectId,
+        dumpPath,
+        err: (writeErr as Error).message,
       });
     }
   }

@@ -1,0 +1,3 @@
+{"ts":"2026-05-06T15:00:24.298Z","projectId":"detail-1778079624292","caller":"detail-seed","reason":"seed","op":"save","stateVersion":1,"fields":{"completedAt":{"prev":null,"next":"2026-05-06T15:00:24.292Z"}}}
+{"ts":"2026-05-06T15:00:24.406Z","projectId":"detail-1778079624292","caller":"preview-manager","reason":"","op":"updatePreview","stateVersion":2,"fields":{"preview.previewStatus":{"prev":null,"next":"ready"}}}
+{"ts":"2026-05-06T15:00:24.413Z","projectId":"detail-1778079624292","caller":"preview-manager","reason":"","op":"updatePreview","stateVersion":3,"fields":{"preview.previewStatus":{"prev":"ready","next":"failed"}}}

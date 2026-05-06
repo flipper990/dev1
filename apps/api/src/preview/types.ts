@@ -199,6 +199,48 @@ export interface PreviewRecord {
   /** Whether the dev-server child process was alive at the moment the
    *  watchdog tripped (true=alive, false=dead, null=unknown). */
   childAliveAtTimeout?: boolean | null;
+  /** Precise classification of WHERE in the boot pipeline a timeout
+   *  stalled. Set in tandem with `timeoutAtIso` by the boot-watchdog
+   *  classifier. Distinct from `step` (which records the *named*
+   *  phase the record was in) because the classifier folds in the
+   *  install/build/spawn/probe lifecycle booleans to produce a
+   *  single-token verdict that survives downstream string
+   *  formatting. Mirrored to ProjectRecord.preview.previewTimeoutCause.
+   *
+   *   - `install-hung`         npm install started but never finished
+   *   - `build-hung`           build phase started but never finished
+   *                            (docker only — local skips build)
+   *   - `server-not-spawned`   no PID was ever handed back by the OS
+   *                            (or boot stalled before reaching spawn)
+   *   - `server-not-listening` PID exists but no TCP probe ever
+   *                            connected
+   *   - `http-probe-failed`    TCP opened but HTTP never returned a
+   *                            usable response
+   *   - `unknown`              record didn't expose enough lifecycle
+   *                            signal to pick a category (extremely
+   *                            rare; investigate via the dump)
+   */
+  timeoutCause?:
+    | 'install-hung'
+    | 'build-hung'
+    | 'server-not-spawned'
+    | 'server-not-listening'
+    | 'http-probe-failed'
+    | 'unknown'
+    | null;
+  /** Lifecycle booleans the timeout-cause classifier consumed. Carried
+   *  on the record so the dump + the persisted project block can
+   *  surface the raw signals the verdict was derived from (instead of
+   *  asking an engineer to re-derive them from the timeline). */
+  timeoutLifecycle?: {
+    installStarted: boolean;
+    installCompleted: boolean;
+    buildStarted: boolean;
+    buildCompleted: boolean;
+    serverSpawned: boolean;
+    portOpened: boolean;
+    firstProbeAttempted: boolean;
+  } | null;
   /** Server-process liveness snapshot — populated whenever the
    *  manager observes the child process state (boot watchdog,
    *  runtime-exit, fail()). Distinct from `runtimeLog` because this
@@ -267,6 +309,17 @@ export interface PreviewRecord {
   /** Free-form description of the most recent lifecycle event (mirrors
    *  ProjectRecord.progress.lastMeaningfulStep semantics). */
   lastMeaningfulStep?: string;
+  /** In-flight project-store sync promise. Set by `markPreviewStep`
+   *  on every state transition, awaited by terminal paths (ready /
+   *  failed) before returning to the caller so the persisted
+   *  ProjectRecord.preview reflects the new state before the HTTP
+   *  response lands. Resolves with the write result; never rejects. */
+  pendingSync?: Promise<{
+    ok: boolean;
+    prevPreviewStatus: string | null;
+    nextPreviewStatus: string | null;
+    error?: string;
+  }> | null;
   /** Monotonically increasing list of (stateOrStep, isoTimestamp) tuples
    *  for post-mortem debugging. Trimmed to the last 32 entries. */
   history?: Array<{ step: string; at: string }>;
@@ -300,6 +353,28 @@ export interface PreviewRecord {
     docker?: string | null;
     local?: string | null;
   };
+  /** One row per attempt of the local-runner start() call. Capped at
+   *  two entries (initial + one safe retry). The retry only fires
+   *  when the first attempt failed BEFORE any TCP probe connected
+   *  to the port — install/build/spawn/port-listening failures are
+   *  the intermittent class we want to recover from. Once any probe
+   *  reports tcpConnected=true (or HTTP 200), we treat the failure
+   *  as deterministic (overlay, content-health, post-bind crash) and
+   *  do not retry. Mirrored to ProjectRecord.preview.previewLocalStartAttempts. */
+  localStartAttempts?: Array<{
+    attempt: 1 | 2;
+    ok: boolean;
+    error: string | null;
+    portOpened: boolean;
+    durationMs: number;
+    startedAtIso: string;
+    endedAtIso: string;
+  }>;
+  /** Set when a second local-runner attempt was scheduled. `true` if
+   *  the retry succeeded (preview reached ready), `false` if the
+   *  retry also failed, `undefined` if no retry was attempted.
+   *  Mirrored to ProjectRecord.preview.previewLocalRetrySucceeded. */
+  localRetrySucceeded?: boolean;
   /** Set when the content-health probe (post-HTTP-200) detected a dev
    *  server overlay/error page. Populated INSTEAD of marking ready:
    *  `state` flips to 'failed' and `error` is composed from these

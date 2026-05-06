@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-05-06T01:26:06.629Z",
-  "projectId": "c5jZ19ckzIXC",
-  "previewId": "27214e426d0f",
+  "timestamp": "2026-05-06T15:53:21.081Z",
+  "projectId": "AH0QOxRHDYV9",
+  "previewId": "dc33db75ed1c",
   "runtime": "local-fallback",
   "stack": null,
-  "reason": "Local-fallback preview failed (after docker also failed): npm install failed: npm install exited code=1 — npm error For a full report see: | npm error C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-eresolve-report.txt | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-debug-0.log",
+  "reason": "Local-fallback preview failed (after docker also failed): npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_20_803Z-debug-0.log",
   "exitCode": null,
   "signal": null,
   "oomKilled": false,
@@ -21,57 +21,57 @@
   "imageTag": null,
   "containerName": null,
   "containerId": null,
-  "lastSuccessfulStep": "⚠ Both preview backends failed:\n\n── Docker attempt ──\nDocker build failed\nlast successful step: docker build started\nstderr tail:\n#0 building with \"desktop-linux\" instance using docker driver\n\n#1 [int",
+  "lastSuccessfulStep": "⚠ Both preview backends failed:\n\n── Docker attempt ──\nDocker build failed\nlast successful step: docker build started\nstderr tail:\nt/.npm/_logs/2026-05-06T15_53_17_470Z-debug-0.log\n#8 ERROR: process \"/",
   "stdoutTail": null,
   "stderrTail": null,
-  "errorStack": "Error: npm install failed: npm install exited code=1 — npm error For a full report see: | npm error C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-eresolve-report.txt | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-debug-0.log\n    at LocalPreviewRunner.start (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\local-runner.ts:248:15)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async PreviewManager.doStartLocal (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:2215:18)\n    at async PreviewManager.startWithAutoFixRetry (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:837:22)\n    at async PreviewManager.start (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:787:14)\n    at async Object.<anonymous> (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\routes\\preview-routes.ts:66:22)",
+  "errorStack": "Error: npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_20_803Z-debug-0.log\n    at LocalPreviewRunner.start (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\local-runner.ts:451:17)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async PreviewManager.doStartLocal (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:2722:16)\n    at async PreviewManager.startWithAutoFixRetry (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:1135:22)\n    at async PreviewManager.start (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:1055:14)\n    at async Object.<anonymous> (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\routes\\preview-routes.ts:66:22)",
   "currentStep": "preview:failed",
-  "stepStartedAt": "2026-05-06T01:26:06.629Z",
+  "stepStartedAt": "2026-05-06T15:53:21.081Z",
   "stepDurations": [
     {
       "step": "preview:queued",
-      "startedAt": "2026-05-06T01:26:04.708Z",
-      "completedAt": "2026-05-06T01:26:04.708Z",
-      "durationMs": 0
+      "startedAt": "2026-05-06T15:53:18.055Z",
+      "completedAt": "2026-05-06T15:53:18.056Z",
+      "durationMs": 1
     },
     {
       "step": "preview:staging-files",
-      "startedAt": "2026-05-06T01:26:04.708Z",
-      "completedAt": "2026-05-06T01:26:05.357Z",
-      "durationMs": 649
+      "startedAt": "2026-05-06T15:53:18.056Z",
+      "completedAt": "2026-05-06T15:53:18.076Z",
+      "durationMs": 20
     },
     {
       "step": "preview:installing",
-      "startedAt": "2026-05-06T01:26:05.357Z",
-      "completedAt": "2026-05-06T01:26:06.629Z",
-      "durationMs": 1272
+      "startedAt": "2026-05-06T15:53:18.076Z",
+      "completedAt": "2026-05-06T15:53:21.081Z",
+      "durationMs": 3005
     }
   ],
   "previewStatusTransitions": [
     {
       "step": "starting:local-fallback",
-      "at": "2026-05-06T01:26:04.708Z"
+      "at": "2026-05-06T15:53:18.055Z"
     },
     {
-      "step": "failed:⚠ Both preview backends failed:\n\n── Docker attempt ──\nDocker build failed\nlast successful step: docker build started\nstderr tail:\n#0 building with \"desktop-linux\" instance using docker driver\n\n#1 [int",
-      "at": "2026-05-06T01:26:06.628Z"
+      "step": "failed:⚠ Both preview backends failed:\n\n── Docker attempt ──\nDocker build failed\nlast successful step: docker build started\nstderr tail:\nt/.npm/_logs/2026-05-06T15_53_17_470Z-debug-0.log\n#8 ERROR: process \"/",
+      "at": "2026-05-06T15:53:21.081Z"
     }
   ],
   "timeline": [
     {
       "event": "runner-start",
-      "at": "2026-05-06T01:26:04.708Z",
+      "at": "2026-05-06T15:53:18.056Z",
       "previewStatus": "starting",
       "durationMs": null,
       "details": {
         "mode": "local-fallback",
-        "fileCount": 61,
+        "fileCount": 44,
         "fallbackFromDocker": true
       }
     },
     {
       "event": "install-start",
-      "at": "2026-05-06T01:26:04.708Z",
+      "at": "2026-05-06T15:53:18.056Z",
       "previewStatus": "starting",
       "durationMs": null,
       "details": {
@@ -80,26 +80,38 @@
     },
     {
       "event": "install-end",
-      "at": "2026-05-06T01:26:06.624Z",
+      "at": "2026-05-06T15:53:18.571Z",
       "previewStatus": "starting",
-      "durationMs": 1916,
+      "durationMs": 515,
       "details": {
         "ok": false,
-        "error": "npm install failed: npm install exited code=1 — npm error For a full report see: | npm error C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-eresolve-report.txt | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-debug-0.log"
+        "error": "npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_18_298Z-debug-0.log",
+        "attempt": 1,
+        "willRetry": true
+      }
+    },
+    {
+      "event": "install-end",
+      "at": "2026-05-06T15:53:21.074Z",
+      "previewStatus": "starting",
+      "durationMs": 3018,
+      "details": {
+        "ok": false,
+        "error": "npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_20_803Z-debug-0.log"
       }
     },
     {
       "event": "failed",
-      "at": "2026-05-06T01:26:06.629Z",
+      "at": "2026-05-06T15:53:21.081Z",
       "previewStatus": "failed",
-      "durationMs": 1921,
+      "durationMs": 3025,
       "details": {
-        "message": "⚠ Both preview backends failed:\n\n── Docker attempt ──\nDocker build failed\nlast successful step: docker build started\nstderr tail:\n#0 building with \"desktop-linux\" instance using docker driver\n\n#1 [internal] load build definition from Dockerfile.preview\n#1 transferring dockerfile:\n#1 transferring dockerfile: 2B 0.1s done\n#1 DONE 0.8s\nERROR: failed to build: failed to solve: failed to read dockerfile: open Dockerfile.preview: no such file or directory\n\n── Local fallback attempt ──\nLocal-fallback preview failed (after docker also failed): npm install failed: npm install exited code=1 — npm error For a full report see: | npm error C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-eresolve-report.txt | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-debug-0.log",
-        "reason": "Local-fallback preview failed (after docker also failed): npm install failed: npm install exited code=1 — npm error For a full report see: | npm error C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-eresolve-report.txt | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-debug-0.log",
+        "message": "⚠ Both preview backends failed:\n\n── Docker attempt ──\nDocker build failed\nlast successful step: docker build started\nstderr tail:\nt/.npm/_logs/2026-05-06T15_53_17_470Z-debug-0.log\n#8 ERROR: process \"/bin/sh -c if [ -f package-lock.json ]; then npm ci --legacy-peer-deps --no-audit --no-fund || npm install --legacy-peer-deps --no-audit --no-fund; else npm install --legacy-peer-deps --no-audit --no-fund; fi\" did not complete successfully: exit code: 1\n------\n > [4/6] RUN if [ -f package-lock.json ]; then npm ci --legacy-peer-deps --no-audit --no-fund || npm install --legacy-peer-deps --no-audit --no-fund; else npm install --legacy-peer-deps --no-audit --no-fund; fi:\n0.977 npm error code EOVERRIDE\n0.977 npm error Override for react@^19.0.0 conflicts with direct dependency\n0.978 npm error A complete log of this run can be found in: /root/.npm/_logs/2026-05-06T15_53_17_470Z-debug-0.log\n------\nDockerfile.preview:7\n--------------------\n   5 |     # Copy lockfiles first for better cache hits\n   6 |     COPY package*.json ./\n   7 | >>> RUN if [ -f package-lock.json ]; then npm ci --legacy-peer-deps --no-audit --no-fund || npm install --legacy-peer-deps --no-audit --no-fund; else npm install --legacy-peer-deps --no-audit --no-fund; fi\n   8 |     # Copy the rest of the project\n   9 |     COPY . .\n--------------------\nERROR: failed to build: failed to solve: process \"/bin/sh -c if [ -f package-lock.json ]; then npm ci --legacy-peer-deps --no-audit --no-fund || npm install --legacy-peer-deps --no-audit --no-fund; else npm install --legacy-peer-deps --no-audit --no-fund; fi\" did not complete successfully: exit code: 1\n\n── Local fallback attempt ──\nLocal-fallback preview failed (after docker also failed): npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_20_803Z-debug-0.log",
+        "reason": "Local-fallback preview failed (after docker also failed): npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_20_803Z-debug-0.log",
         "exitCode": null,
         "signal": null,
         "oomKilled": false,
-        "lastSuccessfulStep": "⚠ Both preview backends failed:\n\n── Docker attempt ──\nDocker build failed\nlast successful step: docker build started\nstderr tail:\n#0 building with \"desktop-linux\" instance using docker driver\n\n#1 [int"
+        "lastSuccessfulStep": "⚠ Both preview backends failed:\n\n── Docker attempt ──\nDocker build failed\nlast successful step: docker build started\nstderr tail:\nt/.npm/_logs/2026-05-06T15_53_17_470Z-debug-0.log\n#8 ERROR: process \"/"
       }
     }
   ]

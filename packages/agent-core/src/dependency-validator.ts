@@ -25,6 +25,12 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { FileLike } from './agent-input-builder.js';
+import {
+  REACT_18_NEXT_15,
+  reconcilePackageJson,
+  selectBundle,
+  type RuleEffect,
+} from './stack-compatibility.js';
 
 export interface DependencyValidationReport {
   /** Total bare-module imports inspected (after dedup per pkg.json). */
@@ -37,6 +43,11 @@ export interface DependencyValidationReport {
   patched: string[];
   /** Detected package manager (informational only). */
   packageManager: 'npm' | 'yarn' | 'pnpm' | 'unknown';
+  /** Cross-package peer-compatibility fixes applied by the
+   *  stack-compatibility reconciler (e.g. force-pinning react-dom to
+   *  match react's major). Empty when the package set was already
+   *  coherent. */
+  reconciled: Array<{ packageJson: string; bundleId: string; effects: RuleEffect[] }>;
 }
 
 export interface DependencyValidationResult {
@@ -65,10 +76,15 @@ const NODE_BUILTINS = new Set([
  * resolves at install time.
  */
 const KNOWN_VERSIONS: Record<string, string> = {
-  // Frameworks
-  'next':                  '^15.0.0',
-  'react':                 '^18.3.0',
-  'react-dom':             '^18.3.0',
+  // ── Peer-sensitive packages (react / react-dom / next / vite /
+  //    tailwind / postcss / autoprefixer / @types/react* / radix-ui
+  //    primitives) are deliberately ABSENT from this table. Their
+  //    versions live in REACT_18_NEXT_15.versions (stack-
+  //    compatibility.ts) which is the single source of truth.
+  //    `pickVersion` consults the bundle FIRST and would shadow any
+  //    duplicate here — keeping them out prevents drift between the
+  //    flat fallback table and the bundle when one is bumped.
+  // Frameworks (non-peer-sensitive)
   'fastify':               '^5.0.0',
   '@fastify/cors':         '^10.0.0',
   '@fastify/helmet':       '^13.0.0',
@@ -90,15 +106,11 @@ const KNOWN_VERSIONS: Record<string, string> = {
   // Validation
   'zod':                   '^3.23.0',
   'yup':                   '^1.4.0',
-  // UI
-  'tailwindcss':           '^3.4.0',
-  'autoprefixer':          '^10.4.20',
-  'postcss':               '^8.4.0',
+  // UI (non-peer-sensitive utilities; tailwindcss / autoprefixer /
+  // postcss / class-variance-authority / clsx / tailwind-merge /
+  // lucide-react / sonner / vaul / cmdk / radix-ui / etc. are owned
+  // by the bundle).
   'lucide-react':          '^0.460.0',
-  'clsx':                  '^2.1.0',
-  'class-variance-authority': '^0.7.0',
-  'tailwind-merge':        '^2.5.0',
-  'tailwindcss-animate':   '^1.0.7',
   'cmdk':                  '^1.0.0',
   'sonner':                '^1.7.0',
   'vaul':                  '^1.1.0',
@@ -153,13 +165,9 @@ const KNOWN_VERSIONS: Record<string, string> = {
   'vitest':                '^2.1.0',
   'jest':                  '^29.7.0',
   '@testing-library/react': '^16.0.0',
-  // TS
-  'typescript':            '^5.6.0',
-  'tsx':                   '^4.19.0',
-  // Types
+  // TS toolchain (typescript / tsx versions owned by the bundle).
+  // Types (peer-coupled @types/react / @types/react-dom owned by bundle)
   '@types/node':           '^22.0.0',
-  '@types/react':          '^18.3.0',
-  '@types/react-dom':      '^18.3.0',
   '@types/express':        '^5.0.0',
   '@types/jsonwebtoken':   '^9.0.0',
   '@types/bcryptjs':       '^2.4.0',
@@ -303,7 +311,18 @@ function detectPackageManager(files: FileLike[], rootPkg: ParsedPkg | null): Dep
 }
 
 function pickVersion(name: string): string {
-  return KNOWN_VERSIONS[name] ?? 'latest';
+  // Bundle pins win over the legacy KNOWN_VERSIONS table when both
+  // exist — the bundle is curated for cross-package peer compatibility,
+  // KNOWN_VERSIONS is the older flat table kept for packages outside
+  // the bundle's scope (db drivers, auth helpers, etc.).
+  const bundlePin = REACT_18_NEXT_15.versions[name];
+  if (bundlePin) return bundlePin;
+  const knownPin = KNOWN_VERSIONS[name];
+  if (knownPin) return knownPin;
+  // "latest" is intentionally NOT used for peer-sensitive packages —
+  // those are all in the bundle. Anything that falls through here is
+  // a leaf utility (e.g. `dotenv`, `uuid`) where "latest" is safe.
+  return 'latest';
 }
 
 /** Public lookup: pinned version for a given npm package name from the
@@ -439,6 +458,114 @@ export function validateAndFixDependencies(input: FileLike[]): DependencyValidat
     }
   }
 
+  // ── Cross-package peer-compatibility reconciliation ──────────────
+  // After auto-add has filled missing imports, run the stack
+  // compatibility reconciler on every host package.json. This catches
+  // the version-mismatch class of bugs that import scanning cannot
+  // detect: e.g. root declares `react ^18` but imports nothing from
+  // `react-dom` (Next.js apps don't), so auto-add never sees the
+  // symbol — but `npm install` still pulls react-dom@latest as next's
+  // peer and ERESOLVEs against react ^18. The reconciler force-adds
+  // `react-dom` with the bundle's matching version.
+  const reconciled: DependencyValidationReport['reconciled'] = [];
+  for (const pkg of parsed) {
+    // Re-read the current (possibly auto-added-to) view of this pkg.json.
+    const idx = files.findIndex((f) => f.path === pkg.path);
+    if (idx < 0) continue;
+    const currentRaw = files[idx].content;
+    let parsedJson: Record<string, unknown>;
+    try { parsedJson = JSON.parse(currentRaw); } catch { continue; }
+    const deps = (parsedJson.dependencies as Record<string, string> | undefined) ?? {};
+    const devDeps = (parsedJson.devDependencies as Record<string, string> | undefined) ?? {};
+    // Combined view (peerDeps/optionalDeps are not reconciled today).
+    const combined = { ...deps, ...devDeps };
+    const bundle = selectBundle({ dependencies: deps, devDependencies: devDeps });
+    const result = reconcilePackageJson(combined, bundle);
+    if (result.effects.length === 0) continue;
+    // Apply effects: each affected package goes back into its correct
+    // block (devDeps for @types/* etc, deps otherwise) per isDevDep.
+    let workingRaw = currentRaw;
+    let workingView: ParsedPkg = { ...pkg, raw: workingRaw };
+    for (const effect of result.effects) {
+      // If the package was already in deps/devDeps, addDependency
+      // overwrites the existing pin in place. If it was missing, it
+      // appends to the correct block.
+      workingRaw = addDependency(workingView, effect.packageName, effect.newVersion, isDevDep(effect.packageName));
+      workingView = { ...workingView, raw: workingRaw };
+    }
+    files[idx] = { ...files[idx], content: workingRaw };
+    if (!patched.includes(pkg.path)) patched.push(pkg.path);
+    reconciled.push({ packageJson: pkg.path, bundleId: result.bundleId, effects: result.effects });
+  }
+
+  // ── Inject the bundle's `overrides` block into the root package.json.
+  // npm honours `overrides` for ALL transitive resolution \u2014 including
+  // peer-pulled installs (e.g. next \u2192 react-dom). Without this block a
+  // root that pins `react: ^18` but omits `react-dom` will silently
+  // ERESOLVE when `next@15.5.x` auto-pulls `react-dom@19.x` (whose own
+  // `react ^19` peer then conflicts with the root). The reconciler's
+  // version rules don't fix this on their own because `react-dom` is
+  // never imported directly in a typical Next project (Next imports it
+  // for you). We always force the overrides block when the selected
+  // bundle declares one and the root package.json does not already
+  // pin the same versions. Idempotent: a second pass is a no-op.
+  const rootPkgEntry = parsed.find(
+    (p) => p.path === 'package.json' || p.path.replace(/\\/g, '/') === 'package.json',
+  );
+  if (rootPkgEntry) {
+    const idx = files.findIndex((f) => f.path === rootPkgEntry.path);
+    if (idx >= 0) {
+      const currentRaw = files[idx].content;
+      let parsedJson: Record<string, unknown> | null = null;
+      try { parsedJson = JSON.parse(currentRaw) as Record<string, unknown>; } catch { /* skip */ }
+      if (parsedJson) {
+        const bundle = selectBundle({
+          dependencies: parsedJson.dependencies as Record<string, string> | undefined,
+          devDependencies: parsedJson.devDependencies as Record<string, string> | undefined,
+        });
+        const desiredOverrides = bundle.overrides;
+        const existing = (parsedJson.overrides as Record<string, string> | undefined) ?? {};
+        let mutated = false;
+        const merged: Record<string, string> = { ...existing };
+        const overrideEffects: RuleEffect[] = [];
+        for (const [name, pin] of Object.entries(desiredOverrides)) {
+          if (merged[name] !== pin) {
+            overrideEffects.push({
+              packageName: name,
+              previousVersion: merged[name] ?? null,
+              newVersion: pin,
+              reason:
+                `[bundle-overrides] forced npm override for ${name} \u2014 ` +
+                `pins transitive resolution to bundle ${bundle.id} ` +
+                `(prevents sub-deps from auto-pulling an incompatible major).`,
+            });
+            merged[name] = pin;
+            mutated = true;
+          }
+        }
+        if (mutated) {
+          parsedJson.overrides = merged;
+          let out = JSON.stringify(parsedJson, null, rootPkgEntry.indent);
+          if (rootPkgEntry.trailingNewline) out += '\n';
+          files[idx] = { ...files[idx], content: out };
+          if (!patched.includes(rootPkgEntry.path)) patched.push(rootPkgEntry.path);
+          // Merge override effects into the existing reconcile entry
+          // for the root package.json so the audit log is single-source.
+          const existingReconcile = reconciled.find((r) => r.packageJson === rootPkgEntry.path);
+          if (existingReconcile) {
+            existingReconcile.effects.push(...overrideEffects);
+          } else {
+            reconciled.push({
+              packageJson: rootPkgEntry.path,
+              bundleId: bundle.id,
+              effects: overrideEffects,
+            });
+          }
+        }
+      }
+    }
+  }
+
   const rootPkg = parsed.find((p) => p.path === 'package.json' || p.path.replace(/\\/g, '/') === 'package.json') ?? null;
   const report: DependencyValidationReport = {
     imports: importCount,
@@ -446,6 +573,7 @@ export function validateAndFixDependencies(input: FileLike[]): DependencyValidat
     unresolved,
     patched,
     packageManager: detectPackageManager(files, rootPkg),
+    reconciled,
   };
 
   return { files, report };

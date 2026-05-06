@@ -1010,6 +1010,97 @@ export function useDevteamData(): UseDevteamData {
     });
   }, [selectedProjectId, selected, list]);
 
+  // ── Active preview hydration loop ──────────────────────────
+  // Once a project transitions to `completed`, the preview lifecycle
+  // (install → build → starting → ready/failed) runs ENTIRELY on the
+  // backend and is reported on the `preview.previewStatus` field of
+  // the persisted ProjectRecord. The 8s list poll and the WS-done
+  // single hydrate both miss the window: the list poll is too slow
+  // (preview can flip ready in 2s after install completes) and the
+  // single WS-done hydrate fires once and stops. Without an active
+  // poll the dashboard's selected.preview block stays at whatever
+  // value happened to be persisted at the moment of WS done — usually
+  // 'starting' / 'building' — and never advances to 'ready'.
+  //
+  // Fix: when the selected project is `completed` AND its
+  // preview.previewStatus is non-terminal (anything except 'ready' /
+  // 'failed' / undefined-with-no-prior-start), poll the project
+  // detail every 1.5s until a terminal preview state is seen. The
+  // PreviewStage component still independently polls the in-memory
+  // /preview/status for its own iframe-mount decision; this loop
+  // exists specifically to keep the persisted block (which feeds the
+  // recent-project cards, debug line, and inconsistency banner) up
+  // to date.
+  useEffect(() => {
+    if (!selected) return;
+    if (selected.status !== 'completed') return;
+    const previewStatus = selected.preview?.previewStatus ?? null;
+    // Terminal states — nothing more to wait for.
+    if (previewStatus === 'ready' || previewStatus === 'failed') return;
+    // Note: previewStatus may be undefined when no preview has been
+    // started; in that case PreviewStage's auto-start effect kicks in
+    // and the next persisted snapshot will show 'preparing' / etc.
+    // We poll regardless so the first transition is observed quickly.
+    const projectId = selected.id;
+    let cancelled = false;
+    let pollCount = 0;
+    const tick = async () => {
+      if (cancelled) return;
+      pollCount += 1;
+      const before = useStore.getState().projects.find((p) => p.id === projectId);
+      const beforeStatus = before?.preview?.previewStatus ?? null;
+      const beforeUrl = before?.preview?.previewUrl ?? null;
+      try {
+        const outcome = await getProjectDetail(projectId);
+        if (cancelled) return;
+        if (outcome.kind === 'ok') {
+          const fresh = outcome.project;
+          const nextStatus = fresh.preview?.previewStatus ?? null;
+          const nextUrl = fresh.preview?.previewUrl ?? null;
+          if (process.env.NODE_ENV !== 'production') {
+            // eslint-disable-next-line no-console
+            console.info('[devteam] preview-hydrate', {
+              selectedProjectId: projectId,
+              fetchedPreviewStatus: nextStatus,
+              fetchedPreviewUrl: nextUrl,
+              prevUiPreviewStatus: beforeStatus,
+              nextUiPreviewStatus: nextStatus,
+              prevUiPreviewUrl: beforeUrl,
+              pollCount,
+            });
+          }
+          if (
+            beforeStatus !== nextStatus ||
+            beforeUrl !== nextUrl ||
+            (fresh.preview?.previewError ?? null) !==
+              (before?.preview?.previewError ?? null)
+          ) {
+            useStore.getState().upsertProject(fresh);
+          }
+        }
+      } catch (err) {
+        if (process.env.NODE_ENV !== 'production') {
+          // eslint-disable-next-line no-console
+          console.warn('[devteam] preview-hydrate fetch failed', {
+            selectedProjectId: projectId,
+            error: (err as Error).message,
+          });
+        }
+      }
+    };
+    // Fire immediately so the user sees the transition without
+    // waiting for the first interval tick.
+    void tick();
+    const id = setInterval(tick, 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+    // Re-evaluate when the project switches, when its build status
+    // flips into `completed`, or when a previous tick advanced
+    // previewStatus toward (but not yet into) a terminal state.
+  }, [selected?.id, selected?.status, selected?.preview?.previewStatus]);
+
   // ── Self-heal: project ↔ preview status inconsistency ──────
   // If the cached record for the selected project carries a
   // contradictory pair (project.status === 'failed' but

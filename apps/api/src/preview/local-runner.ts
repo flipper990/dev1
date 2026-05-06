@@ -26,6 +26,11 @@ import type { StackInfo } from './types.js';
 import { detectStack } from './stack-detector.js';
 import { instrumentChild } from './spawn-logger.js';
 import { recordProbe, type ProbeAttempt } from './probe-recorder.js';
+import {
+  parseEresolveAsync,
+  buildEresolveHeadline,
+  type EresolveReport,
+} from './eresolve-parser.js';
 
 export interface LocalPreviewFile {
   path: string;
@@ -74,6 +79,28 @@ export interface LocalPreviewRecord {
    *  Drives the timeout-dump's "what kind of failure?" classification
    *  (port-never-opened vs tcp-opened-no-http vs http-error-status). */
   probeAttempts: ProbeAttempt[];
+  /** Which install command actually populated `node_modules`. Set to
+   *  `'standard'` when the first `npm install` succeeded, or
+   *  `'legacy-peer-deps-fallback'` when the temporary ERESOLVE
+   *  fallback was needed. `null` until install runs.
+   *  TEMPORARY: the fallback exists so generated previews can keep
+   *  iterating while the dependency-compatibility work lands. It is
+   *  NOT a substitute for fixing the root-cause peer-conflict. */
+  installMode: 'standard' | 'legacy-peer-deps-fallback' | null;
+  /** When the fallback was used, the structured ERESOLVE error from
+   *  the FIRST attempt + the success/failure result of the retry.
+   *  Persisted to disk via `persistInstallFallbackDump` so engineers
+   *  can audit how often the fallback fires and which projects
+   *  triggered it. */
+  installFallback: {
+    triggered: boolean;
+    firstAttemptHeadline: string;
+    firstAttemptEresolve: EresolveReport | null;
+    fallbackSucceeded: boolean;
+    fallbackError: string | null;
+    fallbackArgs: string[];
+    dumpPath: string | null;
+  } | null;
   /** Lifecycle handle for the dev process — used to flag a kill as expected. */
   markStopRequested?: () => void;
 }
@@ -172,7 +199,18 @@ export class LocalPreviewRunner {
   async start(
     projectId: string,
     files: LocalPreviewFile[],
-    onPhase?: (phase: 'spawning-server' | 'waiting-for-port', meta?: { pid?: number | null; port?: number | null; cmd?: string; cwd?: string }) => void,
+    onPhase?: (
+      phase: 'spawning-server' | 'waiting-for-port',
+      meta?: {
+        pid?: number | null;
+        port?: number | null;
+        host?: string;
+        cmd?: string;
+        args?: string[];
+        cwd?: string;
+        envSafe?: Record<string, string>;
+      },
+    ) => void,
     onProbe?: (attempt: ProbeAttempt) => void,
   ): Promise<LocalPreviewRecord> {
     const existing = this.records.get(projectId);
@@ -233,19 +271,185 @@ export class LocalPreviewRunner {
       exited: false,
       lastSuccessfulStep: 'staged files',
       probeAttempts: [],
+      installMode: null,
+      installFallback: null,
     };
     this.records.set(projectId, record);
 
     if (needsInstall) {
       this.opts.logger.info('local-runner: running install', { projectId, pm, stagingDir });
       try {
-        await this.runInstall(stagingDir, pm, record);
+        await this.runInstall(stagingDir, pm, record, { label: 'standard' });
         await writeFile(fpPath, fp, 'utf8');
+        record.installMode = 'standard';
         record.lastSuccessfulStep = 'install completed';
       } catch (err) {
-        this.opts.ports.release(port);
-        this.records.delete(projectId);
-        throw new Error(`npm install failed: ${(err as Error).message}`);
+        // ── ERESOLVE detection ───────────────────────────
+        const combined =
+          ((err as Error).message ?? '') + '\n' + (record.stderrLog ?? '') + '\n' + (record.stdoutLog ?? '');
+        const isEresolve = /ERESOLVE/.test(combined);
+
+        // ── TEMPORARY fallback (npm only) ────────────────
+        // npm 11 hard-fails peer conflicts that npm 6 silently
+        // accepted. While the dependency-compatibility work lands,
+        // retry once with `--legacy-peer-deps` so local previews can
+        // keep iterating. yarn/pnpm have their own strictness knobs
+        // and aren't covered here — the bundle reconciler is the
+        // real fix anyway. NOT applied when the install timed out
+        // or died on a non-peer issue (npm exit code != 1 with no
+        // ERESOLVE token).
+        if (isEresolve && pm === 'npm') {
+          // Parse the original ERESOLVE first so we can persist it
+          // alongside the fallback outcome, regardless of how the
+          // fallback turns out.
+          let firstParsed: EresolveReport | null = null;
+          try { firstParsed = await parseEresolveAsync(combined); } catch { /* keep null */ }
+          const firstHeadline = firstParsed
+            ? buildEresolveHeadline(firstParsed)
+            : `npm install failed with ERESOLVE: ${(err as Error).message}`;
+
+          const fallbackArgs = ['--legacy-peer-deps', '--no-audit', '--no-fund'];
+          this.opts.logger.warn('local-runner: first install failed with ERESOLVE — retrying with --legacy-peer-deps (TEMPORARY fallback)', {
+            event: 'preview:install-fallback:start',
+            projectId,
+            pm,
+            firstAttemptHeadline: firstHeadline,
+            fallbackArgs,
+          });
+          // Reset stream buffers so the fallback's logs are not
+          // mingled with the original failure's tail. The full
+          // original tail is preserved on `firstParsed.raw`.
+          const preservedFirstStdout = record.stdoutLog;
+          const preservedFirstStderr = record.stderrLog;
+          record.stdoutLog = '';
+          record.stderrLog = '';
+
+          let fallbackSucceeded = false;
+          let fallbackError: string | null = null;
+          try {
+            await this.runInstall(stagingDir, pm, record, {
+              extraArgs: ['--legacy-peer-deps'],
+              label: 'legacy-peer-deps-fallback',
+            });
+            fallbackSucceeded = true;
+          } catch (fallbackErr) {
+            fallbackError = (fallbackErr as Error).message;
+          }
+
+          record.installFallback = {
+            triggered: true,
+            firstAttemptHeadline: firstHeadline,
+            firstAttemptEresolve: firstParsed,
+            fallbackSucceeded,
+            fallbackError,
+            fallbackArgs,
+            dumpPath: null,
+          };
+
+          // Persist the structured fallback dump regardless of
+          // outcome — engineers should be able to audit every
+          // fallback invocation, not just the failed ones.
+          const dumpPath = await this.persistInstallFallbackDump(
+            projectId,
+            files,
+            record.installFallback,
+          ).catch((persistErr) => {
+            this.opts.logger.warn('local-runner: failed to persist install-fallback dump', {
+              projectId,
+              error: (persistErr as Error).message,
+            });
+            return null;
+          });
+          if (record.installFallback) record.installFallback.dumpPath = dumpPath;
+
+          if (fallbackSucceeded) {
+            this.opts.logger.warn('local-runner: --legacy-peer-deps fallback SUCCEEDED — preview will boot, but package.json still has unresolved peer conflicts (TEMPORARY)', {
+              event: 'preview:install-fallback:success',
+              projectId,
+              firstAttemptHeadline: firstHeadline,
+              dumpPath,
+            });
+            await writeFile(fpPath, fp, 'utf8');
+            record.installMode = 'legacy-peer-deps-fallback';
+            record.lastSuccessfulStep = 'install completed (legacy-peer-deps fallback)';
+            // Restore the original failure tail so the postmortem
+            // dump (and any later debugging) still has it.
+            record.stdoutLog = preservedFirstStdout;
+            record.stderrLog = preservedFirstStderr;
+            // Skip the failure path below — install effectively
+            // succeeded.
+          } else {
+            this.opts.logger.error('local-runner: --legacy-peer-deps fallback FAILED — surfacing original ERESOLVE', {
+              event: 'preview:install-fallback:failed',
+              projectId,
+              firstAttemptHeadline: firstHeadline,
+              fallbackError,
+              dumpPath,
+            });
+            // Fall through to the original ERESOLVE postmortem
+            // path below by restoring the captured streams and
+            // re-throwing through the same handler.
+            record.stdoutLog = preservedFirstStdout;
+            record.stderrLog = preservedFirstStderr;
+            this.opts.ports.release(port);
+            this.records.delete(projectId);
+            if (firstParsed) {
+              await this.persistEresolveDump(projectId, files, firstParsed).catch((persistErr) => {
+                this.opts.logger.warn('local-runner: failed to persist ERESOLVE dump', {
+                  projectId,
+                  error: (persistErr as Error).message,
+                });
+              });
+              const wrapped: Error & { eresolve?: EresolveReport } = new Error(firstHeadline);
+              wrapped.eresolve = firstParsed;
+              throw wrapped;
+            }
+            throw new Error(`npm install failed: ${(err as Error).message}`);
+          }
+        } else {
+          this.opts.ports.release(port);
+          this.records.delete(projectId);
+          // ── ERESOLVE postmortem (no fallback path taken) ────
+          // Either pm !== npm, or fallback wasn't attempted. Run
+          // the original parser + persist + re-throw flow.
+          if (isEresolve) {
+            let parsed: EresolveReport | null = null;
+            try {
+              parsed = await parseEresolveAsync(combined);
+            } catch (parseErr) {
+              this.opts.logger.warn('local-runner: ERESOLVE parser threw', {
+                projectId,
+                error: (parseErr as Error).message,
+              });
+            }
+            if (parsed) {
+              await this.persistEresolveDump(projectId, files, parsed).catch((persistErr) => {
+                this.opts.logger.warn('local-runner: failed to persist ERESOLVE dump', {
+                  projectId,
+                  error: (persistErr as Error).message,
+                });
+              });
+              const headline = buildEresolveHeadline(parsed);
+              this.opts.logger.error('local-runner: npm install ERESOLVE', {
+                event: 'preview:install-eresolve',
+                projectId,
+                conflicts: parsed.conflicts.map((c) => ({
+                  pkg: c.conflictingPackage,
+                  found: c.foundVersion,
+                  rootRequest: c.rootRequest,
+                  peerRequester: c.peerRequester,
+                  peerRequirement: c.peerRequirement,
+                })),
+                recommendedFix: parsed.recommendedFix,
+                reportPath: parsed.reportPath,
+              });
+              const wrapped: Error & { eresolve?: EresolveReport } = new Error(headline);
+              wrapped.eresolve = parsed;
+              throw wrapped;
+            }
+          }
+          throw new Error(`npm install failed: ${(err as Error).message}`);
+        }
       }
     } else {
       this.opts.logger.info('local-runner: install cache hit', { projectId, fp });
@@ -285,9 +489,13 @@ export class LocalPreviewRunner {
     // possible on some Windows shells) is visible in the UI.
     try {
       onPhase?.('spawning-server', {
-        pid: null, port,
-        cmd: `${devCmd} ${devArgs.join(' ')}`,
+        pid: null,
+        port,
+        host: '127.0.0.1',
+        cmd: devCmd,
+        args: devArgs,
         cwd: stagingDir,
+        envSafe: devEnvSafe,
       });
     } catch { /* progress callbacks must never abort boot */ }
     const child = spawn(devCmd, devArgs, {
@@ -392,9 +600,13 @@ export class LocalPreviewRunner {
     // "we're hung waiting for it to bind a port".
     try {
       onPhase?.('waiting-for-port', {
-        pid: child.pid ?? null, port,
-        cmd: `${devCmd} ${devArgs.join(' ')}`,
+        pid: child.pid ?? null,
+        port,
+        host: '127.0.0.1',
+        cmd: devCmd,
+        args: devArgs,
         cwd: stagingDir,
+        envSafe: devEnvSafe,
       });
     } catch { /* progress callbacks must never abort boot */ }
     try {
@@ -492,15 +704,18 @@ export class LocalPreviewRunner {
     stagingDir: string,
     pm: 'pnpm' | 'npm' | 'yarn',
     record: LocalPreviewRecord,
+    options: { extraArgs?: string[]; label?: string } = {},
   ): Promise<void> {
     return new Promise((resolve, reject) => {
-      const args = pm === 'yarn' ? ['install'] : ['install', '--no-audit', '--no-fund'];
+      const baseArgs = pm === 'yarn' ? ['install'] : ['install', '--no-audit', '--no-fund'];
+      const args = [...baseArgs, ...(options.extraArgs ?? [])];
       const installCmd = pmExe(pm);
       const installEnvSafe = { CI: '1', FORCE_COLOR: '0', NO_COLOR: '1' };
       this.opts.logger.info('local-runner: starting install process', {
         event: 'preview:runtime-start',
         runtime: 'local',
         phase: 'install',
+        attempt: options.label ?? 'standard',
         projectId: record.projectId,
         cmd: installCmd,
         args,
@@ -550,6 +765,191 @@ export class LocalPreviewRunner {
         ));
       });
     });
+  }
+
+  /**
+   * Persist a structured postmortem when `npm install` fails with
+   * ERESOLVE. Written to apps/api/src/testing/last-npm-eresolve.json
+   * so the diagnostic harness and an engineer eyeballing the repo can
+   * see the exact conflict chain without rummaging through npm cache
+   * logs. Includes:
+   *   - projectId
+   *   - the host package.json's dependencies / devDependencies
+   *   - parsed conflict chain (root → peer requester → required range)
+   *   - recommended fix
+   *   - npm sidecar paths (report.txt + debug-0.log) so an engineer
+   *     can correlate quickly.
+   */
+  private async persistEresolveDump(
+    projectId: string,
+    files: LocalPreviewFile[],
+    report: EresolveReport,
+  ): Promise<void> {
+    // Parse the host package.json out of the staged files so the dump
+    // shows what the generator actually produced. We keep ONLY the
+    // dependency blocks — scripts/etc. are noise here.
+    let packageJsonDeps: {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+      optionalDependencies?: Record<string, string>;
+    } = {};
+    const pkgFile = files.find((f) => f.path === 'package.json' || f.path === './package.json');
+    if (pkgFile) {
+      try {
+        const pkg = JSON.parse(pkgFile.contents) as Record<string, unknown>;
+        for (const k of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const) {
+          if (pkg[k] && typeof pkg[k] === 'object') {
+            (packageJsonDeps as Record<string, unknown>)[k] = pkg[k];
+          }
+        }
+      } catch {
+        // Non-fatal: include a marker so the dump signals the parse
+        // failure rather than silently omitting the deps block.
+        packageJsonDeps = { dependencies: { '__pkgJsonParseFailed__': 'true' } };
+      }
+    }
+    const dump = {
+      timestamp: new Date().toISOString(),
+      projectId,
+      errorCode: report.errorCode,
+      headline: buildEresolveHeadline(report),
+      resolvingFor: report.resolvingFor,
+      packageJson: packageJsonDeps,
+      conflicts: report.conflicts,
+      recommendedFix: report.recommendedFix,
+      npmReportPath: report.reportPath,
+      npmDebugLogPath: report.debugLogPath,
+      rawReportTail: report.raw.slice(-2000),
+    };
+    // Resolve apps/api/src/testing/last-npm-eresolve.json relative to
+    // this module. __dirname-ish via import.meta.url would be the right
+    // ESM idiom, but this codebase already uses CWD-relative paths in
+    // sibling postmortem dumps (last-preview-runtime-failure.json), so
+    // we stay consistent.
+    const dumpPath = join(process.cwd(), 'apps/api/src/testing/last-npm-eresolve.json');
+    try {
+      await mkdir(dirname(dumpPath), { recursive: true });
+      await writeFile(dumpPath, JSON.stringify(dump, null, 2), 'utf8');
+      this.opts.logger.info('local-runner: ERESOLVE dump persisted', {
+        event: 'preview:install-eresolve:dump',
+        projectId,
+        dumpPath,
+        conflictCount: report.conflicts.length,
+      });
+    } catch (err) {
+      this.opts.logger.warn('local-runner: failed to write ERESOLVE dump', {
+        projectId,
+        dumpPath,
+        error: (err as Error).message,
+      });
+    }
+  }
+
+  /**
+   * Persist a structured dump for every TEMPORARY `--legacy-peer-deps`
+   * fallback. Mirrors `last-npm-eresolve.json` shape so engineers can
+   * audit which projects depended on the fallback (i.e. which still
+   * have peer-conflicts the generator couldn't auto-fix). Written to
+   * `apps/api/src/testing/last-install-fallback.json`. Best-effort —
+   * a write failure is logged and swallowed; the in-memory record
+   * remains the source of truth.
+   *
+   * NOT a substitute for the dependency-compatibility work — the dump
+   * is intended to make the fallback's footprint visible so it can be
+   * retired once the generator emits installable package.json sets.
+   */
+  private async persistInstallFallbackDump(
+    projectId: string,
+    files: LocalPreviewFile[],
+    fallback: NonNullable<LocalPreviewRecord['installFallback']>,
+  ): Promise<string | null> {
+    let packageJsonDeps: {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+      optionalDependencies?: Record<string, string>;
+    } = {};
+    const pkgFile = files.find((f) => f.path === 'package.json' || f.path === './package.json');
+    if (pkgFile) {
+      try {
+        const pkg = JSON.parse(pkgFile.contents) as Record<string, unknown>;
+        for (const k of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const) {
+          if (pkg[k] && typeof pkg[k] === 'object') {
+            (packageJsonDeps as Record<string, unknown>)[k] = pkg[k];
+          }
+        }
+      } catch {
+        packageJsonDeps = { dependencies: { __pkgJsonParseFailed__: 'true' } };
+      }
+    }
+    // Status snapshot — surface BOTH the persisted project.status
+    // and project.preview.previewStatus so the postmortem makes the
+    // separation visible. The install fallback is a preview-side
+    // event; project.status MUST remain whatever generation left it
+    // (typically 'completed'). If this snapshot ever shows
+    // projectStatus !== 'completed' alongside a failed fallback,
+    // the bug is upstream of preview, not in preview.
+    let projectStatusSnapshot: string | null = null;
+    let previewStatusSnapshot: string | null = null;
+    try {
+      const rec = await this.opts.projectStore.get(projectId);
+      if (rec) {
+        projectStatusSnapshot = rec.status ?? null;
+        previewStatusSnapshot = rec.preview?.previewStatus ?? null;
+      }
+    } catch {
+      /* best-effort */
+    }
+    const dump = {
+      timestamp: new Date().toISOString(),
+      projectId,
+      code: 'PREVIEW_INSTALL_LEGACY_PEER_DEPS_FALLBACK',
+      note:
+        'TEMPORARY fallback for local preview only. The package.json still has unresolved peer ' +
+        'conflicts; this dump exists so engineers can audit how often the fallback fires. The ' +
+        'permanent fix is the generator-side compatibility-bundle reconciler — fix the root ' +
+        'cause and retire this fallback.',
+      projectStatus: projectStatusSnapshot,
+      previewStatus: previewStatusSnapshot,
+      installModeUsed: fallback.fallbackSucceeded ? 'legacy-peer-deps-fallback' : 'failed',
+      fallbackArgs: fallback.fallbackArgs,
+      fallbackSucceeded: fallback.fallbackSucceeded,
+      fallbackError: fallback.fallbackError,
+      firstAttempt: {
+        headline: fallback.firstAttemptHeadline,
+        eresolve: fallback.firstAttemptEresolve
+          ? {
+              errorCode: fallback.firstAttemptEresolve.errorCode,
+              resolvingFor: fallback.firstAttemptEresolve.resolvingFor,
+              conflicts: fallback.firstAttemptEresolve.conflicts,
+              recommendedFix: fallback.firstAttemptEresolve.recommendedFix,
+              npmReportPath: fallback.firstAttemptEresolve.reportPath,
+              npmDebugLogPath: fallback.firstAttemptEresolve.debugLogPath,
+            }
+          : null,
+      },
+      packageJson: packageJsonDeps,
+    };
+    const dumpPath = join(process.cwd(), 'apps/api/src/testing/last-install-fallback.json');
+    try {
+      await mkdir(dirname(dumpPath), { recursive: true });
+      await writeFile(dumpPath, JSON.stringify(dump, null, 2), 'utf8');
+      this.opts.logger.info('local-runner: install-fallback dump persisted', {
+        event: 'preview:install-fallback:dump',
+        projectId,
+        dumpPath,
+        succeeded: fallback.fallbackSucceeded,
+      });
+      return dumpPath;
+    } catch (err) {
+      this.opts.logger.warn('local-runner: failed to write install-fallback dump', {
+        projectId,
+        dumpPath,
+        error: (err as Error).message,
+      });
+      return null;
+    }
   }
 
   /**

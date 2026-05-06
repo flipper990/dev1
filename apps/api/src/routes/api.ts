@@ -170,6 +170,13 @@ export function registerRoutes(
       '[route:get-project] lookup',
     );
     try {
+      // Always read fresh from disk via projectStore.get(). The store
+      // does NOT cache — every call enters the per-project lock and
+      // re-reads project.json so we never observe an in-flight write.
+      // Combined with PreviewManager's durability gate (await
+      // record.pendingSync before returning ready/failed), any preview
+      // transition that has been acknowledged to its caller MUST be
+      // visible here.
       const project = await projectStore.get(id);
       if (!project) {
         request.log.info(
@@ -178,7 +185,51 @@ export function registerRoutes(
         );
         return reply.status(404).send({ error: 'Project not found' });
       }
-      return project;
+      // Defensive normalisation of the preview block. The persisted
+      // shape uses optional fields (`?:`) — when no preview has ever
+      // been started they're `undefined`, which can render as
+      // "missing" to a JSON consumer. Materialise the six contract
+      // fields explicitly so every response carries them, even on a
+      // freshly-generated project that hasn't been previewed yet.
+      // This is the API surface contract for the dashboard.
+      const p = project.preview ?? null;
+      const previewBlock = {
+        previewStatus: p?.previewStatus ?? 'idle',
+        previewReady: p?.previewReady ?? false,
+        previewUrl: p?.previewUrl ?? null,
+        previewStartedAt: p?.previewStartedAt ?? null,
+        previewReadyAt: p?.previewReadyAt ?? null,
+        previewFailedAt: p?.previewFailedAt ?? null,
+        previewError: p?.previewError ?? null,
+        // Spread the original preview block last so any additional
+        // forensic fields (probeAttempts, exitInfo, timeline, …) flow
+        // through unchanged. The explicit-keys above only act as
+        // defaults; if `p` provides a value, this `...p` overrides.
+        ...(p ?? {}),
+      };
+      const responseBody = { ...project, preview: previewBlock };
+
+      // Disable any intermediate caching. Preview state changes
+      // multiple times per second during boot — no proxy or browser
+      // cache layer should serve a stale snapshot. Belt-and-braces
+      // alongside the frontend's `cache: 'no-store'` fetch option.
+      reply.header('Cache-Control', 'no-store, no-cache, must-revalidate');
+      reply.header('Pragma', 'no-cache');
+
+      request.log.info(
+        {
+          event: 'route:get-project:served',
+          projectId: id,
+          reqId: request.id,
+          projectStatus: project.status,
+          previewStatus: previewBlock.previewStatus,
+          previewUrl: previewBlock.previewUrl,
+          previewReadyAt: previewBlock.previewReadyAt,
+          stateVersion: project.stateVersion ?? null,
+        },
+        '[route:get-project] served',
+      );
+      return responseBody;
     } catch (err) {
       if (err instanceof ProjectRecordCorruptError) {
         request.log.error(

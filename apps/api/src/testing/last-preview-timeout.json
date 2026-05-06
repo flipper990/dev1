@@ -1,0 +1,607 @@
+{
+  "timestamp": "2026-05-06T16:00:44.698Z",
+  "kind": "preview-boot-timeout",
+  "timeoutBudgetMs": 150000,
+  "projectId": "JZsAZERdHMoY",
+  "previewId": "49f4fc57abd2",
+  "previewStatus": "failed",
+  "previewStep": "preview:timeout",
+  "previewStepStartedAt": "2026-05-06T16:00:44.677Z",
+  "previewStartedAt": "2026-05-06T15:58:14.680Z",
+  "previewTimeoutAt": "2026-05-06T16:00:44.677Z",
+  "lastSuccessfulStep": "Preview startup timed out after 150s [cause=http-probe-failed] — TCP port opened but HTTP never returned a usable response (probes connected but readiness never resolved). Step at timeout: preview:htt",
+  "runtime": "docker",
+  "timeoutCause": "http-probe-failed",
+  "timeoutLifecycle": {
+    "installStarted": false,
+    "installCompleted": false,
+    "buildStarted": true,
+    "buildCompleted": true,
+    "serverSpawned": true,
+    "portOpened": true,
+    "firstProbeAttempted": true
+  },
+  "child": {
+    "pid": null,
+    "alive": null,
+    "exitCode": null,
+    "exitSignal": null,
+    "startedAt": null,
+    "exitedAt": null
+  },
+  "processLifecycle": {
+    "startedAt": "2026-05-06T15:58:14.680Z",
+    "exitedAt": null,
+    "exitCode": null,
+    "signal": null,
+    "alive": null,
+    "pid": null,
+    "uptimeMs": 149997,
+    "classification": "alive-hanging",
+    "capturedAt": "2026-05-06T16:00:44.677Z"
+  },
+  "command": "docker run",
+  "commandArgs": [
+    "-d",
+    "--rm",
+    "--name",
+    "devteam-preview-jzsazerdhmoy",
+    "-p",
+    "5720:3000",
+    "devteam-preview/jzsazerdhmoy:latest"
+  ],
+  "cwd": "..\\..\\data\\projects\\JZsAZERdHMoY\\output",
+  "port": 5720,
+  "envSafe": {
+    "PORT": "3001",
+    "HOST": "0.0.0.0",
+    "NODE_ENV": "development"
+  },
+  "stdoutTail": null,
+  "stderrTail": null,
+  "httpProbeEverConnected": false,
+  "httpProbeOkAt": null,
+  "lastProbeError": null,
+  "probeDiagnosis": "TCP connected but no HTTP response was received (process bound the port but is not serving HTTP yet).",
+  "probeSummary": {
+    "kind": "tcp-opened-no-http",
+    "totalProbesAttempted": 35,
+    "tcpEverConnected": true,
+    "httpEverResponded": false,
+    "lastStatus": null,
+    "lastOutcome": "tcp-failed",
+    "lastErrorCode": "ECONNREFUSED",
+    "lastErrorMessage": "connect ECONNREFUSED 127.0.0.1:5720",
+    "lastBodySample": null
+  },
+  "contentIndicatedFrameworkError": false,
+  "overlayDetection": null,
+  "probeAttempts": [
+    {
+      "at": "2026-05-06T15:59:42.444Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T15:59:44.136Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "GET",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T15:59:46.152Z",
+      "durationMs": 0,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T15:59:48.163Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T15:59:50.173Z",
+      "durationMs": 0,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T15:59:52.186Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "GET",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T15:59:54.190Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T15:59:56.200Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T15:59:58.201Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:00.217Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "GET",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:02.220Z",
+      "durationMs": 0,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:04.222Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:06.232Z",
+      "durationMs": 0,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:08.232Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "GET",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:10.241Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:12.256Z",
+      "durationMs": 0,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:14.257Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:16.259Z",
+      "durationMs": 0,
+      "url": "http://127.0.0.1:5720/",
+      "method": "GET",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:18.270Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:20.272Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:22.281Z",
+      "durationMs": 0,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:24.292Z",
+      "durationMs": 0,
+      "url": "http://127.0.0.1:5720/",
+      "method": "GET",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:26.297Z",
+      "durationMs": 0,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:28.312Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:30.320Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:32.325Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "GET",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:34.329Z",
+      "durationMs": 0,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:36.338Z",
+      "durationMs": 0,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:38.352Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:40.355Z",
+      "durationMs": 0,
+      "url": "http://127.0.0.1:5720/",
+      "method": "GET",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:42.366Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    },
+    {
+      "at": "2026-05-06T16:00:44.377Z",
+      "durationMs": 1,
+      "url": "http://127.0.0.1:5720/",
+      "method": "HEAD",
+      "tcpConnected": false,
+      "outcome": "tcp-failed",
+      "ok": false,
+      "status": null,
+      "bodySample": null,
+      "errorCode": "ECONNREFUSED",
+      "errorMessage": "connect ECONNREFUSED 127.0.0.1:5720"
+    }
+  ],
+  "stepDurations": [
+    {
+      "step": "preview:queued",
+      "startedAt": "2026-05-06T15:58:14.680Z",
+      "completedAt": "2026-05-06T15:58:14.681Z",
+      "durationMs": 1
+    },
+    {
+      "step": "preview:staging-files",
+      "startedAt": "2026-05-06T15:58:14.681Z",
+      "completedAt": "2026-05-06T15:58:14.699Z",
+      "durationMs": 18
+    },
+    {
+      "step": "preview:building",
+      "startedAt": "2026-05-06T15:58:14.699Z",
+      "completedAt": "2026-05-06T15:59:38.859Z",
+      "durationMs": 84160
+    },
+    {
+      "step": "preview:spawning-server",
+      "startedAt": "2026-05-06T15:59:38.859Z",
+      "completedAt": "2026-05-06T15:59:39.882Z",
+      "durationMs": 1023
+    },
+    {
+      "step": "preview:waiting-for-port",
+      "startedAt": "2026-05-06T15:59:39.882Z",
+      "completedAt": "2026-05-06T15:59:41.397Z",
+      "durationMs": 1515
+    },
+    {
+      "step": "preview:http-probing",
+      "startedAt": "2026-05-06T15:59:41.397Z",
+      "completedAt": "2026-05-06T16:00:44.677Z",
+      "durationMs": 63280
+    }
+  ],
+  "historyTail": [
+    {
+      "step": "detecting:start",
+      "at": "2026-05-06T15:58:14.680Z"
+    },
+    {
+      "step": "building:docker build (npm install)",
+      "at": "2026-05-06T15:58:14.699Z"
+    },
+    {
+      "step": "starting:docker run + health probe",
+      "at": "2026-05-06T15:59:38.859Z"
+    },
+    {
+      "step": "failed:Preview startup timed out after 150s [cause=http-probe-failed] — TCP port opened but HTTP never returned a usable response (probes connected but readiness never resolved). Step at timeout: preview:htt",
+      "at": "2026-05-06T16:00:44.677Z"
+    }
+  ],
+  "timelineTail": [
+    {
+      "event": "runner-start",
+      "at": "2026-05-06T15:58:14.680Z",
+      "previewStatus": "preparing",
+      "durationMs": null,
+      "details": {
+        "mode": "docker",
+        "contextDir": "..\\..\\data\\projects\\JZsAZERdHMoY\\output",
+        "previewId": "49f4fc57abd2"
+      }
+    },
+    {
+      "event": "build-start",
+      "at": "2026-05-06T15:58:14.699Z",
+      "previewStatus": "building",
+      "durationMs": null,
+      "details": {
+        "stack": "nextjs",
+        "port": 3000
+      }
+    },
+    {
+      "event": "build-end",
+      "at": "2026-05-06T15:59:38.859Z",
+      "previewStatus": "building",
+      "durationMs": 84160,
+      "details": {
+        "ok": true,
+        "imageTag": "devteam-preview/jzsazerdhmoy:latest"
+      }
+    },
+    {
+      "event": "port-assigned",
+      "at": "2026-05-06T15:59:38.861Z",
+      "previewStatus": "starting",
+      "durationMs": null,
+      "details": {
+        "hostPort": 5720,
+        "containerPort": 3000
+      }
+    },
+    {
+      "event": "devserver-start",
+      "at": "2026-05-06T15:59:39.882Z",
+      "previewStatus": "starting",
+      "durationMs": null,
+      "details": {
+        "containerId": "0f0413e82b8155400a4c544fecdbb18a31f4982353db3fedb98c088d91907428",
+        "containerName": "devteam-preview-jzsazerdhmoy",
+        "hostPort": 5720
+      }
+    }
+  ]
+}

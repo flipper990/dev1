@@ -154,6 +154,7 @@ interface GenerationResult {
     | 'fail-preview-failed'
     | 'fail-preview-timeout'
     | 'fail-preview-overlay'
+    | 'fail-preview-not-persisted'
     | 'fail-metadata-corruption';
   fixAttempts: number;
   attempts: AttemptLog[];
@@ -384,6 +385,9 @@ async function createProject(prompt: string): Promise<CreatedProject> {
 interface ProjectRecordLite {
   id: string;
   status: 'generating' | 'completed' | 'failed' | string;
+  /** Stamped by ProjectGenerator the moment status flips to a terminal
+   *  value ('completed' or 'failed'). Independent of preview lifecycle. */
+  completedAt?: string | null;
   error?: string;
   files?: Array<{ path: string; content: string }>;
   totalCostUsd?: number;
@@ -425,6 +429,10 @@ interface ProjectRecordLite {
     previewUrl?: string | null;
     previewStartedAt?: string | null;
     previewReadyAt?: string | null;
+    /** Stamped by PreviewManager the moment previewStatus flips to 'failed'.
+     *  Lives entirely on the preview block — must NEVER mutate project.status
+     *  or project.completedAt. */
+    previewFailedAt?: string | null;
     previewError?: string | null;
     /** Set by PreviewManager when the readiness gate detected a dev
      *  server overlay/error page (Module not found, Build Error, …).
@@ -1839,6 +1847,87 @@ async function runOne(index: number, prompt: string): Promise<GenerationResult> 
         );
       }
 
+      // ── Persistence-verification gate ───────────────────────
+      // The preview gate above accepts EITHER the live in-memory
+      // PreviewManager record OR the persisted project record
+      // reporting `previewStatus === 'ready'`. That is intentionally
+      // permissive (some PreviewManager paths emit 'ready' before the
+      // persistence flush completes), but it means a transient bug
+      // — e.g. updatePreview rejected by the state-guard, or a server
+      // restart between the live ready signal and the syncPreview-
+      // ToProject write — could let a run pass the gate without the
+      // durable record ever showing the ready state. Downstream
+      // consumers (dashboard, cards, postmortem) read EXCLUSIVELY
+      // from the persisted record, so a non-persisted ready is
+      // indistinguishable from a stuck 'starting' on every surface
+      // outside this runner.
+      //
+      // Re-fetch the project record once after the gate concludes
+      // ready and require BOTH `preview.previewStatus === 'ready'`
+      // AND a non-empty `preview.previewUrl` to be present on disk.
+      // The runtime gate result and the persisted block are both
+      // logged so an engineer can see precisely what diverged.
+      if (previewOutcome.outcome === 'ready') {
+        const verify = await getProject(projectId).catch((err) => {
+          log.warn(
+            `  ↳ post-ready project re-fetch failed: ${(err as Error).message}`,
+          );
+          return null;
+        });
+        const persistedPreview = verify?.preview ?? null;
+        const persistedStatus = persistedPreview?.previewStatus ?? null;
+        const persistedUrl = persistedPreview?.previewUrl ?? null;
+        const gateResult = {
+          outcome: previewOutcome.outcome,
+          previewStatus: previewOutcome.previewStatus,
+          previewUrl: previewOutcome.previewUrl,
+          previewError: previewOutcome.previewError,
+          previewStartedAt: previewOutcome.previewStartedAt,
+          previewReadyAt: previewOutcome.previewReadyAt,
+          transitionsObserved: previewOutcome.transitionsObserved,
+        };
+        log.info(
+          '  ↳ preview persistence verification — in-memory gate result: ' +
+            JSON.stringify(gateResult),
+        );
+        log.info(
+          '  ↳ preview persistence verification — persisted project preview block: ' +
+            JSON.stringify(persistedPreview),
+        );
+        const persistedReady =
+          persistedStatus === 'ready' &&
+          typeof persistedUrl === 'string' &&
+          persistedUrl.length > 0;
+        if (!persistedReady) {
+          status = 'fail-preview-not-persisted';
+          finalError =
+            'Preview ready was not persisted to project record ' +
+            `(persisted previewStatus=${persistedStatus ?? 'null'}, ` +
+            `persisted previewUrl=${persistedUrl ?? 'null'}, ` +
+            `gate previewStatus=${previewOutcome.previewStatus}, ` +
+            `gate previewUrl=${previewOutcome.previewUrl ?? 'null'})`;
+          log.error(`  ↳ preview persistence verification FAIL — ${finalError}`);
+          return {
+            index,
+            projectId,
+            prompt,
+            startedAt,
+            completedAt: new Date().toISOString(),
+            totalDurationMs: Date.now() - t0,
+            status,
+            fixAttempts: 0,
+            attempts,
+            finalError,
+            preview: previewOutcome,
+            previewContentHealth,
+            diagnostics: await collectDiagnostics(projectId),
+          };
+        }
+        log.info(
+          `  ↳ preview persistence verified (previewStatus=ready, previewUrl=${persistedUrl})`,
+        );
+      }
+
       // ── QA-side preview content-health gate ─────────────────
       // Defence-in-depth check that runs ONLY when the preview gate
       // actually produced a reachable preview (`outcome: 'ready'`).
@@ -2348,15 +2437,18 @@ function dumpProjectSnapshot(label: string, p: ProjectRecordLite | null): void {
   // single `status:` line, which made it look as if a preview
   // failure had regressed the generation status.
   log.info(`  projectStatus   : ${p.status}`);
+  log.info(`  projectCompletedAt: ${p.completedAt ?? '(not set)'}`);
   const pv = p.preview;
   if (pv) {
     log.info(`  previewStatus   : ${pv.previewStatus}`);
     log.info(`  previewReady    : ${pv.previewReady}`);
+    log.info(`  previewFailedAt : ${pv.previewFailedAt ?? '(not set)'}`);
     if (pv.previewError) {
       log.info(`  previewError    : ${pv.previewError.slice(0, 240)}`);
     }
   } else {
     log.info(`  previewStatus   : (no preview block persisted)`);
+    log.info(`  previewFailedAt : (no preview block persisted)`);
   }
   log.info(`  phase           : ${phase}`);
   log.info(`  lastMeaningful  : ${step}`);

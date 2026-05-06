@@ -1,0 +1,91 @@
+{
+  "timestamp": "2026-05-06T15:53:21.075Z",
+  "projectId": "AH0QOxRHDYV9",
+  "previewId": "dc33db75ed1c",
+  "runtime": "local-fallback",
+  "reason": "npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_20_803Z-debug-0.log",
+  "timeoutCause": null,
+  "timeoutLifecycle": null,
+  "command": null,
+  "commandArgs": null,
+  "cwd": null,
+  "runtimePath": null,
+  "packageJsonPath": null,
+  "packageManager": "npm",
+  "installCommand": "npm install --no-audit --no-fund",
+  "installCommandFallback": null,
+  "startCommand": "npm run dev",
+  "reproduceCommand": [
+    "# cd <runtimePath unavailable — staging never started>",
+    "# Install (the runner used: unknown)",
+    "npm install --no-audit --no-fund",
+    "# Start dev server on the same port the runner used:",
+    "$env:PORT=\"<port>\"; npm run dev"
+  ],
+  "host": "127.0.0.1",
+  "port": null,
+  "envSafe": {
+    "PORT": "3001",
+    "HOST": "0.0.0.0",
+    "NODE_ENV": "development"
+  },
+  "pid": null,
+  "currentStep": "preview:installing",
+  "lastSuccessfulStep": "local-fallback runner starting",
+  "installCompleted": false,
+  "installMode": null,
+  "serverSpawned": false,
+  "portEverOpened": false,
+  "httpEverResponded": false,
+  "childAlive": null,
+  "processStartedAt": null,
+  "processExitedAt": null,
+  "exitCode": null,
+  "exitSignal": null,
+  "stdoutTail": null,
+  "stderrTail": null,
+  "probeAttemptsTotal": 0,
+  "probeAttemptsTail": [],
+  "installFallback": null,
+  "stepDurations": [
+    {
+      "step": "preview:queued",
+      "startedAt": "2026-05-06T15:53:18.055Z",
+      "completedAt": "2026-05-06T15:53:18.056Z",
+      "durationMs": 1
+    },
+    {
+      "step": "preview:staging-files",
+      "startedAt": "2026-05-06T15:53:18.056Z",
+      "completedAt": "2026-05-06T15:53:18.076Z",
+      "durationMs": 20
+    }
+  ],
+  "previewStatusTransitions": [
+    {
+      "step": "starting:local-fallback",
+      "at": "2026-05-06T15:53:18.055Z"
+    }
+  ],
+  "localStartAttempts": [
+    {
+      "attempt": 1,
+      "ok": false,
+      "error": "npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_18_298Z-debug-0.log",
+      "portOpened": false,
+      "durationMs": 495,
+      "startedAtIso": "2026-05-06T15:53:18.076Z",
+      "endedAtIso": "2026-05-06T15:53:18.571Z"
+    },
+    {
+      "attempt": 2,
+      "ok": false,
+      "error": "npm install failed: npm install exited code=1 — npm error code EOVERRIDE | npm error Override for react@^19.0.0 conflicts with direct dependency | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T15_53_20_803Z-debug-0.log",
+      "portOpened": false,
+      "durationMs": 494,
+      "startedAtIso": "2026-05-06T15:53:20.580Z",
+      "endedAtIso": "2026-05-06T15:53:21.074Z"
+    }
+  ],
+  "localRetrySucceeded": false
+}

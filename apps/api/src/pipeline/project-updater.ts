@@ -81,7 +81,11 @@ export class ProjectUpdater {
 
     existing.status = 'generating';
     existing.sessionId = sessionId;
-    await this.projectStore.save(existing);
+    await this.projectStore.save(existing, {
+      caller: 'project-updater:start',
+      reason: 'update flow flips completed→generating',
+      allowStatusDowngrade: true,
+    });
 
     const bus = new InMemoryMessageBus();
     const orchestrator = new PipelineOrchestrator(this.agents, bus, this.logger);
@@ -131,7 +135,11 @@ export class ProjectUpdater {
         );
         existing.status = 'failed';
         existing.updatedAt = new Date().toISOString();
-        await this.projectStore.save(existing);
+        await this.projectStore.save(existing, {
+          caller: 'project-updater:file-loss-safeguard',
+          reason: `existing ${existingSourceCount} → new ${newSourceCount} source files`,
+          allowStatusDowngrade: true,
+        });
         return {
           projectId,
           sessionId,
@@ -212,7 +220,11 @@ export class ProjectUpdater {
       existing.version = newVersion;
       existing.versionHistory = [...(existing.versionHistory ?? []), versionMeta];
       existing.updatedAt = new Date().toISOString();
-      await this.projectStore.save(existing);
+      await this.projectStore.save(existing, {
+        caller: 'project-updater:final-save',
+        reason: `update v${newVersion} → status=${existing.status}`,
+        allowStatusDowngrade: true,
+      });
 
       this.logger.info(`Project ${projectId} updated to v${newVersion}`, {
         files: newFiles.length,
@@ -233,7 +245,11 @@ export class ProjectUpdater {
       const error = (err as Error).message;
       existing.status = 'failed';
       existing.updatedAt = new Date().toISOString();
-      await this.projectStore.save(existing);
+      await this.projectStore.save(existing, {
+        caller: 'project-updater:catch',
+        reason: error.slice(0, 200),
+        allowStatusDowngrade: true,
+      });
       this.logger.error(`Project ${projectId} update crashed`, { error });
       return { projectId, sessionId, success: false, error };
     } finally {

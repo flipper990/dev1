@@ -15,11 +15,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../lib/store';
+import { reconcileProjectStatus } from '../../lib/project-status';
+import type { StatusReconciliation } from '../../lib/project-status';
 import {
   ApiError,
   generateProject,
   getPreviewHealth,
-  getProject,
+  getProjectDetail,
   listProjects,
   openSessionSocket,
   updateProject,
@@ -93,6 +95,11 @@ function tokensCompact(n: number): string {
 
 function deriveProjects(list: GeneratedProject[]): Project[] {
   return list.slice(0, 8).map((p) => {
+    // Render the RAW backend project.status verbatim. The recent-card
+    // and the live preview pane are now allowed to disagree (e.g.
+    // BUILD FAILED + PREVIEW READY) — the inconsistency banner
+    // surfaces this and the data hook re-hydrates. We never invent
+    // success here.
     const status: Project['status'] =
       p.status === 'generating' ? 'building'
       : p.status === 'failed'   ? 'failed'
@@ -335,18 +342,65 @@ function deriveSparkline(list: GeneratedProject[]): number[] {
 }
 
 /**
+ * Metadata-error state surfaced when GET /api/projects/:id fails. Kept
+ * separate from the hard `error` field so the dashboard can keep the
+ * preview iframe + cached list row mounted while it retries — a
+ * temporary 5xx on the detail endpoint should never tear down a
+ * working preview.
+ */
+export interface MetadataErrorState {
+  projectId: string;
+  /** 'corrupt' = backend says project.json is corrupt and recovery
+   *  failed/unavailable. 'transient' = network/5xx; will retry. */
+  kind: 'corrupt' | 'transient';
+  recovery?: 'unavailable' | 'failed';
+  message: string;
+  /** Last attempt timestamp (ms). Used to display "retrying in N s" or
+   *  trigger a manual retry. */
+  lastAttemptAt: number;
+  /** Number of consecutive failed attempts (1 = first failure). */
+  attempts: number;
+}
+
+// ── Module-level pub/sub so the hook (which is mounted once) can subscribe
+// to outcomes published by the module-level hydrateActiveProject helper.
+type MetadataListener = (next: MetadataErrorState | null) => void;
+const metadataListeners = new Set<MetadataListener>();
+function publishMetadataState(next: MetadataErrorState | null): void {
+  for (const fn of metadataListeners) fn(next);
+}
+
+/**
  * Fetch the authoritative backend record for a project and reconcile it
  * into the Zustand store. Module-level (not a hook) so it can be invoked
  * from event handlers, useEffect bodies, and WS callbacks without
  * dependency-array juggling. Always returns void; logs divergence when
  * the cached entry disagrees with the backend so cross-project /
  * stale-state regressions are visible in the console.
+ *
+ * Resilience contract:
+ *   - 404                     → clear metadata error (project deleted)
+ *   - corrupt (PROJECT_RECORD_CORRUPT)
+ *                             → publish metadataError(kind=corrupt).
+ *                               Do NOT clear selectedProjectId. Cached
+ *                               list row + preview iframe stay mounted.
+ *   - transient (5xx, network, timeout)
+ *                             → publish metadataError(kind=transient).
+ *                               Caller's backoff retry will republish
+ *                               with attempts++ until success.
+ *   - ok                      → clear metadataError; upsertProject.
+ *
+ * `attemptHint` lets the caller (the backoff retry loop) report which
+ * attempt this is so the published state is monotonic.
  */
-async function hydrateActiveProject(projectId: string | null | undefined): Promise<void> {
-  if (!projectId || projectId === '__new__') return;
-  try {
-    const fresh = await getProject(projectId);
-    if (!fresh) return;
+async function hydrateActiveProject(
+  projectId: string | null | undefined,
+  attemptHint = 1,
+): Promise<'ok' | 'corrupt' | 'transient' | 'not-found' | 'skipped'> {
+  if (!projectId || projectId === '__new__') return 'skipped';
+  const outcome = await getProjectDetail(projectId);
+  if (outcome.kind === 'ok') {
+    const fresh = outcome.project;
     const st = useStore.getState();
     const cached = st.projects.find((p) => p.id === projectId) ?? null;
     if (cached && cached.status !== fresh.status) {
@@ -365,10 +419,43 @@ async function hydrateActiveProject(projectId: string | null | undefined): Promi
       });
     }
     st.upsertProject(fresh);
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[devteam] hydrateActiveProject failed', { projectId, error: (e as Error).message });
+    publishMetadataState(null);
+    return 'ok';
   }
+  if (outcome.kind === 'not-found') {
+    // 404 — no metadata error to surface; the list-poll reconciler
+    // handles selection rebinding.
+    publishMetadataState(null);
+    return 'not-found';
+  }
+  if (outcome.kind === 'corrupt') {
+    // eslint-disable-next-line no-console
+    console.warn('[devteam] hydrateActiveProject: project record is corrupt', {
+      projectId, recovery: outcome.recovery, message: outcome.message,
+    });
+    publishMetadataState({
+      projectId,
+      kind: 'corrupt',
+      recovery: outcome.recovery,
+      message: outcome.message,
+      lastAttemptAt: Date.now(),
+      attempts: attemptHint,
+    });
+    return 'corrupt';
+  }
+  // transient
+  // eslint-disable-next-line no-console
+  console.warn('[devteam] hydrateActiveProject failed (transient)', {
+    projectId, attempt: attemptHint, error: outcome.message, status: outcome.status,
+  });
+  publishMetadataState({
+    projectId,
+    kind: 'transient',
+    message: outcome.message,
+    lastAttemptAt: Date.now(),
+    attempts: attemptHint,
+  });
+  return 'transient';
 }
 
 /* ── public hook ─────────────────────────────────────────────────────── */
@@ -402,6 +489,21 @@ export interface UseDevteamData {
    *  newest id, and hydrate it. Used to confirm the dashboard is bound
    *  to the project the backend just created. */
   openLatestProject: () => Promise<void>;
+  /** Non-fatal project-detail fetch failure for the active project.
+   *  When set, the dashboard renders a banner but KEEPS the preview
+   *  iframe + cached list row mounted. A backoff retry runs in the
+   *  background; success clears this field automatically. */
+  metadataError: MetadataErrorState | null;
+  /** Force an immediate retry of the project-detail fetch (bypasses
+   *  the backoff timer). Bound to the banner's "Retry now" button. */
+  retryMetadata: () => Promise<void>;
+  /** Reconciliation summary for the currently-selected project: the
+   *  raw backend `project.status`, the raw `preview.previewStatus`,
+   *  and a derived `consistency` flag (`in_sync` | `conflicting`).
+   *  Pills always render the raw values verbatim; the consistency
+   *  flag is used ONLY to decide whether to render the small
+   *  "status out of sync" banner. */
+  statusReconciliation: StatusReconciliation;
 }
 
 export function useDevteamData(): UseDevteamData {
@@ -425,6 +527,48 @@ export function useDevteamData(): UseDevteamData {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [dockerReady, setDockerReady] = useState<boolean | null>(null);
+  const [metadataError, setMetadataError] = useState<MetadataErrorState | null>(null);
+  // Mirror metadataError into a ref so non-React callbacks (the
+  // listProjects poller, focus/visibility handler) can read the latest
+  // value without forcing themselves to recreate on every change.
+  const metadataErrorRef = useRef<MetadataErrorState | null>(null);
+  useEffect(() => { metadataErrorRef.current = metadataError; }, [metadataError]);
+
+  // Subscribe to metadata-state outcomes published by hydrateActiveProject.
+  // Single subscriber for the lifetime of the hook instance; cleanup on
+  // unmount lets the next mount take over without leaking.
+  useEffect(() => {
+    const listener: MetadataListener = (next) => setMetadataError(next);
+    metadataListeners.add(listener);
+    return () => { metadataListeners.delete(listener); };
+  }, []);
+
+  // Backoff retry: when project-detail fetch fails (transient OR corrupt),
+  // re-attempt at 2s, 4s, 8s, 16s (capped at 30s). Resets on selection
+  // change or success. Keeps `selectedProjectId` untouched throughout —
+  // the failure only affects metadata, not preview iframe routing.
+  useEffect(() => {
+    if (!metadataError) return;
+    if (metadataError.projectId !== selectedProjectId) return;
+    const delay = Math.min(30_000, 2_000 * Math.pow(2, Math.max(0, metadataError.attempts - 1)));
+    // eslint-disable-next-line no-console
+    console.info('[devteam] metadata-error retry scheduled', {
+      projectId: metadataError.projectId,
+      kind: metadataError.kind,
+      attempt: metadataError.attempts,
+      delayMs: delay,
+    });
+    const t = setTimeout(() => {
+      void hydrateActiveProject(metadataError.projectId, metadataError.attempts + 1);
+    }, delay);
+    return () => clearTimeout(t);
+  }, [metadataError, selectedProjectId]);
+
+  // Clear stale metadata error if the user navigates to a different
+  // project (the new selection's hydrate will publish its own state).
+  useEffect(() => {
+    setMetadataError((prev) => (prev && prev.projectId !== selectedProjectId ? null : prev));
+  }, [selectedProjectId]);
 
   /** Pull project list and store it. Uses getState() so identity is stable. */
   const loadProjects = useCallback(async () => {
@@ -465,17 +609,34 @@ export function useDevteamData(): UseDevteamData {
       // If the selected id no longer exists in the backend list (deleted
       // out-of-band), fall back to the newest. NEVER attempt to match by
       // name — different ids with the same name are different projects.
+      // EXCEPT when the project-detail fetch is currently failing for
+      // that id: a corrupt project.json can also be skipped by the
+      // list endpoint, and the user must not be silently teleported to
+      // a different project while the metadata-error banner + backoff
+      // retry are still trying to recover.
       if (
         s.selectedProjectId &&
         s.selectedProjectId !== '__new__' &&
         !sorted.some((p) => p.id === s.selectedProjectId)
       ) {
-        // eslint-disable-next-line no-console
-        console.warn('[devteam] selected projectId no longer in backend list; rebinding to newest', {
-          previousSelected: s.selectedProjectId,
-          newestId: sorted[0]?.id ?? null,
-        });
-        if (sorted[0]) s.setSelectedProjectId(sorted[0].id);
+        const stickyForMetadataError =
+          metadataErrorRef.current &&
+          metadataErrorRef.current.projectId === s.selectedProjectId;
+        if (stickyForMetadataError) {
+          // eslint-disable-next-line no-console
+          console.info('[devteam] keeping selectedProjectId stable through transient metadata error', {
+            selectedProjectId: s.selectedProjectId,
+            kind: metadataErrorRef.current?.kind,
+            attempts: metadataErrorRef.current?.attempts,
+          });
+        } else {
+          // eslint-disable-next-line no-console
+          console.warn('[devteam] selected projectId no longer in backend list; rebinding to newest', {
+            previousSelected: s.selectedProjectId,
+            newestId: sorted[0]?.id ?? null,
+          });
+          if (sorted[0]) s.setSelectedProjectId(sorted[0].id);
+        }
       }
     } catch (e) {
       const msg = e instanceof ApiError && e.isUnreachable
@@ -666,6 +827,26 @@ export function useDevteamData(): UseDevteamData {
       : undefined;
     const isUpdate =
       !!target && (target.status === 'completed' || target.status === 'failed');
+    // ── Stale-preview reset ──────────────────────────────────
+    // For UPDATE flow: the previous generation may have left
+    // previewStatus='failed' / previewError set. If we don't wipe
+    // these BEFORE flipping to generating, the preview panel will
+    // render the old "Preview failed" card while the agents rebuild.
+    // For CREATE flow: there's no record yet, so nothing to reset
+    // locally — but we still log the intent so the dev console
+    // shows a single trail per submission.
+    // eslint-disable-next-line no-console
+    console.info('[devteam] submitPrompt → reset preview state', {
+      mode: isUpdate ? 'update' : 'create',
+      selectedProjectId: currentId,
+      targetId: target?.id ?? null,
+      prevPreviewStatus: target?.preview?.previewStatus ?? null,
+      prevPreviewError: target?.preview?.previewError ?? null,
+      prevPreviewUrl: target?.preview?.previewUrl ?? null,
+    });
+    if (isUpdate && target) {
+      s.resetPreviewState(target.id);
+    }
     s.setIsGenerating(true);
     s.setProgress(null);
     try {
@@ -735,6 +916,18 @@ export function useDevteamData(): UseDevteamData {
     await hydrateActiveProject(sel);
   }, []);
 
+  /** Manually retry the project-detail fetch for the active selection,
+   *  bypassing the backoff timer. Used by the metadata-error banner's
+   *  "Retry now" affordance so the user can recover faster than the
+   *  exponential schedule. */
+  const retryMetadata = useCallback(async () => {
+    const sel = useStore.getState().selectedProjectId;
+    if (!sel || sel === '__new__') return;
+    // eslint-disable-next-line no-console
+    console.info('[devteam] retryMetadata (manual)', { projectId: sel });
+    await hydrateActiveProject(sel, (metadataError?.attempts ?? 0) + 1);
+  }, [metadataError]);
+
   /** Diagnostic: jump to whatever project the backend most recently
    *  created. Bypasses any stale local cache by re-fetching the list,
    *  sorting strictly by createdAt desc, and binding selection to the
@@ -782,10 +975,22 @@ export function useDevteamData(): UseDevteamData {
   // ── Derived view models. Recomputed on every render but the inputs are
   // shallow-stable references from the store, so this is cheap.
   const selected = useMemo(
-    () =>
-      selectedProjectId === '__new__'
-        ? null
-        : list.find((p) => p.id === selectedProjectId) ?? list[0] ?? null,
+    () => {
+      if (selectedProjectId === '__new__') return null;
+      const match = list.find((p) => p.id === selectedProjectId);
+      if (match) return match;
+      // No match in the list cache. Two distinct cases:
+      //   1. No selection yet → fall back to the newest record.
+      //   2. The selection IS set but the row is missing (e.g. record
+      //      corruption made list() skip it). Returning list[0] here
+      //      would silently render a DIFFERENT project's data under
+      //      the user's selection — a cross-project leak. Return null
+      //      instead so PreviewStage falls through to its "metadata
+      //      unavailable" placeholder while the preview iframe (which
+      //      keys off selectedProjectId, not project) keeps running.
+      if (!selectedProjectId) return list[0] ?? null;
+      return null;
+    },
     [list, selectedProjectId],
   );
   // Identity-trace: emitted whenever the resolved active record changes.
@@ -804,6 +1009,31 @@ export function useDevteamData(): UseDevteamData {
       recentListIds: list.slice(0, 8).map((p) => ({ id: p.id, name: p.name, status: p.status })),
     });
   }, [selectedProjectId, selected, list]);
+
+  // ── Self-heal: project ↔ preview status inconsistency ──────
+  // If the cached record for the selected project carries a
+  // contradictory pair (project.status === 'failed' but
+  // preview.previewStatus === 'ready'), fire an immediate detail
+  // re-fetch so the dashboard converges on whichever value the
+  // backend most recently persisted. Pills are NOT rewritten in
+  // the meantime — they continue to render the raw backend values;
+  // only the inconsistency banner is shown until backend confirms
+  // or updates one of the two fields. We deliberately NEVER
+  // promote `failed` to `completed` here — the UI must not invent
+  // success.
+  useEffect(() => {
+    if (!selected) return;
+    const r = reconcileProjectStatus(selected);
+    if (r.consistency !== 'conflicting') return;
+    // eslint-disable-next-line no-console
+    console.warn('[devteam] status inconsistency detected — re-hydrating', {
+      projectId: selected.id,
+      projectStatus: r.projectStatus,
+      previewStatus: r.previewStatus,
+      reason: r.reason,
+    });
+    void hydrateActiveProject(selected.id);
+  }, [selected?.id, selected?.status, selected?.preview?.previewStatus]);
   const projects   = useMemo(() => deriveProjects(list),                       [list]);
   const agents     = useMemo(() => deriveAgents(progress, selected),           [progress, selected]);
   const pipeline   = useMemo(() => derivePipeline(progress, selected, agents), [progress, selected, agents]);
@@ -832,6 +1062,14 @@ export function useDevteamData(): UseDevteamData {
     ];
   }, [error, isLoading, dockerReady]);
 
+  // Reconciliation snapshot for the selected record. Recomputed only
+  // when the two raw status fields change, so re-renders triggered
+  // by unrelated slice updates don't churn this object.
+  const statusReconciliation = useMemo(
+    () => reconcileProjectStatus(selected),
+    [selected?.id, selected?.status, selected?.preview?.previewStatus],
+  );
+
   return {
     projects,
     rawProjects: list,
@@ -853,5 +1091,8 @@ export function useDevteamData(): UseDevteamData {
     refresh: loadProjects,
     refreshActiveProject,
     openLatestProject,
+    metadataError,
+    retryMetadata,
+    statusReconciliation,
   };
 }

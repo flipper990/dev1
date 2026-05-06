@@ -20,6 +20,7 @@ import { InMemoryMessageBus } from '../../../../packages/agent-core/src/message-
 import { getMergedFiles } from '../../../../packages/agent-core/src/agent-input-builder.js';
 import { validateImportIntegrity, missingImportsAsIssues } from '../../../../packages/agent-core/src/import-integrity.js';
 import { validateAndFixDependencies } from '../../../../packages/agent-core/src/dependency-validator.js';
+import { runFinalIntegrityGate, describeIntegrityFailure } from './final-integrity-gate.js';
 import { validateUiSystemCompliance, uiSystemViolationsAsIssues } from '../../../../packages/agent-core/src/ui-system.js';
 import { normalizeTechStack, validateStackCompliance, stackViolationsAsIssues } from '../../../../packages/agent-core/src/tech-stack.js';
 import { setBuilderProjectContext } from '../agents/builder-agent.js';
@@ -38,6 +39,7 @@ import { SessionManager } from './session-manager.js';
 import { ProjectStore, type ProjectRecord } from '../storage/project-store.js';
 import { FileMemoryStore } from '../storage/memory-store.js';
 import { assembleProject, buildTaskSummaries, buildStepSummaries } from './project-assembler.js';
+import { auditAndLog, describeIntegrityIssue } from './file-integrity.js';
 import { runQualityAssurance } from './quality-assurance.js';
 import { ProjectUpdater } from './project-updater.js';
 import type { PreviewManager } from '../preview/preview-manager.js';
@@ -343,7 +345,10 @@ export class ProjectGenerator {
     // We DO track the save promise so runReserved() can await it before
     // touching the project. Without that guarantee, a synchronous throw in
     // runReserved() leaves the placeholder write racing with no observer.
-    const placeholderSaved = this.projectStore.save(placeholder).catch((err) => {
+    const placeholderSaved = this.projectStore.save(placeholder, {
+      caller: 'project-generator:reserve',
+      reason: 'placeholder created for new generation',
+    }).catch((err) => {
       this.logger.error('[gen:reserve] placeholder save FAILED', {
         event: 'gen:reserve:save-failed', projectId, sessionId, err: String(err),
       });
@@ -549,7 +554,16 @@ export class ProjectGenerator {
     };
 
     try {
-      await this.projectStore.save(base);
+      await this.projectStore.save(base, {
+        caller: 'persistProjectFailure',
+        reason: `${failedPhase}/${failedStep}`,
+        // A late failure (e.g. runtime-validation crashing AFTER
+        // execution-validation flipped status='completed') legitimately
+        // needs to demote the record to 'failed'. Without this opt-in
+        // the stale-write detector preserves on-disk 'completed' and
+        // the failure goes silent.
+        allowStatusDowngrade: true,
+      });
     } catch (saveErr) {
       this.logger.error('[gen:persist-failure:save-error] could not persist failed status', {
         event: 'gen:persist-failure:save-error', projectId, sessionId,
@@ -1246,7 +1260,10 @@ export class ProjectGenerator {
       project.totalCostUsd = (project.totalCostUsd ?? 0) + patch.addCostUsd;
     }
     try {
-      await this.projectStore.save(project);
+      await this.projectStore.save(project, {
+        caller: 'project-generator:markProgress',
+        reason: patch.step ?? 'progress-heartbeat',
+      });
     } catch (err) {
       this.logger.warn('[gen:progress:persist-failed] heartbeat save failed (non-fatal)', {
         event: 'gen:progress:persist-failed',
@@ -1552,7 +1569,10 @@ export class ProjectGenerator {
           slicesPlannedCount: 0,
         },
       };
-      await this.projectStore.save(project);
+      await this.projectStore.save(project, {
+        caller: 'project-generator:generate',
+        reason: 'placeholder progress record',
+      });
       this.logger.info('[gen:placeholder-saved] generating-state record persisted', {
         event: 'gen:placeholder-saved', projectId, sessionId,
       });
@@ -1849,7 +1869,10 @@ export class ProjectGenerator {
         if (lockedStack && typeof lockedStack === 'object') {
           project.techStack = lockedStack;
         }
-        await this.projectStore.save(project);
+        await this.projectStore.save(project, {
+          caller: 'project-generator:lock-stack',
+          reason: 'persist stackSelectionMode + techStack post-spec',
+        });
 
         this.logger.info(
           lockedMode === 'auto' ? '[gen:stack:auto-resolved] Auto stack resolved' : '[gen:stack:locked] Manual stack locked',
@@ -1894,7 +1917,10 @@ export class ProjectGenerator {
           ...(((project as ProjectRecord & { plan?: Record<string, unknown> }).plan) ?? {}),
           featureSlices: slices,
         };
-        await this.projectStore.save(project);
+        await this.projectStore.save(project, {
+          caller: 'project-generator:slice-plan-persist',
+          reason: 'persist slice plan onto project record',
+        });
         this.logger.info('[gen:slices:persisted] slice plan saved to project record', {
           event: 'gen:slices:persisted', projectId, sessionId, sliceCount: slices.length,
         });
@@ -2235,6 +2261,28 @@ export class ProjectGenerator {
         // builder + qa + (final-slice) polish artifacts overlayed on previous.
         const slicePolishApplied = sliceIdx === sliceCount - 1;
         const sliceMerged = getMergedFiles(sliceState.artifacts, slicePolishApplied);
+
+        // ── File-integrity audit: builder/qa/polish artifacts ──
+        // Audit each agent's contribution to the file tree at the EARLIEST
+        // possible point, with a step label, so a malformed entry can be
+        // attributed to its source rather than discovered later at preview
+        // staging. Read-only — does not mutate sliceState.artifacts.
+        const builderArtifact = sliceState.artifacts.get('builder') as { files?: unknown } | undefined;
+        if (builderArtifact?.files !== undefined) {
+          auditAndLog(builderArtifact.files, `builder.result:${sliceLabel}`, this.logger);
+        }
+        const qaArtifact = sliceState.artifacts.get('qa') as { newFiles?: unknown } | undefined;
+        if (qaArtifact?.newFiles !== undefined) {
+          auditAndLog(qaArtifact.newFiles, `qa.result.newFiles:${sliceLabel}`, this.logger);
+        }
+        if (slicePolishApplied) {
+          const polishArtifact = sliceState.artifacts.get('polish') as { newFiles?: unknown } | undefined;
+          if (polishArtifact?.newFiles !== undefined) {
+            auditAndLog(polishArtifact.newFiles, `polish.result.newFiles:${sliceLabel}`, this.logger);
+          }
+        }
+        auditAndLog(sliceMerged, `slice.cumulative-merge.input:${sliceLabel}`, this.logger);
+
         const cumBefore = cumulativeFiles.length;
         const cumPathsBefore = new Set(cumulativeFiles.map((f) => f.path));
         const overlay = new Map<string, { path: string; content: string; language?: string }>();
@@ -2406,7 +2454,10 @@ export class ProjectGenerator {
         // here — that would double-count.
         try {
           project.files = cumulativeFiles.map((f) => ({ path: f.path, content: f.content, language: f.language }));
-          await this.projectStore.save(project);
+          await this.projectStore.save(project, {
+            caller: 'project-generator:slice-persist',
+            reason: `slice ${sliceIdx} (${sliceLabel}) cumulative files`,
+          });
           this.logger.info('[gen:slice:persisted] per-slice save committed', {
             event: 'gen:slice:persisted',
             projectId: project.id,
@@ -2466,6 +2517,23 @@ export class ProjectGenerator {
         phaseRef, { projectId, sliceId: finalSliceTag, step: 'final-assembly:assembleProject' },
         () => assembleProject(pipelineState.artifacts, this.logger),
       );
+
+      // ── File-integrity audit: assembleProject output ──
+      // This is the final synthesised file tree before dependency-fix and
+      // persistence. Any malformed entry here MUST be a hard failure — it
+      // would otherwise be silently corrupted by JSON.stringify (drops
+      // undefined keys) on the way to disk. Throwing here surfaces the
+      // exact step + file path responsible.
+      {
+        const assemblyAudit = auditAndLog(files, 'final-assembly.assembleProject', this.logger);
+        if (!assemblyAudit.ok) {
+          const first = assemblyAudit.issues[0]!;
+          throw new Error(
+            `assembleProject produced ${assemblyAudit.invalidCount}/${assemblyAudit.totalFiles} invalid file entries. ` +
+            `First: ${describeIntegrityIssue(first)}`,
+          );
+        }
+      }
       // Final dependency-validator pass on the cumulative codebase, in case
       // any cross-slice merging surfaced new bare imports.
       // SUBSTEP: finalize:dependency-validation — wrap the deterministic
@@ -2850,7 +2918,14 @@ export class ProjectGenerator {
         'finalize:project-save',
         () => this.runPostPersistStep(
           phaseRef, { projectId, sliceId: finalSliceTag, step: 'finalize:projectStore.save' },
-          () => this.projectStore.save(project),
+          () => this.projectStore.save(project, {
+            caller: 'project-generator:finalize-save',
+            reason: 'final assembly: post-QA project record',
+            // The final assembly may legitimately flip 'generating' →
+            // 'completed' or → 'failed' based on QA verdict, so the
+            // status-downgrade guard must allow it.
+            allowStatusDowngrade: true,
+          }),
         ),
         { finalFileCount: finalFiles.length },
       );
@@ -2901,12 +2976,123 @@ export class ProjectGenerator {
         });
       }
 
-      // Fire-and-forget execution-runner gate (real npm install + build +
-      // dev). On pass, we chain into the optional Docker-based validator
-      // for an extra HTTP-level check. On fail, the project is marked
-      // 'failed' and Docker validation is skipped — there's no point
-      // probing a project that doesn't even compile.
+      // ── FINAL INTEGRITY GATE ───────────────────────────────────
+      // Last read-only check before the project graduates to a
+      // validation pipeline that costs ~90s per docker boot. Refuses
+      // to schedule execution / runtime validation (and therefore
+      // refuses to flip status to 'completed') if any generated file
+      // imports a package not declared in package.json or a relative
+      // path that does not resolve to an emitted file.
+      //
+      // Persists the structured report onto `project.integrityReport`
+      // so the dashboard postmortem can show exact missing package
+      // names and the importing files. On failure, routes through
+      // `persistProjectFailure` so error/stack/failedPhase/failedStep
+      // and last-failure.json are uniformly populated.
       if (project.status === 'generating') {
+        const t0Integrity = await this.startFinalizeStep(project, 'finalize:integrity-gate');
+        const integrityReport = runFinalIntegrityGate(project.files);
+        project.integrityReport = integrityReport;
+        // Persist verdict regardless of outcome — the postmortem path
+        // needs the report on disk even when we then call
+        // persistProjectFailure (which performs its own save).
+        await this.projectStore.update(projectId, (rec) => {
+          rec.integrityReport = integrityReport;
+        }, { phase: 'final-integrity-gate:persist-verdict' });
+        await this.completeFinalizeStep(
+          project,
+          'finalize:integrity-gate',
+          t0Integrity,
+          {
+            verdict: integrityReport.verdict,
+            missingPackages: integrityReport.counts.missingPackages,
+            danglingInternalImports: integrityReport.counts.danglingInternalImports,
+            sourceFilesScanned: integrityReport.counts.sourceFilesScanned,
+            bareImportsScanned: integrityReport.counts.bareImportsScanned,
+          },
+        );
+        if (integrityReport.verdict === 'fail') {
+          const reason = describeIntegrityFailure(integrityReport);
+          this.logger.error('[gen:final-integrity:fail] integrity gate FAILED — blocking completion', {
+            event: 'gen:final-integrity:fail',
+            projectId,
+            missingPackages: integrityReport.missingPackages.map((m) => m.name),
+            missingPackagesCount: integrityReport.counts.missingPackages,
+            danglingInternalImports: integrityReport.danglingInternalImports
+              .slice(0, 6)
+              .map((d) => `${d.importer} → '${d.specifier}'`),
+            danglingInternalImportsCount: integrityReport.counts.danglingInternalImports,
+            unparseablePackageJsons: integrityReport.unparseablePackageJsons,
+          });
+          await this.persistProjectFailure(projectId, {
+            sessionId,
+            err: new Error(reason),
+            failedPhase: 'final-integrity-gate',
+            failedStep: 'final-integrity-gate:verdict-fail',
+            lastSuccessfulPhase: 'qa-gate',
+            lastSuccessfulStep: 'qa-gate:runQualityAssurance',
+            runningProject: project,
+          });
+          // Skip execution-validation + runtime-validation entirely —
+          // there is nothing for them to validate against a codebase
+          // that cannot resolve its own imports.
+          return {
+            projectId, sessionId, success: false,
+            cached: false, project, steps: stepSummaries,
+            error: reason,
+          } as GenerateResult;
+        }
+        this.logger.info('[gen:final-integrity:pass] integrity gate passed', {
+          event: 'gen:final-integrity:pass',
+          projectId,
+          sourceFilesScanned: integrityReport.counts.sourceFilesScanned,
+          bareImportsScanned: integrityReport.counts.bareImportsScanned,
+          durationMs: integrityReport.durationMs,
+        });
+
+        // ── PROMOTE TO COMPLETED ───────────────────────────────────
+        // After integrity gate passes, generation is DONE. Flip
+        // project.status to 'completed' synchronously so the UI shows a
+        // BUILD COMPLETED pill immediately. Execution / runtime
+        // validators are post-completion health probes — they record
+        // their own status under executionValidation.status /
+        // runtimeValidation.status and CANNOT demote project.status
+        // back to 'failed'. This is the structural fix for the bug
+        // where a 'no-progress' validator verdict overrode a working,
+        // preview-ready project.
+        project.status = 'completed';
+        project.completedAt = project.completedAt ?? new Date().toISOString();
+        if (!project.executionValidation) {
+          project.executionValidation = {
+            status: 'pending',
+            finalVerdict: 'pass',
+            iterations: 0,
+            buildErrors: [],
+            runtimeErrors: [],
+            totalDurationMs: 0,
+            completedAt: new Date().toISOString(),
+          };
+        } else {
+          project.executionValidation.status = 'pending';
+        }
+        await this.projectStore.update(projectId, (rec) => {
+          rec.status = 'completed';
+          rec.completedAt = project.completedAt;
+          rec.executionValidation = project.executionValidation;
+        }, {
+          phase: 'finalize:promote-completed',
+          caller: 'project-generator:integrity-gate-pass',
+          reason: 'integrity-gate passed; generation lifecycle done',
+          allowStatusDowngrade: true,
+        });
+      }
+
+      // Fire-and-forget execution-runner health probe (real npm install +
+      // build + dev). Project is already 'completed' at this point — this
+      // probe ONLY records executionValidation.status and never demotes
+      // project.status. A failure here surfaces as a "Validation: warning"
+      // pill in the UI, not a build failure.
+      if (project.status === 'completed') {
         const t0Sched = await this.startFinalizeStep(project, 'finalize:execution-validation-scheduled');
         try {
           this.scheduleExecutionValidation(project);
@@ -3662,7 +3848,7 @@ export class ProjectGenerator {
         const lastRuntimeErrors = summary.lastResult.runtimeErrors.slice(0, 25);
         const fixIters = summary.iterations.filter((i) => i.kind === 'fix').length;
 
-        fresh.executionValidation = {
+        const baseExecutionValidation = {
           finalVerdict: summary.finalVerdict,
           iterations: fixIters,
           buildErrors: lastBuildErrors,
@@ -3680,110 +3866,128 @@ export class ProjectGenerator {
           reason: summary.reason,
         };
 
-        if (summary.finalVerdict === 'fail') {
-          // Distinguish *infrastructure* failures of the auto-fix loop
-          // (the LLM-based updater itself errored / crashed / no files) from
-          // *genuine* unfixable code failures. The former leave a usable,
-          // QA-passing codebase — we should not erase the user's project
-          // just because our remediation step couldn't run. Mark as
-          // completed-with-warning so the UI can flag it.
-          const infraFailure =
-            summary.reason === 'updater-failed' ||
-            summary.reason === 'crashed' ||
-            summary.reason === 'no-files';
-          if (infraFailure && fresh.status === 'generating') {
-            fresh.status = 'completed';
-            fresh.warnings = [
-              ...(fresh.warnings ?? []),
-              {
-                code: 'execution.auto-fix-unavailable',
-                message: `Build failed and the auto-fix loop could not run (${summary.reason}). Code is generated and QA-passed; manual fixes may be needed before \`npm run dev\` succeeds.`,
-                details: {
-                  reason: summary.reason,
-                  iterations: fixIters,
-                  buildErrors: lastBuildErrors.slice(0, 6),
-                  runtimeErrors: lastRuntimeErrors.slice(0, 4),
-                  durationMs: summary.totalDurationMs,
-                },
-              },
-            ];
-            await this.projectStore.save(fresh);
-            this.logger.warn('Execution validation could not auto-fix — keeping project as completed-with-warning', {
-              projectId: project.id,
+        // ── Decide validator status (NEVER touches project.status) ──
+        // The validator is a post-completion health probe. Vocabulary:
+        //   passed  — verdict pass.
+        //   warning — verdict fail BUT live preview is reachable, OR
+        //             the auto-fix loop itself was unable to run
+        //             (infra failure: updater-failed / crashed /
+        //             no-files). The project still works.
+        //   failed  — verdict fail with no mitigating signal. Recorded
+        //             on the validation block; project.status is left
+        //             at 'completed' (the build itself succeeded
+        //             through the integrity gate).
+        const previewIsReady = fresh.preview?.previewStatus === 'ready';
+        const infraFailure =
+          summary.reason === 'updater-failed' ||
+          summary.reason === 'crashed' ||
+          summary.reason === 'no-files';
+        let validatorStatus: 'passed' | 'warning' | 'failed';
+        let validatorWarning:
+          | { code: string; message: string; details?: Record<string, unknown> }
+          | null = null;
+        if (summary.finalVerdict === 'pass') {
+          validatorStatus = 'passed';
+        } else if (previewIsReady) {
+          validatorStatus = 'warning';
+          validatorWarning = {
+            code: 'execution.validator-disagreed-with-live-preview',
+            message: `Headless execution validator failed (${summary.reason}) but the live preview is ready and reachable. Trusting the live preview; flagging the validator disagreement.`,
+            details: {
               reason: summary.reason,
               iterations: fixIters,
-              buildErrors: lastBuildErrors.length,
-            });
-            return;
-          }
-          if (fresh.status === 'generating' || fresh.status === 'completed') {
-            // Route through persistProjectFailure so error/stack/failedPhase/
-            // failedStep/lastSuccessfulStep/last-failure.json are *always*
-            // populated. fresh.executionValidation is set above so it is
-            // preserved by persistProjectFailure (mutates `runningProject`).
-            const reasonStr = `Execution validation FAILED (reason=${summary.reason}, fixIterations=${fixIters}, buildErrors=${lastBuildErrors.length}, runtimeErrors=${lastRuntimeErrors.length})`;
-            await this.persistProjectFailure(project.id, {
-              sessionId: project.sessionId,
-              err: new Error(reasonStr),
-              failedPhase: 'execution-validation',
-              failedStep: `execution-validation:${summary.reason}`,
-              lastSuccessfulPhase: 'qa-gate',
-              lastSuccessfulStep: 'qa-gate:runQualityAssurance',
-              runningProject: fresh,
-            });
-          }
-          this.logger.error('Execution validation FAILED — project marked failed', {
-            projectId: project.id,
-            reason: summary.reason,
-            iterations: fixIters,
-            buildErrors: lastBuildErrors.length,
-            runtimeErrors: lastRuntimeErrors.length,
-            durationMs: summary.totalDurationMs,
-          });
-          return;
+              buildErrors: lastBuildErrors.slice(0, 6),
+              runtimeErrors: lastRuntimeErrors.slice(0, 4),
+              durationMs: summary.totalDurationMs,
+              previewUrl: fresh.preview?.previewUrl ?? null,
+            },
+          };
+        } else if (infraFailure) {
+          validatorStatus = 'warning';
+          validatorWarning = {
+            code: 'execution.auto-fix-unavailable',
+            message: `Execution auto-fix loop could not run (${summary.reason}). Code is generated and QA-passed; manual fixes may be needed before \`npm run dev\` succeeds.`,
+            details: {
+              reason: summary.reason,
+              iterations: fixIters,
+              buildErrors: lastBuildErrors.slice(0, 6),
+              runtimeErrors: lastRuntimeErrors.slice(0, 4),
+              durationMs: summary.totalDurationMs,
+            },
+          };
+        } else {
+          validatorStatus = 'failed';
         }
 
-        // Pass — persist the verdict, then either chain into Docker
-        // validation or finalise as 'completed' if Docker isn't available.
-        await this.projectStore.save(fresh);
-        this.logger.info('Execution validation passed', {
+        const executionValidation = {
+          ...baseExecutionValidation,
+          status: validatorStatus,
+        };
+
+        await this.projectStore.update(project.id, (rec) => {
+          rec.executionValidation = executionValidation;
+          if (validatorWarning) {
+            rec.warnings = [...(rec.warnings ?? []), validatorWarning];
+          }
+        }, {
+          phase: 'exec-validation:persist-verdict',
+          caller: 'project-generator:scheduleExecutionValidation',
+          reason: `verdict=${summary.finalVerdict} status=${validatorStatus} reason=${summary.reason}`,
+        });
+        fresh.executionValidation = executionValidation;
+
+        this.logger.info('Execution validation finished (project.status untouched)', {
+          event: 'gen:exec-validation:done',
           projectId: project.id,
+          validatorStatus,
+          verdict: summary.finalVerdict,
+          reason: summary.reason,
           iterations: fixIters,
+          buildErrors: lastBuildErrors.length,
+          runtimeErrors: lastRuntimeErrors.length,
+          previewIsReady,
           durationMs: summary.totalDurationMs,
         });
 
-        const dockerAvailable = !!(this.previewManager && this.previewManager.isDockerAvailable());
-        if (dockerAvailable) {
-          // Docker validation will flip status from 'generating' to
-          // 'completed' (or 'failed') on its own.
-          this.scheduleRuntimeValidation(fresh);
-        } else {
-          if (fresh.status === 'generating') {
-            fresh.status = 'completed';
-            await this.projectStore.save(fresh);
-          }
+        // Always chain into Docker validation if available — it's a
+        // separate health probe (HTTP-level) that records its own status
+        // in runtimeValidation.status. Skipping it would hide useful
+        // information from the dashboard.
+        if (validatorStatus !== 'failed') {
+          const dockerAvailable = !!(this.previewManager && this.previewManager.isDockerAvailable());
+          if (dockerAvailable) this.scheduleRuntimeValidation(fresh);
         }
       } catch (err) {
-        // Loop crashed — never leave the project stuck in 'generating'.
+        // Loop crashed — record as a validator failure ONLY. Do not
+        // demote project.status; the build itself reached integrity-pass
+        // before this probe was scheduled.
         try {
           const fresh = await this.projectStore.get(project.id);
-          if (fresh && fresh.status === 'generating') {
-            fresh.executionValidation = {
-              finalVerdict: 'fail', iterations: 0,
+          if (fresh) {
+            const crashRecord = {
+              status: 'failed' as const,
+              finalVerdict: 'fail' as const,
+              iterations: 0,
               buildErrors: [`execution-loop crashed: ${err instanceof Error ? err.message : String(err)}`],
-              runtimeErrors: [],
+              runtimeErrors: [] as string[],
               totalDurationMs: 0,
               completedAt: new Date().toISOString(),
-              reason: 'crashed',
+              reason: 'crashed' as string,
             };
-            await this.persistProjectFailure(project.id, {
-              sessionId: fresh.sessionId,
-              err,
-              failedPhase: 'execution-validation',
-              failedStep: 'execution-validation:loop-crashed',
-              lastSuccessfulPhase: 'qa-gate',
-              lastSuccessfulStep: 'qa-gate:runQualityAssurance',
-              runningProject: fresh,
+            await this.projectStore.update(project.id, (rec) => {
+              rec.executionValidation = crashRecord;
+              rec.warnings = [
+                ...(rec.warnings ?? []),
+                {
+                  code: 'execution.validator-crashed',
+                  message: `Execution validator crashed: ${err instanceof Error ? err.message : String(err)}`,
+                  details: { reason: 'crashed' },
+                },
+              ];
+            }, {
+              phase: 'exec-validation:loop-crashed',
+              caller: 'project-generator:scheduleExecutionValidation',
+              reason: 'execution-validation loop threw',
             });
           }
         } catch (innerErr) {
@@ -3794,7 +3998,7 @@ export class ProjectGenerator {
             innerErr: innerErr instanceof Error ? innerErr.message : String(innerErr),
           });
         }
-        this.logger.error('Execution validation crashed', {
+        this.logger.error('Execution validation crashed (project.status untouched)', {
           projectId: project.id,
           err: err instanceof Error ? err.message : String(err),
           stack: err instanceof Error ? err.stack : undefined,
@@ -3855,70 +4059,94 @@ export class ProjectGenerator {
             issueCount: summary.lastValidation.issues.length,
           },
         );
-        fresh.runtimeValidation = {
+        const runtimeValidation = {
+          status: (summary.finalVerdict === 'pass'
+            ? 'passed'
+            : (fresh.preview?.previewStatus === 'ready' ? 'warning' : 'failed')) as 'passed' | 'warning' | 'failed',
           finalVerdict: summary.finalVerdict,
           iterations: summary.iterations.filter((i) => i.kind === 'fix').length,
           issues: summary.lastValidation.issues.map((i) => ({ category: i.category, message: i.message, hint: i.hint })),
           totalDurationMs: summary.totalDurationMs,
           completedAt: new Date().toISOString(),
+          reason: summary.finalVerdict === 'pass'
+            ? 'pass'
+            : (summary.lastValidation.issues
+                .slice(0, 3)
+                .map((i) => `[${i.category}] ${i.message}`)
+                .join('; ') || 'fail'),
         };
-        // FINAL GATE — never expose status='completed' on a broken system.
-        // Pipeline-level QA already passed (we wouldn't be here otherwise);
-        // the runtime check is the last word. Pass → completed. Fail → failed
-        // (routed through persistProjectFailure so all diagnostic fields
-        // are populated).
-        if (fresh.status === 'generating' && summary.finalVerdict === 'pass') {
-          fresh.status = 'completed';
-          await this.projectStore.save(fresh);
-        } else if (
-          summary.finalVerdict === 'fail' &&
-          (fresh.status === 'generating' || fresh.status === 'completed')
-        ) {
-          const issuesSummary = summary.lastValidation.issues
-            .slice(0, 3)
-            .map((i) => `[${i.category}] ${i.message}`)
-            .join('; ');
-          const reasonStr = `Runtime validation FAILED (issues=${summary.lastValidation.issues.length}${issuesSummary ? `: ${issuesSummary}` : ''})`;
-          await this.persistProjectFailure(project.id, {
-            sessionId: fresh.sessionId,
-            err: new Error(reasonStr),
-            failedPhase: 'runtime-validation',
-            failedStep: 'runtime-validation:verdict-fail',
-            lastSuccessfulPhase: 'execution-validation',
-            lastSuccessfulStep: 'execution-validation:pass',
-            runningProject: fresh,
-          });
-        } else {
-          await this.projectStore.save(fresh);
-        }
-        this.logger.info('Runtime validation complete', {
+        fresh.runtimeValidation = runtimeValidation;
+        // POST-COMPLETION HEALTH PROBE — never demotes project.status.
+        // The build is already 'completed' (integrity-gate passed before
+        // this probe was scheduled). A failed runtime check surfaces as
+        // a "Validation: warning/failed" pill in the UI, not as a build
+        // failure. The only field this method writes is
+        // runtimeValidation.{status,finalVerdict,issues,...}.
+        const issueWarning = summary.finalVerdict === 'fail' && runtimeValidation.status !== 'passed'
+          ? {
+              code: runtimeValidation.status === 'warning'
+                ? 'runtime.validator-disagreed-with-live-preview'
+                : 'runtime.validation-failed',
+              message: runtimeValidation.status === 'warning'
+                ? `Runtime validator reported issues but live preview is ready: ${runtimeValidation.reason}`
+                : `Runtime validation failed: ${runtimeValidation.reason}`,
+              details: {
+                issues: summary.lastValidation.issues.slice(0, 6),
+                iterations: runtimeValidation.iterations,
+                durationMs: summary.totalDurationMs,
+                previewStatus: fresh.preview?.previewStatus ?? null,
+              },
+            }
+          : null;
+        await this.projectStore.update(project.id, (rec) => {
+          rec.runtimeValidation = runtimeValidation;
+          if (issueWarning) {
+            rec.warnings = [...(rec.warnings ?? []), issueWarning];
+          }
+        }, {
+          phase: `runtime-validation:${runtimeValidation.status}`,
+          caller: 'project-generator:scheduleRuntimeValidation',
+          reason: `verdict=${summary.finalVerdict} status=${runtimeValidation.status}`,
+        });
+        this.logger.info('Runtime validation finished (project.status untouched)', {
+          event: 'gen:runtime-validation:done',
           projectId: project.id,
+          validatorStatus: runtimeValidation.status,
           verdict: summary.finalVerdict,
-          finalStatus: fresh.status,
-          fixes: fresh.runtimeValidation.iterations,
-          issues: fresh.runtimeValidation.issues.length,
+          fixes: runtimeValidation.iterations,
+          issues: runtimeValidation.issues.length,
+          previewStatus: fresh.preview?.previewStatus ?? null,
           durationMs: summary.totalDurationMs,
         });
       } catch (err) {
-        // Validator threw — do not leave the project stuck in 'generating'.
-        // Route through persistProjectFailure so error/stack/failedPhase/
-        // failedStep/lastSuccessfulStep/last-failure.json are populated.
+        // Validator crashed — record on runtimeValidation.status only.
+        // Do not demote project.status; the generation is already done.
         try {
           const fresh = await this.projectStore.get(project.id);
-          if (fresh && fresh.status === 'generating') {
-            fresh.runtimeValidation = {
-              finalVerdict: 'fail', iterations: 0,
+          if (fresh) {
+            const crashRecord = {
+              status: 'failed' as const,
+              finalVerdict: 'fail' as const,
+              iterations: 0,
               issues: [{ category: 'unknown', message: `Validator crashed: ${String(err)}` }],
-              totalDurationMs: 0, completedAt: new Date().toISOString(),
+              totalDurationMs: 0,
+              completedAt: new Date().toISOString(),
+              reason: 'crashed',
             };
-            await this.persistProjectFailure(project.id, {
-              sessionId: fresh.sessionId,
-              err,
-              failedPhase: 'runtime-validation',
-              failedStep: 'runtime-validation:validator-crashed',
-              lastSuccessfulPhase: 'execution-validation',
-              lastSuccessfulStep: 'execution-validation:pass',
-              runningProject: fresh,
+            await this.projectStore.update(project.id, (rec) => {
+              rec.runtimeValidation = crashRecord;
+              rec.warnings = [
+                ...(rec.warnings ?? []),
+                {
+                  code: 'runtime.validator-crashed',
+                  message: `Runtime validator crashed: ${err instanceof Error ? err.message : String(err)}`,
+                  details: { reason: 'crashed' },
+                },
+              ];
+            }, {
+              phase: 'runtime-validation:validator-crashed',
+              caller: 'project-generator:scheduleRuntimeValidation',
+              reason: 'runtime-validation threw',
             });
           }
         } catch (innerErr) {
@@ -3929,7 +4157,7 @@ export class ProjectGenerator {
             innerErr: innerErr instanceof Error ? innerErr.message : String(innerErr),
           });
         }
-        this.logger.error('Runtime validation failed', {
+        this.logger.error('Runtime validation crashed (project.status untouched)', {
           projectId: project.id,
           err: err instanceof Error ? err.message : String(err),
           stack: err instanceof Error ? err.stack : undefined,

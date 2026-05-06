@@ -98,6 +98,46 @@ const KNOWN_VERSIONS: Record<string, string> = {
   'clsx':                  '^2.1.0',
   'class-variance-authority': '^0.7.0',
   'tailwind-merge':        '^2.5.0',
+  'tailwindcss-animate':   '^1.0.7',
+  'cmdk':                  '^1.0.0',
+  'sonner':                '^1.7.0',
+  'vaul':                  '^1.1.0',
+  'react-hook-form':       '^7.53.0',
+  '@hookform/resolvers':   '^3.9.0',
+  'react-day-picker':      '^9.0.0',
+  'recharts':              '^2.12.0',
+  'embla-carousel-react':  '^8.3.0',
+  'input-otp':             '^1.2.0',
+  'react-resizable-panels':'^2.1.0',
+  // Radix UI primitives — generated shadcn/ui code commonly imports
+  // a subset of these. Versions tracked at v1 LTS line.
+  '@radix-ui/react-accordion':       '^1.2.0',
+  '@radix-ui/react-alert-dialog':    '^1.1.0',
+  '@radix-ui/react-aspect-ratio':    '^1.1.0',
+  '@radix-ui/react-avatar':          '^1.1.0',
+  '@radix-ui/react-checkbox':        '^1.1.0',
+  '@radix-ui/react-collapsible':     '^1.1.0',
+  '@radix-ui/react-context-menu':    '^2.2.0',
+  '@radix-ui/react-dialog':          '^1.1.0',
+  '@radix-ui/react-dropdown-menu':   '^2.1.0',
+  '@radix-ui/react-hover-card':      '^1.1.0',
+  '@radix-ui/react-label':           '^2.1.0',
+  '@radix-ui/react-menubar':         '^1.1.0',
+  '@radix-ui/react-navigation-menu': '^1.2.0',
+  '@radix-ui/react-popover':         '^1.1.0',
+  '@radix-ui/react-progress':        '^1.1.0',
+  '@radix-ui/react-radio-group':     '^1.2.0',
+  '@radix-ui/react-scroll-area':     '^1.2.0',
+  '@radix-ui/react-select':          '^2.1.0',
+  '@radix-ui/react-separator':       '^1.1.0',
+  '@radix-ui/react-slider':          '^1.2.0',
+  '@radix-ui/react-slot':            '^1.1.0',
+  '@radix-ui/react-switch':          '^1.1.0',
+  '@radix-ui/react-tabs':            '^1.1.0',
+  '@radix-ui/react-toast':           '^1.2.0',
+  '@radix-ui/react-toggle':          '^1.1.0',
+  '@radix-ui/react-toggle-group':    '^1.1.0',
+  '@radix-ui/react-tooltip':         '^1.1.0',
   // Auth
   'next-auth':             '^4.24.0',
   '@auth/core':            '^0.37.0',
@@ -266,6 +306,16 @@ function pickVersion(name: string): string {
   return KNOWN_VERSIONS[name] ?? 'latest';
 }
 
+/** Public lookup: pinned version for a given npm package name from the
+ *  curated `KNOWN_VERSIONS` table, or `'latest'` if no curated pin
+ *  exists. Used by the preview-side forced-dependency-fix injector
+ *  (preview-dependency-preflight.applyForcedDependencyFix) so a
+ *  preview-detected missing module is added with the SAME version
+ *  the generator-side validator would have used. */
+export function pickKnownVersion(name: string): string {
+  return pickVersion(name);
+}
+
 function isDevDep(name: string): boolean {
   return DEV_DEP_PATTERNS.some((rx) => rx.test(name));
 }
@@ -400,3 +450,124 @@ export function validateAndFixDependencies(input: FileLike[]): DependencyValidat
 
   return { files, report };
 }
+
+// ─────────────────────────────────────────────────────────────
+// Audit-only variant — does NOT mutate any package.json.
+//
+// Used by the final-integrity gate to verify that every bare-module
+// import in the generated source is already declared. Distinct from
+// validateAndFixDependencies because:
+//   • The gate runs AFTER all auto-fix passes; if anything is still
+//     missing here, it's a genuine integrity bug and we want to fail
+//     the project rather than silently add-and-pretend.
+//   • The gate must be a pure function — no file mutation, no
+//     side-effects on the caller's array. Returns ONLY a report.
+// ─────────────────────────────────────────────────────────────
+
+export interface DependencyAuditEntry {
+  /** Package name as it would appear in dependencies. */
+  name: string;
+  /** Source files that import the package (capped to 5 for log noise). */
+  importedFrom: string[];
+  /** Path of the host package.json this entry was attributed to.
+   *  `null` when no enclosing package.json could be located. */
+  packageJson: string | null;
+  /** Why the package was flagged. */
+  reason:
+    | 'imported-not-declared'
+    | 'no-host-package-json'
+    | 'package-json-parse-failed';
+}
+
+export interface DependencyAuditReport {
+  /** Total bare-module imports inspected. */
+  imports: number;
+  /** Bare-module imports that have no matching declaration in their
+   *  host package.json. Populated when an import statement references
+   *  a package that was never added to dependencies / devDependencies /
+   *  peerDependencies / optionalDependencies. */
+  missing: DependencyAuditEntry[];
+  /** package.json files we tried to read but couldn't parse — these
+   *  are gate failures because we cannot prove integrity without
+   *  successfully reading every host pkg.json. */
+  unparseablePackageJsons: string[];
+}
+
+/**
+ * Read-only audit. Returns the set of bare-module imports that are not
+ * declared in the closest package.json. Empty `missing` + empty
+ * `unparseablePackageJsons` ⇒ codebase is dependency-complete.
+ */
+export function auditDependencies(input: FileLike[]): DependencyAuditReport {
+  const pkgFiles = input.filter((f) => f.path.replace(/\\/g, '/').endsWith('package.json'));
+  const sourceFiles = input.filter((f) => SOURCE_EXT.test(f.path));
+
+  const parsed: ParsedPkg[] = [];
+  const unparseable: string[] = [];
+  for (const f of pkgFiles) {
+    const p = parsePkg(f);
+    if (p) parsed.push(p);
+    else unparseable.push(f.path);
+  }
+
+  const workspacePkgNames = new Set<string>();
+  for (const p of parsed) if (p.ownName) workspacePkgNames.add(p.ownName);
+
+  // Map<key, entry>. Key = `${pkgPath}::${name}` so the same package
+  // missing from two host pkg.jsons reports as two distinct entries.
+  const missingMap = new Map<string, DependencyAuditEntry>();
+  let imports = 0;
+
+  for (const src of sourceFiles) {
+    const host = findHostPkg(src.path, parsed);
+    const specs = extractSpecifiers(src.content);
+    for (const spec of specs) {
+      const name = packageNameOf(spec);
+      if (!name) continue;
+      imports++;
+      if (workspacePkgNames.has(name)) continue;
+      if (!host) {
+        const key = `null::${name}`;
+        const cur = missingMap.get(key);
+        if (cur) {
+          if (!cur.importedFrom.includes(src.path) && cur.importedFrom.length < 5) {
+            cur.importedFrom.push(src.path);
+          }
+        } else {
+          missingMap.set(key, {
+            name,
+            importedFrom: [src.path],
+            packageJson: null,
+            reason: 'no-host-package-json',
+          });
+        }
+        continue;
+      }
+      if (host.ownName === name) continue;
+      if (host.workspaceNames.has(name)) continue;
+      if (host.declared.has(name)) continue;
+
+      const key = `${host.path}::${name}`;
+      const cur = missingMap.get(key);
+      if (cur) {
+        if (!cur.importedFrom.includes(src.path) && cur.importedFrom.length < 5) {
+          cur.importedFrom.push(src.path);
+        }
+      } else {
+        missingMap.set(key, {
+          name,
+          importedFrom: [src.path],
+          packageJson: host.path,
+          reason: 'imported-not-declared',
+        });
+      }
+    }
+  }
+
+  return {
+    imports,
+    missing: Array.from(missingMap.values()),
+    unparseablePackageJsons: unparseable,
+  };
+}
+

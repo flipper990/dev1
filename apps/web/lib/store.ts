@@ -49,6 +49,10 @@ interface DashboardState {
   setProjects: (projects: GeneratedProject[]) => void;
   /** Upsert a single project record by id (no merge by name). */
   upsertProject: (project: GeneratedProject) => void;
+  /** Wipe a project's preview lifecycle (used at generation start so a
+   *  stale `failed` from the previous run never bleeds into the new
+   *  generation's UI). No-op if the project isn't in the cache. */
+  resetPreviewState: (projectId: string) => void;
   setSelectedProjectId: (id: string | null) => void;
   setProjectMode: (mode: 'create' | 'edit') => void;
   setFiles: (files: ProjectFileEntry[]) => void;
@@ -135,12 +139,71 @@ export const useStore = create<DashboardState>((set) => ({
         return s;
       }
       const next = s.projects.slice();
-      next[idx] = { ...prev, ...project };
+      // When a project transitions INTO `generating`, the previous run's
+      // preview lifecycle is no longer meaningful. Without this, the
+      // shallow merge below would carry a stale `failed` previewStatus
+      // into the new generation, and the preview panel would render
+      // "Preview failed" while the agents are still building. We force
+      // a fresh idle preview block whenever the status flips into
+      // `generating`, regardless of what the backend response carried.
+      const enteringGeneration =
+        project.status === 'generating' && prev.status !== 'generating';
+      const merged: GeneratedProject = enteringGeneration
+        ? {
+            ...prev,
+            ...project,
+            preview: {
+              previewStatus: 'idle',
+              previewReady: false,
+              previewUrl: null,
+              previewError: null,
+              previewStartedAt: null,
+              previewReadyAt: null,
+              timeline: [],
+            },
+          }
+        : { ...prev, ...project };
+      next[idx] = merged;
       // eslint-disable-next-line no-console
       console.info('[store] upsertProject (merge)', {
         projectId: project.id,
         prev: prev.status,
         next: project.status,
+        previewReset: enteringGeneration,
+        prevPreviewStatus: prev.preview?.previewStatus ?? null,
+        nextPreviewStatus: merged.preview?.previewStatus ?? null,
+      });
+      return { projects: next };
+    }),
+
+  resetPreviewState: (projectId) =>
+    set((s) => {
+      const idx = s.projects.findIndex((p) => p.id === projectId);
+      if (idx === -1) {
+        // eslint-disable-next-line no-console
+        console.info('[store] resetPreviewState (no-op, not in cache)', { projectId });
+        return s;
+      }
+      const prev = s.projects[idx];
+      const next = s.projects.slice();
+      next[idx] = {
+        ...prev,
+        preview: {
+          previewStatus: 'idle',
+          previewReady: false,
+          previewUrl: null,
+          previewError: null,
+          previewStartedAt: null,
+          previewReadyAt: null,
+          timeline: [],
+        },
+      };
+      // eslint-disable-next-line no-console
+      console.info('[store] resetPreviewState', {
+        projectId,
+        prevPreviewStatus: prev.preview?.previewStatus ?? null,
+        prevPreviewError: prev.preview?.previewError ?? null,
+        prevPreviewUrl: prev.preview?.previewUrl ?? null,
       });
       return { projects: next };
     }),

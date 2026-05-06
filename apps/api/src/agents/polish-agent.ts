@@ -107,6 +107,33 @@ export class PolishAgent extends BaseAgent {
 
   protected async validateOutput(output: Record<string, unknown>, _task: Task): Promise<void> {
     if (!Array.isArray(output.patches))  throw new Error('Validation: patches must be an array');
+
+    // newFiles[] entry-shape validation — polish agent equivalent of the
+    // qa-agent guard. See qa-agent.ts for full rationale. In short: an
+    // entry without a string `content` survives to JSON.stringify, which
+    // drops the undefined key, and the file then crashes preview-staging
+    // with "data argument must be of type string". Catch it here.
+    if (output.newFiles !== undefined) {
+      if (!Array.isArray(output.newFiles)) {
+        throw new Error('Validation: newFiles must be an array');
+      }
+      const nf = output.newFiles as Array<Record<string, unknown>>;
+      for (let i = 0; i < nf.length; i++) {
+        const f = nf[i];
+        if (!f || typeof f !== 'object') {
+          throw new Error(`Validation: newFiles[${i}] must be an object`);
+        }
+        if (typeof f.path !== 'string' || f.path.length === 0) {
+          throw new Error(`Validation: newFiles[${i}].path must be a non-empty string`);
+        }
+        if (typeof f.content !== 'string') {
+          throw new Error(
+            `Validation: newFiles[${i}].content must be a string for "${f.path}" (got ${typeof f.content}). ` +
+            'Every polish newFile MUST include the full file body as a string.',
+          );
+        }
+      }
+    }
   }
 
   protected async extractLearnings(_task: Task, output: Record<string, unknown>): Promise<MemoryEntry[]> {

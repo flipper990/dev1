@@ -1,7 +1,7 @@
 'use client';
 
 import { Code2, Database, FileText, Loader2, Monitor, Play, RefreshCw, Smartphone, Tablet, Terminal } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
 import {
   ApiError,
@@ -176,6 +176,50 @@ function PreviewPane({
   // selection, not a stale record.
   const previewProjectId = selectedProjectId ?? null;
 
+  // Trace local previewStatus transitions in dev so the bug "old failed
+  // card stuck on screen during a fresh generation" can be observed at a
+  // glance without opening the network tab. Records (selectedProjectId,
+  // previous local state, next local state, projectStatus, persisted
+  // previewStatus). Stripped from production builds.
+  const prevStateRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    const nextState = status?.state ?? 'null';
+    if (prevStateRef.current === nextState) return;
+    // eslint-disable-next-line no-console
+    console.info('[preview-stage] previewStatus transition', {
+      selectedProjectId,
+      previewProjectId,
+      from: prevStateRef.current,
+      to: nextState,
+      projectStatus: project?.status ?? null,
+      persistedPreviewStatus: project?.preview?.previewStatus ?? null,
+    });
+    prevStateRef.current = nextState;
+  }, [status?.state, selectedProjectId, previewProjectId, project?.status, project?.preview?.previewStatus]);
+
+  // Hard reset whenever the project switches into `generating`. Even if
+  // the polling effect below is about to refetch, in the gap between
+  // submit and the first response the local `status` would still hold
+  // the previous run's 'failed' value — producing the "build started
+  // but Preview failed card visible" leak. Clearing it here makes the
+  // generating placeholder render immediately.
+  useEffect(() => {
+    if (project?.status !== 'generating') return;
+    if (status === null && err === null) return;
+    // eslint-disable-next-line no-console
+    console.info('[preview-stage] generation started — clearing local preview state', {
+      selectedProjectId,
+      previewProjectId,
+      previousLocalState: status?.state ?? null,
+      previousLocalError: err,
+      persistedPreviewStatus: project?.preview?.previewStatus ?? null,
+    });
+    setStatus(null);
+    setErr(null);
+    setAutoStarted(new Set());
+  }, [project?.status, project?.id, selectedProjectId, previewProjectId, status, err, project?.preview?.previewStatus]);
+
   useEffect(() => {
     // Hard reset: any state from the previous project must be discarded
     // before we issue a fetch for the new id.
@@ -255,6 +299,52 @@ function PreviewPane({
   }, [previewProjectId, project, status, autoStarted, selectedProjectId]);
 
   if (!project) {
+    // If the project record is unavailable (e.g. a transient
+    // /api/projects/:id failure or record-corruption banner) but the
+    // preview backend reports the iframe is up, we still render the
+    // iframe. The preview lifecycle is keyed off `previewProjectId`
+    // alone — it does not need the metadata record to keep serving.
+    // This guarantees a temporary metadata fetch failure cannot tear
+    // down a working preview.
+    const runningWithoutMeta =
+      previewProjectId &&
+      status &&
+      (status.state === 'ready' || status.state === 'fallback') &&
+      status.fallbackReason !== 'docker-unavailable';
+    if (runningWithoutMeta) {
+      const url = previewIframeUrl(previewProjectId, status.hostPort ?? null);
+      return (
+        <div className="h-full p-3 flex flex-col gap-2">
+          <div
+            className="text-[11.5px] px-3 py-1.5 rounded border"
+            style={{
+              background: 'rgba(245,158,11,0.10)',
+              borderColor: 'rgba(245,158,11,0.4)',
+              color: '#FCD34D',
+            }}
+            role="status"
+          >
+            Project metadata temporarily unavailable — preview iframe is still serving for{' '}
+            <span className="font-mono">{previewProjectId}</span>.
+          </div>
+          <div className="flex-1 grid place-items-center min-h-[420px]">
+            <div
+              className="rounded-xl border h-full w-full overflow-hidden"
+              style={{ maxWidth: w, borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}
+            >
+              <iframe
+                key={`iframe-${previewProjectId}-${status.hostPort ?? 'na'}-no-meta`}
+                src={url}
+                title={`Preview ${previewProjectId}`}
+                className="w-full h-full bg-white"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="h-full grid place-items-center p-6">
         <div
@@ -273,10 +363,12 @@ function PreviewPane({
               <Play size={22} />
             </div>
             <div className="text-[15px] font-semibold text-[var(--text-primary)]">
-              No project selected
+              {previewProjectId ? 'Project metadata unavailable' : 'No project selected'}
             </div>
             <div className="text-[12.5px] text-[var(--text-secondary)] mt-1.5">
-              Pick a project on the right or describe a new one in the prompt to start a live build.
+              {previewProjectId
+                ? 'Retrying in the background. The preview will appear here as soon as the project record loads or the preview reports ready.'
+                : 'Pick a project on the right or describe a new one in the prompt to start a live build.'}
             </div>
           </div>
         </div>
@@ -291,42 +383,93 @@ function PreviewPane({
   const state = status?.state ?? 'idle';
   const running = state === 'ready' || state === 'fallback';
   const docker  = status?.fallbackReason !== 'docker-unavailable';
-  // STRICT loading gate: the wake-up/loading overlay may ONLY appear
-  // when the preview backend is actively transitioning toward 'ready'.
-  // Anything else (idle, failed, stopped) must NOT trigger it — that
-  // produced the "BUILD FAILED + Waking up preview…" contradiction.
-  const starting = state === 'detecting' || state === 'building' || state === 'starting';
   // Project pipeline is still mid-build (separate from preview lifecycle).
   const projectBuilding = project.status === 'generating';
   // Hard build failure on the project itself — supersedes every preview
   // sub-state. We never auto-start, never show "waking up", just surface
   // the failure to the user.
+  //
+  // RAW backend signal only — do not promote `failed` to `completed`
+  // when preview.previewStatus is 'ready'. The discriminator below
+  // therefore renders the build-failed card AS WELL AS keeping the
+  // iframe visible elsewhere if the preview is genuinely up; the
+  // dashboard's inconsistency banner explains the contradiction and
+  // a re-hydrate is fired in parallel.
   const projectFailed = project.status === 'failed';
-  const previewFailed = state === 'failed';
-  const previewIdle   = state === 'idle' || state === 'stopped';
-  // The loading overlay is allowed if AND ONLY IF every one of these
-  // holds — kept as a single boolean so the JSX can't accidentally show
-  // it via a chained ternary.
-  const showLoadingOverlay =
-    !running &&
-    !projectFailed &&
-    !previewFailed &&
-    docker &&
-    (projectBuilding || starting);
+
+  // ── DETERMINISTIC PREVIEW RENDER MODE ──────────────────────
+  // ONE source of truth for what to render in the centre panel.
+  // Priority order is fixed and exhaustive: every (projectStatus,
+  // previewStatus, dockerAvailable) tuple lands on exactly one mode.
+  // Adding/removing branches in the JSX below MUST go through this
+  // discriminator so two contradictory states (e.g. "BUILD FAILED" +
+  // "Waking up preview…") cannot co-exist on screen.
+  type PreviewMode =
+    | 'iframe'              // running healthy preview
+    | 'docker-unavailable'  // platform-level: no backend
+    | 'build-failed'        // project.status === 'failed' (terminal)
+    | 'build-in-progress'   // project.status === 'generating' (neutral)
+    | 'preview-loading'     // preparing | installing | building | starting
+    | 'preview-failed'      // preview state === 'failed' AND not generating
+    | 'preview-idle'        // idle | stopped AND not generating
+    | 'unknown';            // catch-all (should be unreachable)
+
+  const previewMode: PreviewMode = (() => {
+    // 1. Healthy iframe wins regardless of other signals — the user is
+    //    already looking at a working app.
+    if (running && docker) return 'iframe';
+    // 2. Platform-level unavailability.
+    if (!docker) return 'docker-unavailable';
+    // 3. Hard build failure — supersedes every preview sub-state.
+    if (projectFailed) return 'build-failed';
+    // 4. Active generation — RULE: stale prior preview state must NOT
+    //    leak through. Neutral placeholder, never "Preview failed".
+    if (projectBuilding) return 'build-in-progress';
+    // 5. Preview is actively transitioning toward ready.
+    if (state === 'preparing' || state === 'detecting' ||
+        state === 'installing' || state === 'building' ||
+        state === 'starting') {
+      return 'preview-loading';
+    }
+    // 6. Preview failure (project is NOT generating — already excluded above).
+    if (state === 'failed') return 'preview-failed';
+    // 7. Preview idle / stopped (project is NOT generating).
+    if (state === 'idle' || state === 'stopped') return 'preview-idle';
+    return 'unknown';
+  })();
+
+  // Dev tracer: every mode change.
+  const prevModeRef = useRef<PreviewMode | null>(null);
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    if (prevModeRef.current === previewMode) return;
+    // eslint-disable-next-line no-console
+    console.info('[preview-stage] previewMode transition', {
+      selectedProjectId,
+      previewProjectId,
+      from: prevModeRef.current,
+      to: previewMode,
+      projectStatus: project.status,
+      previewBackendState: state,
+      persistedPreviewStatus: project.preview?.previewStatus ?? null,
+    });
+    prevModeRef.current = previewMode;
+  }, [previewMode, selectedProjectId, previewProjectId, project.status, state, project.preview?.previewStatus]);
+
   // Decoupled preview label — once the project is `completed`, we drop
   // "building project" entirely and use the preview state instead.
-  const previewLabel: string = !docker
-    ? 'docker unavailable'
-    : projectFailed
-      ? 'build failed'
-      : projectBuilding
-      ? 'generating'
-      : state === 'detecting' ? 'preparing'
-      : state === 'building'  ? 'installing'
-      : state === 'starting'  ? 'starting'
-      : state === 'ready'     ? 'ready'
-      : state === 'failed'    ? 'failed'
-      : state;
+  const previewLabel: string =
+    previewMode === 'docker-unavailable' ? 'docker unavailable'
+    : previewMode === 'build-failed'      ? 'build failed'
+    : previewMode === 'build-in-progress' ? 'generating'
+    : previewMode === 'preview-loading'
+        ? (state === 'preparing' || state === 'detecting' ? 'preparing'
+          : state === 'installing' || state === 'building' ? 'installing'
+          : 'starting')
+    : previewMode === 'iframe'         ? 'ready'
+    : previewMode === 'preview-failed' ? 'failed'
+    : previewMode === 'preview-idle'   ? 'idle'
+    : state;
 
   // Format createdAt for the header. Falls back gracefully if the
   // timestamp is missing/invalid so a malformed record doesn't blank the
@@ -474,10 +617,16 @@ function PreviewPane({
 
       <div className="flex-1 grid place-items-center min-h-[420px]">
         <div
+          // KEY: includes project.status so a generation-start (status
+          // flips to 'generating') unmounts whatever was previously
+          // rendered (iframe, error card, idle pane) and remounts a
+          // fresh subtree. Guarantees zero stale DOM/iframe/error from
+          // the previous build cycle leaks into the new one.
+          key={`preview-pane-${project.id}-${project.status}`}
           className="rounded-xl border h-full w-full overflow-hidden"
           style={{ maxWidth: w, borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}
         >
-          {running ? (
+          {previewMode === 'iframe' ? (
             <iframe
               key={`iframe-${previewProjectId}-${status?.hostPort ?? 'na'}`}
               src={url}
@@ -490,9 +639,16 @@ function PreviewPane({
               }}
             />
           ) : (
-            <div className="h-full grid place-items-center text-center px-6">
+            // ── DETERMINISTIC PLACEHOLDER ────────────────────────────
+            // Single switch on previewMode. Each case is mutually
+            // exclusive — no chained ternaries, no overlap.
+            <div
+              className="h-full grid place-items-center text-center px-6"
+              data-testid="preview-placeholder"
+              data-preview-mode={previewMode}
+            >
               <div className="max-w-sm">
-                {!docker ? (
+                {previewMode === 'docker-unavailable' && (
                   <>
                     <div className="text-[14px] font-semibold text-[var(--text-primary)]">
                       Docker not available
@@ -501,7 +657,9 @@ function PreviewPane({
                       Start Docker Desktop and reload to enable live previews.
                     </div>
                   </>
-                ) : projectFailed ? (
+                )}
+
+                {previewMode === 'build-failed' && (
                   <>
                     <div
                       className="mx-auto mb-3 h-10 w-10 rounded-full grid place-items-center"
@@ -517,38 +675,85 @@ function PreviewPane({
                         ?? 'The generation pipeline reported a failure. Open the logs panel for details.'}
                     </div>
                   </>
-                ) : previewFailed ? (
-                  <>
-                    <div
-                      className="mx-auto mb-3 h-10 w-10 rounded-full grid place-items-center"
-                      style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--error)' }}
-                    >
-                      <span aria-hidden className="text-[16px] font-semibold">!</span>
-                    </div>
-                    <div className="text-[14px] font-semibold text-[var(--text-primary)]">
-                      Preview failed
-                    </div>
-                    <div className="text-[12px] text-[var(--text-secondary)] mt-1 break-words">
-                      {project.preview?.previewError
-                        ?? 'The preview container exited unexpectedly. Click Restart to try again.'}
-                    </div>
-                  </>
-                ) : showLoadingOverlay ? (
+                )}
+
+                {previewMode === 'build-in-progress' && (
+                  // RULE: While project.status === 'generating', the
+                  // centre panel renders a NEUTRAL placeholder only.
+                  // No prior previewError, no "Preview failed" card,
+                  // no "Preview starting" — the new preview hasn't
+                  // been attempted yet.
                   <>
                     <div className="mx-auto mb-3 h-10 w-10 rounded-full grid place-items-center"
                          style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--accent-amber)' }}>
                       <Loader2 size={18} className="devteam-pulse-slow" />
                     </div>
                     <div className="text-[14px] font-semibold text-[var(--text-primary)]">
-                      {projectBuilding ? 'Generating project…' : 'Preview starting…'}
+                      Build in progress
                     </div>
                     <div className="text-[12px] text-[var(--text-secondary)] mt-1">
-                      {projectBuilding
-                        ? 'The agents are still building the code. Live preview will start automatically as soon as it’s ready.'
-                        : 'Spinning up a sandboxed container. This usually takes 10–30 seconds.'}
+                      The agents are generating your project. The live preview will start automatically once the build completes.
                     </div>
                   </>
-                ) : previewIdle ? (
+                )}
+
+                {previewMode === 'preview-loading' && (
+                  <>
+                    <div className="mx-auto mb-3 h-10 w-10 rounded-full grid place-items-center"
+                         style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--accent-amber)' }}>
+                      <Loader2 size={18} className="devteam-pulse-slow" />
+                    </div>
+                    <div className="text-[14px] font-semibold text-[var(--text-primary)]">
+                      Preview starting…
+                    </div>
+                    <div className="text-[12px] text-[var(--text-secondary)] mt-1">
+                      {state === 'preparing' || state === 'detecting'
+                        ? 'Preparing sandbox container…'
+                        : state === 'installing' || state === 'building'
+                          ? 'Installing dependencies and building image…'
+                          : 'Starting dev server. This usually takes 10–30 seconds.'}
+                    </div>
+                  </>
+                )}
+
+                {previewMode === 'preview-failed' && (
+                  // Reached only when project.status !== 'generating'
+                  // (verified by the discriminator above). Safe to
+                  // surface previewError without contradicting an
+                  // active build.
+                  <PreviewFailureCard
+                    projectId={previewProjectId ?? project.id}
+                    previewId={project.preview?.previewId ?? null}
+                    runtime={project.preview?.previewRuntime ?? null}
+                    error={project.preview?.previewError ?? null}
+                    exit={project.preview?.previewExit ?? null}
+                    lastStep={project.preview?.previewLastStep ?? null}
+                    diedInStep={project.preview?.previewStep ?? null}
+                    stepDurations={project.preview?.previewStepDurations ?? null}
+                    timeoutAt={project.preview?.previewTimeoutAt ?? null}
+                    timeoutDurationMs={project.preview?.previewTimeoutDurationMs ?? null}
+                    childAlive={project.preview?.previewChildAlive ?? null}
+                    probeRollup={project.preview?.probeRollup ?? null}
+                    processLifecycle={project.preview?.previewProcessLifecycle ?? null}
+                    onRetry={() => {
+                      const id = previewProjectId ?? project.id;
+                      if (!id) return;
+                      // Allow auto-start to fire again for this id.
+                      setAutoStarted((s) => {
+                        const next = new Set(s);
+                        next.delete(id);
+                        return next;
+                      });
+                      setErr(null);
+                      startPreview(id).then(
+                        (s) => { if (id === selectedProjectId) setStatus(s); },
+                        (e) => { if (id === selectedProjectId) setErr((e as Error).message); },
+                      );
+                    }}
+                  />
+                )}
+
+                {previewMode === 'preview-idle' && (
                   <>
                     <div className="text-[14px] font-semibold text-[var(--text-primary)]">
                       Preview idle
@@ -557,7 +762,9 @@ function PreviewPane({
                       The container isn’t running. It will start automatically once the project finishes building.
                     </div>
                   </>
-                ) : (
+                )}
+
+                {previewMode === 'unknown' && (
                   <>
                     <div className="text-[14px] font-semibold text-[var(--text-primary)]">
                       Preview unavailable
@@ -569,6 +776,382 @@ function PreviewPane({
                 )}
               </div>
             </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Preview failure card ──────────────────────────────────────────────── */
+
+interface PreviewFailureCardProps {
+  projectId: string;
+  previewId: string | null;
+  runtime: 'docker' | 'local' | 'local-fallback' | 'fullstack' | null;
+  error: string | null;
+  exit: {
+    exitCode?: number | null;
+    signal?: string | null;
+    oomKilled?: boolean;
+    dockerError?: string | null;
+  } | null;
+  lastStep: string | null;
+  /** Phase the preview was IN at the moment it died (`preview:installing`,
+   *  `preview:spawning-server`, …). Distinct from `lastStep` (free-form
+   *  string from the runner) — this is the structured boot phase. */
+  diedInStep:
+    | 'preview:queued'
+    | 'preview:staging-files'
+    | 'preview:installing'
+    | 'preview:building'
+    | 'preview:spawning-server'
+    | 'preview:waiting-for-port'
+    | 'preview:http-probing'
+    | 'preview:ready'
+    | 'preview:failed'
+    | 'preview:timeout'
+    | null;
+  /** Per-phase durations recorded by the backend so the user can see
+   *  exactly where time was spent before the crash. */
+  stepDurations: Array<{
+    step: string;
+    startedAt: string;
+    completedAt: string;
+    durationMs: number;
+  }> | null;
+  /** ISO timestamp the boot watchdog tripped, when this failure was a
+   *  timeout (vs an explicit runtime error). `null` for non-timeout
+   *  failures. */
+  timeoutAt: string | null;
+  /** Boot-budget that was in effect when the watchdog tripped (ms).
+   *  Drives the "timed out after Ns" chip. */
+  timeoutDurationMs: number | null;
+  /** Whether the dev-server child process was alive at the moment the
+   *  watchdog tripped — `true` ⇒ stuck process, `false` ⇒ died
+   *  silently, `null` ⇒ unknown. */
+  childAlive: boolean | null;
+  /** Roll-up classification of the readiness-wait HTTP probes — used
+   *  to render a precise "what kind of failure?" chip on timeouts. */
+  probeRollup: {
+    kind: 'no-probes' | 'port-never-opened' | 'tcp-opened-no-http' | 'http-error-status' | 'http-not-ready';
+    total: number;
+    tcpEverConnected: boolean;
+    httpEverResponded: boolean;
+    lastStatus: number | null;
+    capturedAt: string;
+  } | null;
+  /** Server-process liveness verdict captured at the moment the
+   *  failure was recorded. Drives the highest-signal "Process: …"
+   *  chip — the user's first answer to "is the boot hanging or
+   *  crashing?". */
+  processLifecycle: {
+    startedAt: string | null;
+    exitedAt: string | null;
+    exitCode: number | null;
+    signal: string | null;
+    alive: boolean | null;
+    pid: number | null;
+    uptimeMs: number | null;
+    classification: 'no-process' | 'crashed' | 'exited-clean' | 'alive-hanging' | 'alive-not-reachable' | 'alive-healthy';
+    capturedAt: string;
+  } | null;
+  onRetry: () => void;
+}
+
+/**
+ * Strip ANSI escape codes + control characters from server-supplied
+ * error text before rendering. We never set this via dangerouslySet
+ * InnerHTML (React escapes it for us), but ANSI color codes from
+ * `npm install` look ugly in plain text and `\x00`-style control
+ * characters can mangle line wrapping.
+ */
+function sanitizePreviewError(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+}
+
+/**
+ * The composed `previewError` from the backend looks like:
+ *   <reason>
+ *   exitCode=1 signal=SIGTERM
+ *   last successful step: install completed
+ *   stderr tail:
+ *   <multi-line dump>
+ *
+ * Extract just the headline (first line) for the prominent title, and
+ * keep the remainder as the expandable detail body. If the error is a
+ * plain single-line string (legacy path), the body stays empty.
+ */
+function splitPreviewError(raw: string | null): { headline: string; detail: string } {
+  if (!raw) return { headline: 'The preview runtime exited unexpectedly.', detail: '' };
+  const cleaned = sanitizePreviewError(raw).trim();
+  const nl = cleaned.indexOf('\n');
+  if (nl === -1) return { headline: cleaned, detail: '' };
+  return { headline: cleaned.slice(0, nl).trim(), detail: cleaned.slice(nl + 1).trim() };
+}
+
+function PreviewFailureCard({
+  projectId, previewId, runtime, error, exit, lastStep, diedInStep, stepDurations,
+  timeoutAt, timeoutDurationMs, childAlive, probeRollup, processLifecycle, onRetry,
+}: PreviewFailureCardProps) {
+  const [retrying, setRetrying] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
+  const { headline, detail } = useMemo(() => splitPreviewError(error), [error]);
+
+  const handleRetry = () => {
+    if (retrying) return;
+    setRetrying(true);
+    onRetry();
+    // Auto-start kicks back in once status flips to idle. The button
+    // resets after a short window so a stuck failure can be re-clicked.
+    setTimeout(() => setRetrying(false), 4_000);
+  };
+
+  const codeLine: string[] = [];
+  if (exit?.exitCode !== undefined && exit?.exitCode !== null) codeLine.push(`exit ${exit.exitCode}`);
+  if (exit?.signal) codeLine.push(`signal ${exit.signal}`);
+  if (exit?.oomKilled) codeLine.push('OOM killed');
+
+  // Phase forensic line: "died during preview:installing after 12.4s".
+  // diedInStep is `preview:failed` when the backend has already
+  // transitioned (we want the *previous* phase — the one whose
+  // duration was just recorded). Fall back to the last entry of
+  // stepDurations if the failure transition has happened.
+  const phaseLine = useMemo(() => {
+    if (!stepDurations || stepDurations.length === 0) return null;
+    const last = stepDurations[stepDurations.length - 1];
+    if (!last) return null;
+    if (last.step === 'preview:ready') return null; // succeeded then died — don't pretend
+    const seconds = (last.durationMs / 1000).toFixed(1);
+    return { step: last.step, seconds };
+  }, [stepDurations]);
+
+  return (
+    <div
+      className="mx-auto max-w-md w-full text-left rounded-xl border p-4"
+      style={{
+        borderColor: 'rgba(239,68,68,0.35)',
+        background: 'rgba(239,68,68,0.05)',
+      }}
+      role="alert"
+      aria-live="polite"
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className="h-8 w-8 shrink-0 rounded-full grid place-items-center"
+          style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--error)' }}
+        >
+          <span aria-hidden className="text-[14px] font-semibold">!</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[14px] font-semibold text-[var(--text-primary)]">
+            Preview failed
+          </div>
+          <div className="text-[12px] text-[var(--text-secondary)] mt-1 break-words whitespace-pre-wrap">
+            {headline}
+          </div>
+
+          {/* Forensic chips */}
+          <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
+            {runtime && (
+              <span
+                className="px-1.5 py-0.5 rounded font-mono"
+                style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
+              >
+                runtime: {runtime}
+              </span>
+            )}
+            {phaseLine && (
+              // Highest-signal chip: tells the user EXACTLY which boot
+              // phase the preview died in and how long it ran for.
+              <span
+                className="px-1.5 py-0.5 rounded font-mono"
+                style={{ background: 'rgba(239,68,68,0.10)', color: 'var(--error)', border: '1px solid rgba(239,68,68,0.35)' }}
+                title="Boot phase that was active when the preview crashed"
+              >
+                died in {phaseLine.step} after {phaseLine.seconds}s
+              </span>
+            )}
+            {codeLine.length > 0 && (
+              <span
+                className="px-1.5 py-0.5 rounded font-mono"
+                style={{ background: 'var(--bg-elevated)', color: 'var(--error)', border: '1px solid rgba(239,68,68,0.35)' }}
+              >
+                {codeLine.join(' · ')}
+              </span>
+            )}
+            {lastStep && (
+              <span
+                className="px-1.5 py-0.5 rounded"
+                style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
+                title="Last successful step before failure"
+              >
+                last step: {lastStep}
+              </span>
+            )}
+            {/* Timeout-specific forensic chips. Only render when the
+             *  failure was a boot-watchdog timeout (timeoutAt is set
+             *  iff `previewStep === 'preview:timeout'`). The chips give
+             *  the user a one-glance verdict on:
+             *   • how long we waited (timeoutDurationMs)
+             *   • whether the child was alive (stuck) or dead
+             *   • what the HTTP probe history said (probeRollup.kind) */}
+            {timeoutAt && (
+              <span
+                className="px-1.5 py-0.5 rounded font-mono"
+                style={{ background: 'rgba(239,68,68,0.10)', color: 'var(--error)', border: '1px solid rgba(239,68,68,0.35)' }}
+                title="Preview boot watchdog tripped"
+              >
+                timed out{typeof timeoutDurationMs === 'number' ? ` after ${(timeoutDurationMs / 1000).toFixed(0)}s` : ''}
+              </span>
+            )}
+            {/* Server-process lifecycle verdict. Highest-signal chip
+             *  for the user's first question — "is the boot hanging
+             *  or crashing?". Hidden when no lifecycle was captured
+             *  (older records). */}
+            {processLifecycle && (
+              <span
+                className="px-1.5 py-0.5 rounded font-mono"
+                style={{
+                  background: 'var(--bg-elevated)',
+                  color:
+                    processLifecycle.classification === 'crashed' || processLifecycle.classification === 'exited-clean'
+                      ? 'var(--error)'
+                      : processLifecycle.classification === 'alive-hanging' || processLifecycle.classification === 'alive-not-reachable'
+                      ? 'var(--warning, #d97706)'
+                      : 'var(--text-secondary)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+                title={
+                  processLifecycle.classification === 'crashed' ? `Process crashed (exit=${processLifecycle.exitCode ?? '?'}${processLifecycle.signal ? `, signal=${processLifecycle.signal}` : ''})`
+                  : processLifecycle.classification === 'exited-clean' ? 'Process exited cleanly during boot — unexpected'
+                  : processLifecycle.classification === 'alive-hanging' ? 'Process is alive but never opened the port'
+                  : processLifecycle.classification === 'alive-not-reachable' ? 'Process is alive and listening but HTTP responses never passed readiness'
+                  : processLifecycle.classification === 'no-process' ? 'No server process was ever spawned'
+                  : 'Process state'
+                }
+              >
+                process: {processLifecycle.classification}
+                {processLifecycle.pid != null ? ` · pid=${processLifecycle.pid}` : ''}
+                {processLifecycle.uptimeMs != null ? ` · ${(processLifecycle.uptimeMs / 1000).toFixed(0)}s` : ''}
+              </span>
+            )}
+            {timeoutAt && childAlive !== null && !processLifecycle && (
+              // Legacy fallback chip — only rendered when the richer
+              // processLifecycle field is missing (e.g. records from
+              // before this field was introduced).
+              <span
+                className="px-1.5 py-0.5 rounded font-mono"
+                style={{ background: 'var(--bg-elevated)', color: childAlive ? 'var(--warning, #d97706)' : 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
+                title={childAlive ? 'Dev-server process was still alive at timeout (stuck)' : 'Dev-server process had already died at timeout'}
+              >
+                child: {childAlive ? 'stuck (alive)' : 'dead'}
+              </span>
+            )}
+            {timeoutAt && probeRollup && (
+              <span
+                className="px-1.5 py-0.5 rounded font-mono"
+                style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
+                title={`HTTP readiness probe rollup (${probeRollup.total} attempts)`}
+              >
+                probe: {probeRollup.kind}
+              </span>
+            )}
+          </div>
+
+          {exit?.dockerError && (
+            <div
+              className="mt-2 text-[11px] font-mono break-words"
+              style={{ color: 'var(--error)' }}
+            >
+              docker: {sanitizePreviewError(exit.dockerError)}
+            </div>
+          )}
+
+          {/* Identifier line — projectId always visible per spec. */}
+          <div className="mt-3 flex items-center gap-2 text-[11px] text-[var(--text-tertiary)]">
+            <span>project</span>
+            <ProjectIdChip id={projectId} size="xs" />
+            {previewId && (
+              <>
+                <span>·</span>
+                <span className="font-mono" title="Per-start preview identifier">run {previewId}</span>
+              </>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleRetry}
+              disabled={retrying}
+              className={cn(
+                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium',
+                'transition-colors disabled:opacity-60',
+              )}
+              style={{
+                background: 'var(--accent)',
+                color: 'var(--bg-void)',
+              }}
+            >
+              {retrying ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+              {retrying ? 'Retrying…' : 'Retry preview'}
+            </button>
+            {(detail || (stepDurations && stepDurations.length > 0)) && (
+              <button
+                type="button"
+                onClick={() => setShowDetail((v) => !v)}
+                className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline-offset-2 hover:underline"
+                aria-expanded={showDetail}
+              >
+                {showDetail ? 'Hide details' : 'Show details'}
+              </button>
+            )}
+          </div>
+
+          {showDetail && stepDurations && stepDurations.length > 0 && (
+            // Phase ladder: lets the user see the FULL boot timeline
+            // up to the failure, with how long each phase took. Useful
+            // when the headline only says "exit 1" — the ladder
+            // pinpoints which phase was responsible.
+            <div className="mt-3 rounded-md border" style={{ borderColor: 'var(--border-subtle)' }}>
+              <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                Boot phases
+              </div>
+              <ul className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
+                {stepDurations.map((d, i) => {
+                  const isLast = i === stepDurations.length - 1;
+                  // The terminal entry before the crash is the one
+                  // diedInStep transitioned away from; flag it red.
+                  const failedHere = isLast && diedInStep === 'preview:failed' && d.step !== 'preview:ready';
+                  return (
+                    <li key={`${d.step}-${d.startedAt}`} className="px-2 py-1 flex items-center justify-between text-[11px] font-mono">
+                      <span style={{ color: failedHere ? 'var(--error)' : 'var(--text-secondary)' }}>
+                        {failedHere ? '✗' : '✓'} {d.step}
+                      </span>
+                      <span style={{ color: 'var(--text-tertiary)' }}>
+                        {(d.durationMs / 1000).toFixed(2)}s
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          {showDetail && detail && (
+            <pre
+              className="mt-3 max-h-48 overflow-auto rounded-md p-2 text-[11px] font-mono whitespace-pre-wrap break-words"
+              style={{
+                background: 'var(--bg-void)',
+                color: 'var(--text-secondary)',
+                border: '1px solid var(--border-subtle)',
+              }}
+            >
+              {detail}
+            </pre>
           )}
         </div>
       </div>

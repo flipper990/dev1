@@ -187,8 +187,14 @@ export function LivePreview() {
     || project?.preview?.previewReady === true;
 
   const previewIsFailed =
-    docker.previewState === 'failed'
-    || project?.preview?.previewStatus === 'failed';
+    // While the project is regenerating, ignore any 'failed' state left
+    // over from the previous run \u2014 the new preview hasn't been
+    // attempted yet, so claiming failure is incorrect and produces the
+    // \"Preview failed\" banner-on-fresh-build leak.
+    projectStatus !== 'generating' && (
+      docker.previewState === 'failed'
+      || project?.preview?.previewStatus === 'failed'
+    );
 
   // Single message string for the banner above the iframe. Mirrors the
   // user spec: "Project generated successfully" → "Preview starting…" →

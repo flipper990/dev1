@@ -160,6 +160,35 @@ export class QaAgent extends BaseAgent {
       throw new Error('Validation: scores object missing');
     }
 
+    // newFiles[] entry-shape validation. The QA agent occasionally emits
+    // entries like { path: "…", description: "…" } without a `content`
+    // field. Such entries enter the artifact map, get spread into the file
+    // tree by assembleProject, then get JSON-stringified — at which point
+    // the undefined content key is silently dropped. The corrupted entry
+    // resurfaces only at preview-staging time as a low-level Node throw.
+    // Reject at the source instead so the agent re-runs cleanly.
+    if (output.newFiles !== undefined) {
+      if (!Array.isArray(output.newFiles)) {
+        throw new Error('Validation: newFiles must be an array');
+      }
+      const nf = output.newFiles as Array<Record<string, unknown>>;
+      for (let i = 0; i < nf.length; i++) {
+        const f = nf[i];
+        if (!f || typeof f !== 'object') {
+          throw new Error(`Validation: newFiles[${i}] must be an object`);
+        }
+        if (typeof f.path !== 'string' || f.path.length === 0) {
+          throw new Error(`Validation: newFiles[${i}].path must be a non-empty string`);
+        }
+        if (typeof f.content !== 'string') {
+          throw new Error(
+            `Validation: newFiles[${i}].content must be a string for "${f.path}" (got ${typeof f.content}). ` +
+            'Every QA newFile MUST include the full file body as a string.',
+          );
+        }
+      }
+    }
+
     // ── Verdict override gate ────────────────────────────────────────────
     // The LLM occasionally rubber-stamps obviously broken builds. We refuse
     // to let "pass" through when:

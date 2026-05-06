@@ -1,0 +1,106 @@
+{
+  "timestamp": "2026-05-06T01:26:06.629Z",
+  "projectId": "c5jZ19ckzIXC",
+  "previewId": "27214e426d0f",
+  "runtime": "local-fallback",
+  "stack": null,
+  "reason": "Local-fallback preview failed (after docker also failed): npm install failed: npm install exited code=1 — npm error For a full report see: | npm error C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-eresolve-report.txt | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-debug-0.log",
+  "exitCode": null,
+  "signal": null,
+  "oomKilled": false,
+  "dockerError": null,
+  "command": null,
+  "commandArgs": null,
+  "cwd": null,
+  "port": null,
+  "envSafe": {
+    "PORT": "3001",
+    "HOST": "0.0.0.0",
+    "NODE_ENV": "development"
+  },
+  "imageTag": null,
+  "containerName": null,
+  "containerId": null,
+  "lastSuccessfulStep": "⚠ Both preview backends failed:\n\n── Docker attempt ──\nDocker build failed\nlast successful step: docker build started\nstderr tail:\n#0 building with \"desktop-linux\" instance using docker driver\n\n#1 [int",
+  "stdoutTail": null,
+  "stderrTail": null,
+  "errorStack": "Error: npm install failed: npm install exited code=1 — npm error For a full report see: | npm error C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-eresolve-report.txt | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-debug-0.log\n    at LocalPreviewRunner.start (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\local-runner.ts:248:15)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async PreviewManager.doStartLocal (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:2215:18)\n    at async PreviewManager.startWithAutoFixRetry (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:837:22)\n    at async PreviewManager.start (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:787:14)\n    at async Object.<anonymous> (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\routes\\preview-routes.ts:66:22)",
+  "currentStep": "preview:failed",
+  "stepStartedAt": "2026-05-06T01:26:06.629Z",
+  "stepDurations": [
+    {
+      "step": "preview:queued",
+      "startedAt": "2026-05-06T01:26:04.708Z",
+      "completedAt": "2026-05-06T01:26:04.708Z",
+      "durationMs": 0
+    },
+    {
+      "step": "preview:staging-files",
+      "startedAt": "2026-05-06T01:26:04.708Z",
+      "completedAt": "2026-05-06T01:26:05.357Z",
+      "durationMs": 649
+    },
+    {
+      "step": "preview:installing",
+      "startedAt": "2026-05-06T01:26:05.357Z",
+      "completedAt": "2026-05-06T01:26:06.629Z",
+      "durationMs": 1272
+    }
+  ],
+  "previewStatusTransitions": [
+    {
+      "step": "starting:local-fallback",
+      "at": "2026-05-06T01:26:04.708Z"
+    },
+    {
+      "step": "failed:⚠ Both preview backends failed:\n\n── Docker attempt ──\nDocker build failed\nlast successful step: docker build started\nstderr tail:\n#0 building with \"desktop-linux\" instance using docker driver\n\n#1 [int",
+      "at": "2026-05-06T01:26:06.628Z"
+    }
+  ],
+  "timeline": [
+    {
+      "event": "runner-start",
+      "at": "2026-05-06T01:26:04.708Z",
+      "previewStatus": "starting",
+      "durationMs": null,
+      "details": {
+        "mode": "local-fallback",
+        "fileCount": 61,
+        "fallbackFromDocker": true
+      }
+    },
+    {
+      "event": "install-start",
+      "at": "2026-05-06T01:26:04.708Z",
+      "previewStatus": "starting",
+      "durationMs": null,
+      "details": {
+        "mode": "local-fallback"
+      }
+    },
+    {
+      "event": "install-end",
+      "at": "2026-05-06T01:26:06.624Z",
+      "previewStatus": "starting",
+      "durationMs": 1916,
+      "details": {
+        "ok": false,
+        "error": "npm install failed: npm install exited code=1 — npm error For a full report see: | npm error C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-eresolve-report.txt | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-debug-0.log"
+      }
+    },
+    {
+      "event": "failed",
+      "at": "2026-05-06T01:26:06.629Z",
+      "previewStatus": "failed",
+      "durationMs": 1921,
+      "details": {
+        "message": "⚠ Both preview backends failed:\n\n── Docker attempt ──\nDocker build failed\nlast successful step: docker build started\nstderr tail:\n#0 building with \"desktop-linux\" instance using docker driver\n\n#1 [internal] load build definition from Dockerfile.preview\n#1 transferring dockerfile:\n#1 transferring dockerfile: 2B 0.1s done\n#1 DONE 0.8s\nERROR: failed to build: failed to solve: failed to read dockerfile: open Dockerfile.preview: no such file or directory\n\n── Local fallback attempt ──\nLocal-fallback preview failed (after docker also failed): npm install failed: npm install exited code=1 — npm error For a full report see: | npm error C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-eresolve-report.txt | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-debug-0.log",
+        "reason": "Local-fallback preview failed (after docker also failed): npm install failed: npm install exited code=1 — npm error For a full report see: | npm error C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-eresolve-report.txt | npm error A complete log of this run can be found in: C:\\Users\\AJ\\npm-cache\\_logs\\2026-05-06T01_26_05_827Z-debug-0.log",
+        "exitCode": null,
+        "signal": null,
+        "oomKilled": false,
+        "lastSuccessfulStep": "⚠ Both preview backends failed:\n\n── Docker attempt ──\nDocker build failed\nlast successful step: docker build started\nstderr tail:\n#0 building with \"desktop-linux\" instance using docker driver\n\n#1 [int"
+      }
+    }
+  ]
+}

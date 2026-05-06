@@ -5,6 +5,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { ProjectGenerator } from '../pipeline/project-generator.js';
 import type { ProjectStore } from '../storage/project-store.js';
+import { ProjectRecordCorruptError } from '../storage/project-store.js';
 import type { SessionManager } from '../pipeline/session-manager.js';
 import type { FileMemoryStore } from '../storage/memory-store.js';
 import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
@@ -179,11 +180,34 @@ export function registerRoutes(
       }
       return project;
     } catch (err) {
+      if (err instanceof ProjectRecordCorruptError) {
+        request.log.error(
+          {
+            event: 'route:get-project:corrupt',
+            projectId: id,
+            reqId: request.id,
+            recovery: err.recovery,
+            quarantinePath: err.quarantinePath,
+            err: err.message,
+          },
+          '[route:get-project] project record corrupt — returning 500 with structured payload',
+        );
+        return reply.status(500).send({
+          error: 'Project record is corrupt',
+          code: err.code,
+          projectId: err.projectId,
+          corruption: true,
+          recovery: err.recovery, // 'unavailable' | 'failed'
+          recovered: false,
+          quarantinePath: err.quarantinePath,
+          message: err.message,
+        });
+      }
       request.log.error(
         { event: 'route:get-project:error', projectId: id, reqId: request.id, err: (err as Error).message, stack: (err as Error).stack },
         '[route:get-project] threw — returning 500 instead of crashing the process',
       );
-      return reply.status(500).send({ error: 'Internal Error', code: 'GET_PROJECT_FAILED', message: (err as Error).message });
+      return reply.status(500).send({ error: 'Internal Error', code: 'GET_PROJECT_FAILED', projectId: id, message: (err as Error).message });
     }
   });
 

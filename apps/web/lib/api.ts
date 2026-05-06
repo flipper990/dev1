@@ -18,11 +18,16 @@ const DEFAULT_TIMEOUT_MS = 20_000;
 export class ApiError extends Error {
   public readonly kind: 'network' | 'timeout' | 'http' | 'parse';
   public readonly status?: number;
-  constructor(message: string, kind: ApiError['kind'], status?: number) {
+  /** Parsed JSON body of an HTTP-error response, when present. Lets
+   *  callers read structured error codes (e.g. `code: 'PROJECT_RECORD_CORRUPT'`)
+   *  without re-reading the response. */
+  public readonly body?: unknown;
+  constructor(message: string, kind: ApiError['kind'], status?: number, body?: unknown) {
     super(message);
     this.name = 'ApiError';
     this.kind = kind;
     this.status = status;
+    this.body = body;
   }
   /** True when the backend is unreachable (network down, CORS, DNS, offline). */
   get isUnreachable(): boolean {
@@ -68,10 +73,12 @@ async function request<T>(path: string, init?: RequestInit & { timeoutMs?: numbe
 
   if (!response.ok) {
     let detail = `HTTP ${response.status}`;
+    let body: unknown;
     try {
       const ct = response.headers.get('content-type') ?? '';
       if (ct.includes('application/json')) {
-        const payload = await response.json() as { message?: string; error?: string };
+        const payload = await response.json() as { message?: string; error?: string } & Record<string, unknown>;
+        body = payload;
         detail = payload?.message ?? payload?.error ?? detail;
       } else {
         const text = await response.text();
@@ -80,7 +87,7 @@ async function request<T>(path: string, init?: RequestInit & { timeoutMs?: numbe
     } catch {
       /* keep default detail */
     }
-    throw new ApiError(detail, 'http', response.status);
+    throw new ApiError(detail, 'http', response.status, body);
   }
 
   // Empty body (204 etc.) → return empty object cast to T; callers expecting
@@ -229,6 +236,55 @@ export async function getProject(projectId: string): Promise<GeneratedProject | 
       return null;
     }
     throw err;
+  }
+}
+
+/**
+ * Structured outcome variant of {@link getProject}. Distinguishes:
+ *   - ok          : record loaded successfully
+ *   - not-found   : 404 (project genuinely doesn't exist)
+ *   - corrupt     : backend reported PROJECT_RECORD_CORRUPT (project.json
+ *                   failed to parse and recovery from .bak failed/was
+ *                   unavailable). The preview iframe + cached list row
+ *                   may still be usable; callers should NOT discard the
+ *                   selection — surface a banner instead.
+ *   - transient   : any other failure (network, timeout, 5xx without
+ *                   the corrupt code). Caller should retry with backoff.
+ */
+export type GetProjectDetailOutcome =
+  | { kind: 'ok'; project: GeneratedProject }
+  | { kind: 'not-found' }
+  | { kind: 'corrupt'; projectId: string; recovery: 'unavailable' | 'failed'; message: string }
+  | { kind: 'transient'; message: string; status?: number };
+
+export async function getProjectDetail(projectId: string): Promise<GetProjectDetailOutcome> {
+  try {
+    const raw = await request<Raw | { project: Raw }>(`/api/projects/${projectId}`);
+    const proj = (raw && typeof raw === 'object' && 'project' in (raw as object))
+      ? (raw as { project: Raw }).project
+      : (raw as Raw);
+    if (!proj) return { kind: 'not-found' };
+    const normalized = normalizeProject(proj);
+    if (!normalized.id || normalized.id.startsWith('unknown-')) return { kind: 'not-found' };
+    return { kind: 'ok', project: normalized };
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return { kind: 'not-found' };
+    if (err instanceof ApiError && err.isUnreachable) {
+      return { kind: 'transient', message: 'Backend unreachable' };
+    }
+    if (err instanceof ApiError) {
+      const body = (err.body ?? {}) as { code?: string; recovery?: 'unavailable' | 'failed'; corruption?: boolean };
+      if (body?.code === 'PROJECT_RECORD_CORRUPT' || body?.corruption) {
+        return {
+          kind: 'corrupt',
+          projectId,
+          recovery: body.recovery ?? 'unavailable',
+          message: err.message,
+        };
+      }
+      return { kind: 'transient', message: err.message, status: err.status };
+    }
+    return { kind: 'transient', message: (err as Error).message };
   }
 }
 

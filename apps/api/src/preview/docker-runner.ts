@@ -138,6 +138,19 @@ export interface DockerRunner {
   logs(containerId: string, opts?: { tail?: number }): Promise<string>;
   /** Returns 'running' | 'exited' | 'missing'. */
   inspectState(containerId: string): Promise<'running' | 'exited' | 'missing'>;
+  /**
+   * Read forensic exit metadata for a container — invoked when the
+   * preview manager has decided the container is no longer healthy and
+   * wants to surface a faithful failure reason. The returned shape maps
+   * onto PreviewRecord.exitInfo. Best-effort: missing/destroyed
+   * containers resolve with all-null fields rather than rejecting.
+   */
+  inspectExit(containerId: string): Promise<{
+    exitCode: number | null;
+    oomKilled: boolean;
+    error: string | null;
+    finishedAt: string | null;
+  }>;
   /** GET against http://127.0.0.1:hostPort{path} with a short timeout. */
   httpProbe(hostPort: number, path: string, timeoutMs: number): Promise<{ ok: boolean; status: number | null }>;
   /** Wait until httpProbe returns ok=true OR budget elapses. */
@@ -236,6 +249,33 @@ export function createDockerRunner(logger: Logger, dockerBin = 'docker'): Docker
       if (status === 'running') return 'running';
       if (status.length > 0)    return 'exited';
       return 'missing';
+    },
+
+    async inspectExit(containerId) {
+      // We pipe through a delimited template so a single `docker inspect`
+      // call yields all four fields. JSON-formatted output would be
+      // cleaner but adds parsing failure modes; the pipe-delimited form
+      // is robust because none of the underlying values can legally
+      // contain a `|` (ExitCode = number, OOMKilled = bool, Error =
+      // single line, FinishedAt = ISO timestamp).
+      const fmt = '{{.State.ExitCode}}|{{.State.OOMKilled}}|{{.State.Error}}|{{.State.FinishedAt}}';
+      const r = await runOnce(dockerBin, ['inspect', '-f', fmt, containerId], { timeoutMs: 5_000, logger, label: 'docker-inspect-exit' });
+      if (r.code !== 0) {
+        return { exitCode: null, oomKilled: false, error: null, finishedAt: null };
+      }
+      const raw = r.stdout.trim();
+      const parts = raw.split('|');
+      const exitCodeStr = parts[0] ?? '';
+      const oomStr = parts[1] ?? 'false';
+      const errStr = parts[2] ?? '';
+      const finStr = parts[3] ?? '';
+      const exitCode = exitCodeStr === '' || Number.isNaN(Number(exitCodeStr)) ? null : Number(exitCodeStr);
+      return {
+        exitCode,
+        oomKilled: oomStr.trim().toLowerCase() === 'true',
+        error: errStr.trim().length > 0 ? errStr.trim() : null,
+        finishedAt: finStr.trim().length > 0 && finStr.trim() !== '0001-01-01T00:00:00Z' ? finStr.trim() : null,
+      };
     },
 
     httpProbe(hostPort, path, timeoutMs) {

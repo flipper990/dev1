@@ -249,7 +249,19 @@ export function RecentProjects({ projects, selectedId, onSelect, onNew, onOpenLa
   }
   return (
     <Card title="Recent Projects" action={action}>
-      <ul className="space-y-1">
+      {/* Scroll container ── caps the list height so the section
+          doesn't push the rest of the right rail off-screen, while
+          still letting the user reach every project via wheel/drag.
+          `overscroll-contain` keeps page scroll from chaining when
+          the list reaches its boundary. The pixel cap (≈10 rows at
+          ~52px each) is intentional — far enough to feel generous
+          but short enough that other right-rail cards stay visible
+          on a 1080p viewport. */}
+      <ul
+        className="space-y-1 max-h-[520px] overflow-y-auto pr-1 -mr-1 overscroll-contain"
+        style={{ scrollbarGutter: 'stable' }}
+        aria-label="Recent projects"
+      >
         {projects.map((p) => (
           <ProjectRow
             key={p.id}

@@ -59,9 +59,18 @@ export function registerVersionRoutes(
     // stale one from the original generation. Without this, the
     // websocket attaches to the dead original session and the UI shows
     // no progress even though the pipeline is running fine in the bg.
-    existing.sessionId = reservation.sessionId;
-    existing.status = 'generating';
-    await projectStore.save(existing);
+    // Use update() so the read-modify-write is held under the
+    // per-project lock — protects against a racing updatePreview()
+    // from a still-warm preview container clobbering this status flip.
+    await projectStore.update(id, (rec) => {
+      rec.sessionId = reservation.sessionId;
+      rec.status = 'generating';
+    }, {
+      phase: 'update-route:reserve-session',
+      caller: 'version-routes:update',
+      reason: 'user-initiated update flow flips completed→generating',
+      allowStatusDowngrade: true,
+    });
 
     void generator.runReservedUpdate(reservation).catch((err) => {
       request.log.error({ err, projectId: id }, 'Background update failed');

@@ -8,6 +8,7 @@ import { PromptComposer } from './PromptComposer';
 import { AgentFeed } from './AgentFeed';
 import { ChatHistory } from './ChatHistory';
 import { PreviewStage } from './PreviewStage';
+import { StatusDebugOverlay } from './StatusDebugOverlay';
 import {
   AgentProgression,
   RecentProjects,
@@ -54,6 +55,88 @@ export function DevteamDashboard() {
           }}
         >
           {data.error}
+        </div>
+      )}
+
+      {data.metadataError && (
+        <div
+          className="fixed left-1/2 -translate-x-1/2 z-[55] rounded-md border px-3 py-1.5 text-[12px] font-medium flex items-center gap-3"
+          style={{
+            // Stack below the hard-error banner if both are present.
+            top: data.error ? 'calc(56px + 40px)' : 'calc(56px + 8px)',
+            background: 'rgba(245,158,11,0.12)',
+            borderColor: 'rgba(245,158,11,0.4)',
+            color: '#FCD34D',
+          }}
+          role="status"
+          aria-live="polite"
+        >
+          <span>
+            Project metadata temporarily unavailable
+            {data.metadataError.kind === 'corrupt' ? ' (record corrupt)' : ''}
+            {data.metadataError.attempts > 1 ? ` · attempt ${data.metadataError.attempts}` : ''}
+            . Preview remains usable.
+          </span>
+          <button
+            type="button"
+            onClick={() => { void data.retryMetadata(); }}
+            className="rounded px-2 py-0.5 text-[11px] font-semibold"
+            style={{
+              background: 'rgba(245,158,11,0.25)',
+              color: '#FDE68A',
+            }}
+          >
+            Retry now
+          </button>
+        </div>
+      )}
+
+      {/* Status-inconsistency banner. Shown when the cached record
+       *  for the selected project carries a contradictory backend
+       *  pair (project.status=failed + preview.previewStatus=ready).
+       *  The pills above keep rendering the RAW values verbatim —
+       *  this banner ONLY surfaces the contradiction and tells the
+       *  user the dashboard is reconciling. The data hook fires
+       *  hydrateActiveProject() in parallel; one of the two raw
+       *  fields will land on a coherent value within ~1s and the
+       *  banner self-clears. We never rewrite either pill. */}
+      {data.statusReconciliation.consistency === 'conflicting' && (
+        <div
+          className="fixed left-1/2 -translate-x-1/2 z-[55] rounded-md border px-3 py-1.5 text-[12px] font-medium flex items-center gap-3"
+          style={{
+            // Stack below the metadata banner if it's present, which
+            // itself stacks below the hard-error banner.
+            top: data.error
+              ? data.metadataError
+                ? 'calc(56px + 72px)'
+                : 'calc(56px + 40px)'
+              : data.metadataError
+                ? 'calc(56px + 40px)'
+                : 'calc(56px + 8px)',
+            background: 'rgba(245,158,11,0.12)',
+            borderColor: 'rgba(245,158,11,0.4)',
+            color: '#FCD34D',
+          }}
+          role="status"
+          aria-live="polite"
+          data-testid="status-inconsistency-banner"
+        >
+          <span>
+            Status out of sync, refreshing from backend… (build=
+            <strong>{data.statusReconciliation.projectStatus}</strong>, preview=
+            <strong>{data.statusReconciliation.previewStatus ?? 'idle'}</strong>)
+          </span>
+          <button
+            type="button"
+            onClick={() => { void data.refreshActiveProject(); }}
+            className="rounded px-2 py-0.5 text-[11px] font-semibold"
+            style={{
+              background: 'rgba(245,158,11,0.25)',
+              color: '#FDE68A',
+            }}
+          >
+            Refresh now
+          </button>
         </div>
       )}
 
@@ -162,6 +245,10 @@ export function DevteamDashboard() {
           </div>
         </div>
       )}
+      {/* Dev-only diagnostic overlay. No-ops in production builds and
+       *  hidden by default in dev — toggle on with
+       *  localStorage.setItem('devteam:status-debug', '1'). */}
+      <StatusDebugOverlay />
     </div>
   );
 }

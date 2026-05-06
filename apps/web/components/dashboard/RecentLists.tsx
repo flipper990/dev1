@@ -48,8 +48,15 @@ export function RecentProjects({
           {emptyHint ?? 'No projects yet — describe your idea above to start.'}
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
-          {projects.slice(0, 5).map((p) => (
+        // Scroll container ── show the full project history (was
+        // previously sliced to 5). Caps height so the card doesn't
+        // dominate the dashboard; users can scroll to reach older
+        // projects.
+        <div
+          className="flex flex-col gap-2 max-h-[420px] overflow-y-auto pr-1 -mr-1 overscroll-contain"
+          style={{ scrollbarGutter: 'stable' }}
+        >
+          {projects.map((p) => (
             <button
               key={p.id}
               type="button"

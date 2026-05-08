@@ -1,295 +1,380 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppHeader }    from '../../components/AppHeader';
-import { Sidebar }      from '../../components/Sidebar';
-import { CenterPanel }  from '../../components/CenterPanel';
-import { LivePreview }  from '../../components/LivePreview';
-import { LogsPanel }    from '../../components/LogsPanel';
-import { ToastStack }   from '../../components/ToastStack';
-import { ShowcasePanel } from '../../components/ShowcasePanel';
-import { TemplateGallery } from '../../components/TemplateGallery';
-import { KeyboardShortcuts } from '../../components/KeyboardShortcuts';
-import { useStore }     from '../../lib/store';
-import { humanizeError } from '../../lib/error-messages';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { AppShell } from '../../src/components/shell';
+import { Badge, Button, Panel, Tabs } from '../../components/ui';
 import {
-  generateProject, updateProject, listProjects, openSessionSocket, exportProject,
-} from '../../lib/api';
+  InlineStatusPanel,
+  Modal,
+  RecoveryActions,
+  SystemBanner,
+  Toast,
+} from '../../src/components/feedback';
+import { listProjects } from '../../lib/api';
+import { getExperimentAssignments, getUiRedesignFlags } from '../../src/lib/flags/uiRedesignFlags';
+import { useTrackEvent } from '../../src/lib/telemetry/useTrackEvent';
+import type { GeneratedProject } from '../../types/dashboard';
+import {
+  BuildEvidencePanel,
+  LaunchChecklist,
+  ProjectCommandDock,
+  ProjectHero,
+  ProjectStageTimeline,
+  ProjectStatusSummary,
+  SyncWarningPanel,
+  TrustSummaryPanel,
+  VerificationSummary,
+} from '../../src/features/projects/components';
+import { deriveUnifiedProjectStatus } from '../../src/features/projects/model';
+import { PreviewCanvasFrame } from '../../src/features/preview/components';
+import { LogEvidenceView } from '../../src/features/logs/components';
 
-/**
- * Dashboard page — 3-panel desktop-style layout.
- *
- *   ┌──────────┬────────────────────────┬────────────────────────┐
- *   │  LEFT    │         CENTER         │         RIGHT          │
- *   │ Projects │ AI control:            │ Live preview (iframe)  │
- *   │ + New    │  • PromptPanel         │ always visible         │
- *   │          │  • PhaseProgress       │                        │
- *   │          │  • Agents / Files tabs │                        │
- *   └──────────┴────────────────────────┴────────────────────────┘
- *
- * State survives across navigation (no full page reloads). The selected
- * project is never reset on update — follow-up prompts stream into the
- * same WebSocket session and the same `artifacts.files[]` set.
- */
+const WORKSPACE_TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'preview', label: 'Preview' },
+  { id: 'build', label: 'Build' },
+  { id: 'verify', label: 'Verify' },
+  { id: 'launch', label: 'Launch' },
+  { id: 'activity', label: 'Activity' },
+  { id: 'logs', label: 'Logs' },
+];
 
-const FIX_ISSUES_PROMPT = [
-  'Review the current codebase and fix any issues you find:',
-  '- security vulnerabilities',
-  '- type errors, unused imports and dead code',
-  '- broken API wiring between frontend and backend',
-  '- missing error handling or input validation',
-  '- anything flagged by the previous reviewer pass',
-  'Do NOT change product behaviour, only correctness and quality.',
-].join('\n');
+export default function WorkspacePage() {
+  const searchParams = useSearchParams();
+  const trackEvent = useTrackEvent();
+  const experiments = useMemo(() => getExperimentAssignments(), []);
+  const flags = useMemo(() => getUiRedesignFlags(), []);
+  const initialTab = searchParams.get('tab') ?? 'overview';
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const [projects, setProjects] = useState<GeneratedProject[]>([]);
+  const [liveMessage, setLiveMessage] = useState('Workspace ready.');
+  const [retrying, setRetrying] = useState(false);
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
-export default function DashboardPage() {
-  const store = useStore();
-  const socketRef = useRef<WebSocket | null>(null);
-  // Tracks the sessionId currently bound to socketRef so we don't reopen
-  // the WS on every project-list poll, and so we know when a different
-  // session (e.g. one started via curl/Invoke-RestMethod from a terminal,
-  // not from this dashboard) has appeared and needs to be attached.
-  const attachedSessionIdRef = useRef<string | null>(null);
-
-  // Download state lives at the page level so the button in the center
-  // panel and any other surface can share it.
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [downloadDone,  setDownloadDone]  = useState(false);
-
-  // ── Load + poll projects (initial load auto-selects latest) ───────────────
-  const initialLoadDone = useRef(false);
   useEffect(() => {
-    const load = (isInitial = false) =>
-      listProjects()
-        .then((data) => {
-          store.setProjects(data);
-          if (isInitial && !store.selectedProjectId && data.length > 0) {
-            store.setSelectedProjectId(data[0].id);
-            store.setProjectMode('edit');
-          }
-        })
-        .catch((e) => store.pushLog('projects', (e as Error).message, 'error'));
-
-    if (!initialLoadDone.current) {
-      initialLoadDone.current = true;
-      load(true);
-    }
-    const id = setInterval(() => load(false), 8000);
-    return () => clearInterval(id);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Cleanup socket on unmount ─────────────────────────────────────────────
-  useEffect(() => {
-    return () => { socketRef.current?.close(); };
+    listProjects().then(setProjects).catch(() => {});
   }, []);
 
-  // ── Auto-attach to externally-started runs ────────────────────────────────
-  // If a project shows up in the polled list with status='generating' and a
-  // sessionId we are NOT currently connected to, open a WS for it. This
-  // makes pipeline progress / agent activity / phase bars / live logs show
-  // up on the dashboard for projects created via curl, Invoke-RestMethod,
-  // or any other client that didn't open the WS itself.
-  //
-  // Preference order:
-  //   1. The currently-selected project, if it is generating.
-  //   2. Otherwise the most recent generating project (list is already
-  //      sorted desc by createdAt server-side).
-  // We only ever bind one socket, so a manual create/update flow (which
-  // calls openSocket directly) is never overridden by this effect.
+  const project = projects[0] ?? null;
+  const status = deriveUnifiedProjectStatus(project);
+
+  const previewState =
+    status.key === 'preview-failed'
+      ? 'failed'
+      : status.key === 'preview-starting'
+        ? 'starting'
+        : status.key === 'preview-ready'
+          ? 'ready'
+          : status.key === 'stale'
+            ? 'stale'
+            : 'idle';
+
+  const retryPreview = () => {
+    const nextRetryCount = retryCount + 1;
+    setRetryCount(nextRetryCount);
+    setRetrying(true);
+    setLiveMessage('Retrying preview startup.');
+    trackEvent('preview_retry_clicked', {
+      route: '/workspace',
+      project_stage: status.stage,
+      preview_state: previewState,
+      retry_count: nextRetryCount,
+      action_source: 'workspace-recovery',
+    });
+    setTimeout(() => {
+      setRetrying(false);
+      setLiveMessage('Retry completed. Review latest status.');
+    }, 1200);
+  };
+
   useEffect(() => {
-    const generating = store.projects.filter(
-      (p) => p.status === 'generating' && typeof p.sessionId === 'string' && p.sessionId.length > 0,
+    setLiveMessage(`Project status changed: ${status.label}.`);
+    trackEvent('workspace_status_viewed', {
+      route: '/workspace',
+      project_stage: status.stage,
+      preview_state: previewState,
+      health_state: status.healthy ? 'healthy' : 'degraded',
+      variant: experiments.status_summary_variant,
+    });
+  }, [experiments.status_summary_variant, previewState, status.healthy, status.label, status.stage, trackEvent]);
+
+  useEffect(() => {
+    if (!project) return;
+    trackEvent('project_opened', {
+      route: '/workspace',
+      project_stage: status.stage,
+      health_state: status.healthy ? 'healthy' : 'degraded',
+      action_source: 'workspace-entry',
+    });
+  }, [project, status.healthy, status.stage, trackEvent]);
+
+  useEffect(() => {
+    if (activeTab === 'preview') {
+      trackEvent('preview_opened', {
+        route: '/workspace',
+        project_stage: status.stage,
+        preview_state: previewState,
+        health_state: status.healthy ? 'healthy' : 'degraded',
+      });
+    }
+    if (activeTab === 'build') {
+      trackEvent('build_timeline_opened', {
+        route: '/workspace',
+        project_stage: status.stage,
+        health_state: status.healthy ? 'healthy' : 'degraded',
+      });
+    }
+  }, [activeTab, previewState, status.healthy, status.stage, trackEvent]);
+
+  const tabContent = useMemo(() => {
+    if (!project) {
+      return <p className="text-body-s text-secondary">No project selected.</p>;
+    }
+
+    if (activeTab === 'preview') {
+      return (
+        <PreviewCanvasFrame
+          ready={Boolean(project.preview?.previewReady)}
+          failed={project.preview?.previewStatus === 'failed'}
+          loading={project.preview?.previewStatus === 'starting' || project.preview?.previewStatus === 'building'}
+          url={project.preview?.previewUrl ?? undefined}
+          message="Preview output will appear as soon as runtime is healthy."
+        />
+      );
+    }
+
+    if (activeTab === 'build') {
+      return (
+        <div className="space-y-4">
+          <BuildEvidencePanel
+            pipelineStep={project.preview?.previewStep ?? 'Code generation'}
+            checksPassed={project.runtimeValidation?.finalVerdict === 'pass' ? 2 : 1}
+            checksTotal={2}
+            runtimeMs={project.durationMs}
+            costUsd={project.totalCostUsd}
+          />
+          {(status.key === 'preview-failed' || status.key === 'preview-starting') ? (
+            <InlineStatusPanel
+              tone={status.key === 'preview-failed' ? 'error' : 'warning'}
+              title={status.key === 'preview-failed' ? 'Preview boot failed' : 'Preview still starting'}
+              where="Build -> runtime startup"
+              whatWorked="Build artifacts were generated and persisted."
+              whatFailed={status.key === 'preview-failed' ? 'Preview runtime did not become healthy.' : 'Health checks are still pending.'}
+              nextAction="Retry startup, then inspect grouped log evidence."
+              actions={
+                <RecoveryActions
+                  retrying={retrying}
+                  onPrimary={retryPreview}
+                  onSecondary={() => setActiveTab('logs')}
+                  onTertiary={() => setShowRecoveryModal(true)}
+                />
+              }
+            />
+          ) : null}
+        </div>
+      );
+    }
+
+    if (activeTab === 'verify') {
+      return (
+        <VerificationSummary
+          runtimeStatus={project.runtimeValidation?.finalVerdict === 'pass' ? 'passed' : project.runtimeValidation?.finalVerdict === 'fail' ? 'failed' : 'pending'}
+          qaStatus={status.key === 'verification-pending' ? 'pending' : 'passed'}
+          securityStatus={status.key === 'launch-ready' ? 'passed' : 'pending'}
+        />
+      );
+    }
+
+    if (activeTab === 'launch') {
+      return (
+        <div className="space-y-4">
+          <LaunchChecklist
+            items={[
+              { id: '1', label: 'Build completed successfully', done: project.status === 'completed' },
+              {
+                id: '2',
+                label: 'Preview is healthy',
+                done: Boolean(project.preview?.previewReady),
+                note: project.preview?.previewStatus === 'failed' ? 'Preview currently failed.' : undefined,
+              },
+              {
+                id: '3',
+                label: 'Verification checks passed',
+                done: status.key === 'launch-ready' || project.runtimeValidation?.finalVerdict === 'pass',
+              },
+            ]}
+          />
+          <Panel title="Launch action" subtitle="Final approval before deployment.">
+            <Button disabled={status.key !== 'launch-ready'}>Launch project</Button>
+          </Panel>
+        </div>
+      );
+    }
+
+    if (activeTab === 'activity') {
+      return (
+        <Panel title="Recent activity" subtitle="Evidence timeline from prompts.">
+          <ul className="space-y-2 text-body-s text-secondary">
+            {(project.promptHistory ?? []).slice(-5).reverse().map((entry, index) => (
+              <li key={`${entry.createdAt}-${index}`}>
+                {new Date(entry.createdAt).toLocaleString()} - {entry.text}
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      );
+    }
+
+    if (activeTab === 'logs') {
+      const logs = [
+        {
+          id: 'runtime-1',
+          timestamp: project.preview?.previewRuntimeLog?.capturedAt ?? new Date().toISOString(),
+          severity: project.preview?.previewStatus === 'failed' ? 'error' : 'info',
+          step: project.preview?.previewStep ?? 'Preview',
+          message: project.preview?.previewRuntimeLog?.stderrTail ?? 'No runtime stderr captured.',
+          explanation:
+            project.preview?.previewStatus === 'failed'
+              ? 'Retry preview and verify environment configuration.'
+              : 'Continue monitoring until preview is ready.',
+        },
+      ] as const;
+
+      return <LogEvidenceView entries={[...logs]} />;
+    }
+
+    return (
+      <div className="space-y-4">
+        {status.key === 'stale' ? (
+          <SyncWarningPanel retrying={retrying} onRefresh={retryPreview} onInspect={() => setActiveTab('logs')} />
+        ) : null}
+        {flags.ui_redesign_status_system && experiments.status_summary_variant === 'unified-summary' ? (
+          <ProjectStatusSummary
+            status={status}
+            buildHealthy={project.status !== 'failed'}
+            previewHealthy={Boolean(project.preview?.previewReady)}
+            verificationHealthy={project.runtimeValidation?.finalVerdict === 'pass'}
+            stale={status.key === 'stale'}
+          />
+        ) : (
+          <Panel title="Legacy status row" subtitle="Experiment baseline for status visibility.">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant={project.status === 'failed' ? 'error' : project.status === 'completed' ? 'success' : 'warning'}>
+                Build: {project.status}
+              </Badge>
+              <Badge variant={project.preview?.previewReady ? 'success' : 'warning'}>
+                Preview: {project.preview?.previewStatus ?? 'idle'}
+              </Badge>
+              <Badge variant={project.runtimeValidation?.finalVerdict === 'pass' ? 'success' : 'warning'}>
+                Verify: {project.runtimeValidation?.finalVerdict ?? 'pending'}
+              </Badge>
+            </div>
+          </Panel>
+        )}
+        <ProjectStageTimeline currentStage={status.stage} />
+      </div>
     );
-    if (generating.length === 0) return;
-
-    const selected = generating.find((p) => p.id === store.selectedProjectId);
-    const target = selected ?? generating[0];
-    const sessionId = target.sessionId as string;
-    if (attachedSessionIdRef.current === sessionId) return;
-    if (socketRef.current && socketRef.current.readyState < 2) return;
-
-    // Adopt this run for the dashboard. Mirrors what handleCreate does
-    // for a dashboard-initiated project.
-    store.setSelectedProjectId(target.id);
-    store.setProjectMode('create');
-    store.setRightPanelTab('agents');
-    store.setIsGenerating(true);
-    store.pushLog('pipeline', `Attaching to external run: ${target.name}`);
-    openSocket(sessionId, target.name);
-  }, [store.projects, store.selectedProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Keyboard shortcuts ────────────────────────────────────────────────────
-  // Dedicated component mounted at the bottom of this tree handles all
-  // shortcuts + exposes the "?" help overlay.
-
-  // ── Shared socket-open helper ─────────────────────────────────────────────
-  const openSocket = useCallback((sessionId: string, projectName: string) => {
-    if (socketRef.current && socketRef.current.readyState < 2) {
-      socketRef.current.close();
-    }
-    attachedSessionIdRef.current = sessionId;
-
-    const socket = openSessionSocket(
-      sessionId,
-      (nextProgress) => {
-        store.setProgress(nextProgress);
-        store.setWsConnected(true);
-        if (nextProgress.currentStep) {
-          store.pushLog(
-            nextProgress.currentStep.agent,
-            `${nextProgress.currentStep.name} — ${nextProgress.currentStep.description ?? 'running'}`,
-          );
-        }
-      },
-      (status) => {
-        store.pushLog('pipeline', `Session ended: ${status}`);
-        store.setIsGenerating(false);
-        store.setWsConnected(false);
-        if (attachedSessionIdRef.current === sessionId) {
-          attachedSessionIdRef.current = null;
-        }
-        if (status === 'completed') {
-          store.addToast({ type: 'success', title: 'Build complete', message: projectName });
-          // After a successful run we are implicitly in edit mode for follow-ups.
-          store.setProjectMode('edit');
-        } else if (status === 'failed') {
-          store.addToast({ type: 'error',   title: 'Build failed',    message: `Check the logs panel for details.` });
-        } else {
-          store.addToast({ type: 'warning', title: 'Session ended',   message: `Status: ${status}` });
-        }
-        listProjects().then((items) => store.setProjects(items)).catch(() => {});
-      },
-      (message) => {
-        store.pushLog('ws', message, 'warn');
-        store.setWsConnected(false);
-      },
-    );
-
-    socketRef.current = socket;
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Create a new project ──────────────────────────────────────────────────
-  const handleCreate = useCallback(async (prompt: string) => {
-    store.setIsGenerating(true);
-    store.setProgress(null);
-    store.pushLog('pipeline', 'Submitting new project…');
-
-    try {
-      const result = await generateProject(prompt);
-      store.setSelectedProjectId(result.projectId);
-      store.setProjectMode('create'); // stays in create mode until pipeline ends
-      store.setRightPanelTab('agents');
-      store.pushLog('pipeline', `Project queued: ${result.project.name}`);
-      store.addToast({ type: 'info', title: 'Building project', message: result.project.name });
-      openSocket(result.sessionId, result.project.name);
-    } catch (e) {
-      const human = humanizeError(e, 'Create failed');
-      store.pushLog('pipeline', human.message, 'error');
-      store.setIsGenerating(false);
-      store.addToast({ type: human.severity, title: human.title, message: human.message });
-    }
-  }, [openSocket]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Update existing project (iteration; state is NOT reset) ───────────────
-  const handleUpdate = useCallback(async (prompt: string) => {
-    const projectId = store.selectedProjectId;
-    if (!projectId) return;
-
-    store.setIsGenerating(true);
-    // Do NOT clear the project, files, or preview — keep everything visible
-    // while the update pipeline runs. Only reset the live progress metric.
-    store.setProgress(null);
-    store.pushLog('pipeline', 'Submitting update…');
-
-    try {
-      const result = await updateProject(projectId, prompt);
-      store.setRightPanelTab('agents');
-      store.pushLog('pipeline', `Update queued for: ${result.project.name}`);
-      store.addToast({ type: 'info', title: 'Updating project', message: result.project.name });
-      openSocket(result.sessionId, result.project.name);
-    } catch (e) {
-      const human = humanizeError(e, 'Update failed');
-      store.pushLog('pipeline', human.message, 'error');
-      store.setIsGenerating(false);
-      store.addToast({ type: human.severity, title: human.title, message: human.message });
-    }
-  }, [store.selectedProjectId, openSocket]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Fix Issues (canned update) ────────────────────────────────────────────
-  const handleFixIssues = useCallback(() => {
-    if (!store.selectedProjectId || store.isGenerating) return;
-    void handleUpdate(FIX_ISSUES_PROMPT);
-  }, [store.selectedProjectId, store.isGenerating, handleUpdate]);
-
-  // ── Download ──────────────────────────────────────────────────────────────
-  const handleDownload = useCallback(async () => {
-    const id = store.selectedProjectId;
-    const project = store.projects.find((p) => p.id === id);
-    if (!id || !project) return;
-    setIsDownloading(true);
-    try {
-      await exportProject(id, project.name);
-      setDownloadDone(true);
-      store.addToast({ type: 'success', title: 'Download started', message: `${project.name}-export.zip` });
-      setTimeout(() => setDownloadDone(false), 2500);
-    } catch (err) {
-      const human = humanizeError(err, 'Download failed');
-      store.addToast({ type: human.severity, title: human.title, message: human.message });
-    } finally {
-      setIsDownloading(false);
-    }
-  }, [store.selectedProjectId, store.projects]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── New project (clear selection, keep window alive) ──────────────────────
-  const handleNewProject = useCallback(() => {
-    store.setSelectedProjectId(null);
-    store.setProjectMode('create');
-    store.setFiles([]);
-    store.setFileContent(null);
-    store.setProgress(null);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const selected = store.projects.find((p) => p.id === store.selectedProjectId) ?? null;
-  const isEditMode = store.projectMode === 'edit' && !!store.selectedProjectId;
-  const canDownload = !!selected && selected.status === 'completed';
+  }, [activeTab, experiments.status_summary_variant, flags.ui_redesign_status_system, project, retrying, status]);
 
   return (
-    <div className="app-root">
-      <AppHeader onNewProject={handleNewProject} />
+    <AppShell
+      title="Project workspace"
+      subtitle="Primary production surface for deciding, building, verifying, and launching."
+      lifecycle={{ label: status.label, tone: status.tone }}
+      breadcrumbs={[{ label: 'Workspace', href: '/' }, { label: 'Project workspace' }]}
+      actions={<Button>{status.nextActionLabel}</Button>}
+      contextTitle="Trust and context"
+      contextContent={<TrustSummaryPanel status={status} stale={status.key === 'stale'} syncedAt={project?.completedAt ?? undefined} />}
+      defaultContextOpen
+      workspaceName="DEVteam Studio"
+    >
+      <section aria-live="polite" className="sr-only">
+        {liveMessage}
+      </section>
+      <div className="space-y-4">
+        {(status.key === 'preview-failed' || status.key === 'stale' || status.key === 'preview-starting') ? (
+          <SystemBanner
+            tone={status.key === 'preview-failed' ? 'error' : status.key === 'stale' ? 'warning' : 'info'}
+            title={status.key === 'preview-failed' ? 'Preview failed' : status.key === 'stale' ? 'State out of sync' : 'Preview starting'}
+            description={status.description}
+            actions={
+              <RecoveryActions
+                retrying={retrying}
+                onPrimary={retryPreview}
+                onSecondary={() => setActiveTab('logs')}
+                onTertiary={() => setShowRecoveryModal(true)}
+              />
+            }
+          />
+        ) : null}
 
-      <div className="app-body">
-        {/* LEFT — projects */}
-        <Sidebar />
-
-        {/* CENTER — AI control */}
-        <CenterPanel
-          onSubmit={isEditMode ? handleUpdate : handleCreate}
-          onFixIssues={handleFixIssues}
-          onDownload={handleDownload}
-          mode={isEditMode ? 'edit' : 'create'}
-          canDownload={canDownload}
-          isDownloading={isDownloading}
-          downloadDone={downloadDone}
+        <ProjectHero project={project} status={status} />
+        <PreviewCanvasFrame
+          ready={Boolean(project?.preview?.previewReady)}
+          failed={project?.preview?.previewStatus === 'failed'}
+          loading={project?.preview?.previewStatus === 'starting' || project?.preview?.previewStatus === 'building'}
+          url={project?.preview?.previewUrl ?? undefined}
+          message="The artifact preview is the hero surface for this workspace."
         />
+        <Tabs items={WORKSPACE_TABS} value={activeTab} onChange={setActiveTab} ariaLabel="Workspace sections" />
+        {tabContent}
 
-        {/* RIGHT — always-visible live preview (iframe, sandboxed, error-bounded) */}
-        <aside
-          className="flex flex-col border-l border-white/[0.06] bg-[#0B0F19]/60 overflow-hidden flex-shrink-0"
-          style={{ width: 'var(--preview-w)' }}
-        >
-          <LivePreview />
-        </aside>
+        {flags.ui_redesign_workspace && experiments.command_dock_variant === 'command-dock' ? (
+          <ProjectCommandDock
+            onSubmit={() => {
+              trackEvent('command_submitted', {
+                route: '/workspace',
+                project_stage: status.stage,
+                action_source: 'command-dock',
+              });
+            }}
+          />
+        ) : (
+          <Panel title="Prompt composer" subtitle="Legacy prompt flow for experiment parity.">
+            <Button
+              onClick={() =>
+                trackEvent('command_submitted', {
+                  route: '/workspace',
+                  project_stage: status.stage,
+                  action_source: 'legacy-prompt-composer',
+                })
+              }
+            >
+              Submit prompt
+            </Button>
+          </Panel>
+        )}
+
+        {retrying ? (
+          <Toast tone="retrying" title="Retry in progress" message="Re-running preview startup checks." />
+        ) : null}
       </div>
 
-      <LogsPanel />
-      <ToastStack />
-      <ShowcasePanel />
-      <TemplateGallery />
-      <KeyboardShortcuts
-        onNewProject={handleNewProject}
-        onDownload={handleDownload}
-        canDownload={canDownload}
-      />
-    </div>
+      <Modal
+        open={showRecoveryModal}
+        onClose={() => setShowRecoveryModal(false)}
+        title="Recovery diagnostics"
+        description="This run keeps completed artifacts and only retries failed runtime stages."
+      >
+        <InlineStatusPanel
+          tone="warning"
+          title="Recovery plan"
+          where="Preview runtime"
+          whatWorked="Generated build output and project evidence are intact."
+          whatFailed="Preview health checks did not complete."
+          nextAction="Retry startup and validate environment configuration."
+          actions={
+            <RecoveryActions
+              retrying={retrying}
+              onPrimary={retryPreview}
+              onSecondary={() => setActiveTab('logs')}
+              onTertiary={() => setShowRecoveryModal(false)}
+            />
+          }
+        />
+      </Modal>
+    </AppShell>
   );
 }

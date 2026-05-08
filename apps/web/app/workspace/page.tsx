@@ -15,6 +15,7 @@ import { listProjects } from '../../lib/api';
 import { getExperimentAssignments, getUiRedesignFlags } from '../../src/lib/flags/uiRedesignFlags';
 import { useTrackEvent } from '../../src/lib/telemetry/useTrackEvent';
 import type { GeneratedProject } from '../../types/dashboard';
+import type { GateResult, ProjectContract, RequirementCoverageItem } from '../../types/projectContract';
 import {
   BuildEvidencePanel,
   LaunchChecklist,
@@ -27,6 +28,7 @@ import {
   VerificationSummary,
 } from '../../src/features/projects/components';
 import { deriveUnifiedProjectStatus } from '../../src/features/projects/model';
+import { deriveCompletionMetrics, deriveCompletionReport } from '../../src/features/projects/model/contractCompletion';
 import { PreviewCanvasFrame } from '../../src/features/preview/components';
 import { LogEvidenceView } from '../../src/features/logs/components';
 
@@ -59,6 +61,47 @@ export default function WorkspacePage() {
 
   const project = projects[0] ?? null;
   const status = deriveUnifiedProjectStatus(project);
+
+  const contract = useMemo<ProjectContract | null>(() => {
+    const raw = (project as unknown as { projectContract?: ProjectContract })?.projectContract;
+    return raw ?? null;
+  }, [project]);
+
+  const coverage = useMemo<RequirementCoverageItem[]>(() => {
+    const raw = (project as unknown as { requirementCoverage?: RequirementCoverageItem[] })?.requirementCoverage;
+    return Array.isArray(raw) ? raw : [];
+  }, [project]);
+
+  const gates = useMemo<GateResult[]>(() => {
+    const raw = (project as unknown as { gateResults?: GateResult[] })?.gateResults;
+    return Array.isArray(raw) ? raw : [];
+  }, [project]);
+
+  const flowChecksPassed = useMemo(() => gates.find((g) => g.id === 'flow')?.passed ? 1 : 0, [gates]);
+  const flowChecksTotal = 1;
+
+  const completionMetrics = useMemo(
+    () =>
+      deriveCompletionMetrics({
+        contract,
+        coverage,
+        flowChecksPassed,
+        flowChecksTotal,
+        project,
+      }),
+    [contract, coverage, flowChecksPassed, flowChecksTotal, project],
+  );
+
+  const completionReport = useMemo(
+    () =>
+      deriveCompletionReport({
+        contract,
+        coverage,
+        gates,
+        metrics: completionMetrics,
+      }),
+    [contract, coverage, gates, completionMetrics],
+  );
 
   const previewState =
     status.key === 'preview-failed'
@@ -179,11 +222,34 @@ export default function WorkspacePage() {
 
     if (activeTab === 'verify') {
       return (
-        <VerificationSummary
-          runtimeStatus={project.runtimeValidation?.finalVerdict === 'pass' ? 'passed' : project.runtimeValidation?.finalVerdict === 'fail' ? 'failed' : 'pending'}
-          qaStatus={status.key === 'verification-pending' ? 'pending' : 'passed'}
-          securityStatus={status.key === 'launch-ready' ? 'passed' : 'pending'}
-        />
+        <div className="space-y-4">
+          <VerificationSummary
+            runtimeStatus={project.runtimeValidation?.finalVerdict === 'pass' ? 'passed' : project.runtimeValidation?.finalVerdict === 'fail' ? 'failed' : 'pending'}
+            qaStatus={status.key === 'verification-pending' ? 'pending' : 'passed'}
+            securityStatus={status.key === 'launch-ready' ? 'passed' : 'pending'}
+          />
+          <Panel title="Contract coverage" subtitle="Required feature contract must be fully verified before completion.">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Badge variant={completionReport.metrics.requiredSatisfiedPct === 100 ? 'success' : 'warning'}>
+                Required verified: {completionReport.metrics.requiredSatisfiedPct}%
+              </Badge>
+              <Badge variant={completionReport.metrics.flowPassRate === 100 ? 'success' : 'warning'}>
+                Flow pass rate: {completionReport.metrics.flowPassRate}%
+              </Badge>
+              <Badge variant={completionReport.metrics.criticalFailuresCount === 0 ? 'success' : 'error'}>
+                Critical failures: {completionReport.metrics.criticalFailuresCount}
+              </Badge>
+              <Badge variant={completionReport.canComplete ? 'success' : 'warning'}>
+                Completion gate: {completionReport.canComplete ? 'pass' : 'blocked'}
+              </Badge>
+            </div>
+            {completionReport.unresolvedRequiredIds.length > 0 ? (
+              <p className="mt-3 text-body-s text-secondary">
+                Missing required items: {completionReport.unresolvedRequiredIds.join(', ')}
+              </p>
+            ) : null}
+          </Panel>
+        </div>
       );
     }
 
@@ -204,10 +270,15 @@ export default function WorkspacePage() {
                 label: 'Verification checks passed',
                 done: status.key === 'launch-ready' || project.runtimeValidation?.finalVerdict === 'pass',
               },
+              {
+                id: '4',
+                label: 'Required contract coverage is 100%',
+                done: completionReport.metrics.requiredSatisfiedPct === 100,
+              },
             ]}
           />
           <Panel title="Launch action" subtitle="Final approval before deployment.">
-            <Button disabled={status.key !== 'launch-ready'}>Launch project</Button>
+            <Button disabled={!completionReport.canComplete}>Launch project</Button>
           </Panel>
         </div>
       );
@@ -270,13 +341,16 @@ export default function WorkspacePage() {
               <Badge variant={project.runtimeValidation?.finalVerdict === 'pass' ? 'success' : 'warning'}>
                 Verify: {project.runtimeValidation?.finalVerdict ?? 'pending'}
               </Badge>
+              <Badge variant={completionReport.metrics.requiredSatisfiedPct === 100 ? 'success' : 'warning'}>
+                Contract: {completionReport.metrics.requiredSatisfiedPct}%
+              </Badge>
             </div>
           </Panel>
         )}
         <ProjectStageTimeline currentStage={status.stage} />
       </div>
     );
-  }, [activeTab, experiments.status_summary_variant, flags.ui_redesign_status_system, project, retrying, status]);
+  }, [activeTab, completionReport, experiments.status_summary_variant, flags.ui_redesign_status_system, project, retrying, status]);
 
   return (
     <AppShell
@@ -307,6 +381,14 @@ export default function WorkspacePage() {
                 onTertiary={() => setShowRecoveryModal(true)}
               />
             }
+          />
+        ) : null}
+
+        {!completionReport.canComplete ? (
+          <SystemBanner
+            tone="warning"
+            title="Contract completion blocked"
+            description={`Required coverage ${completionReport.metrics.requiredSatisfiedPct}% · flow pass ${completionReport.metrics.flowPassRate}% · critical failures ${completionReport.metrics.criticalFailuresCount}.`}
           />
         ) : null}
 

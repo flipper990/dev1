@@ -164,6 +164,7 @@ export function FilesPanel({ projectId, projectName }: Props) {
   }, [projectId, selectedPath]);
 
   const tree = useMemo(() => buildTree(files), [files]);
+  const contentUrl = (content as { url?: string } | null)?.url;
 
   const toggle = (path: string) => {
     setExpanded((prev) => {
@@ -300,9 +301,9 @@ export function FilesPanel({ projectId, projectName }: Props) {
                   <div className="min-w-0">
                     <p className="text-xs text-muted truncate">{content.path}</p>
                   </div>
-                  {content.url ? (
+                  {contentUrl ? (
                     <a
-                      href={content.url}
+                      href={contentUrl}
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center gap-1 text-xs text-secondary hover:text-ink"

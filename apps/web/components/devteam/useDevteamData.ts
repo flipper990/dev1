@@ -23,6 +23,7 @@ import {
   getPreviewHealth,
   getProjectDetail,
   listProjects,
+  normalizeProject,
   openSessionSocket,
   updateProject,
 } from '../../lib/api';
@@ -871,7 +872,12 @@ export function useDevteamData(): UseDevteamData {
       //    "unknown id" frame in the gap between selection and the next
       //    list poll. Reconciler in upsertProject is id-keyed.
       if (result.project) {
-        st.upsertProject(result.project as GeneratedProject);
+        st.upsertProject(normalizeProject({
+          ...result.project,
+          sessionId: result.sessionId,
+          prompts: [],
+          createdAt: new Date().toISOString(),
+        }));
       }
       // 2. Authoritative selection.
       st.setSelectedProjectId(result.projectId);

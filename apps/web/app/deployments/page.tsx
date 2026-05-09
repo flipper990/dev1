@@ -1,4 +1,4 @@
-import { AppShell } from '../../src/components/shell';
+ï»¿import { AppShell } from '../../src/components/shell';
 import { Badge, Button, Card, StatusDot } from '../../components/ui';
 
 export default function DeploymentsPage() {
@@ -21,7 +21,7 @@ export default function DeploymentsPage() {
       <Card>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-title-s text-ink">Production · v1.42.0</h2>
+            <h2 className="text-title-s text-ink">Production - v1.42.0</h2>
             <p className="mt-1 text-body-s text-secondary">Released today at 10:42</p>
           </div>
           <Badge variant="success">Live</Badge>

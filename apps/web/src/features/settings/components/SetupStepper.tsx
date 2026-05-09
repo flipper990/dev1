@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Button, Card } from '../../../../components/ui';
 import { ProjectStageTimeline } from '../../projects/components/ProjectStageTimeline';
+import type { WorkflowTimelineViewModel } from '../../projects/model';
 
 const DEFAULT_STEPS = [
   {
@@ -29,6 +30,38 @@ interface SetupStepperProps {
 export function SetupStepper({ onComplete }: SetupStepperProps) {
   const [index, setIndex] = useState(0);
   const step = DEFAULT_STEPS[index];
+  const timeline: WorkflowTimelineViewModel = {
+    heading: 'Onboarding workflow',
+    summary: 'Learn the operating lifecycle used across DEVteam.',
+    currentStepId: index === 0 ? 'input' : index === 1 ? 'build' : 'verify',
+    overallTone: 'active',
+    steps: [
+      {
+        id: 'input',
+        label: 'Decide',
+        description: 'Capture requirements and success criteria.',
+        state: index === 0 ? 'running' : 'success',
+      },
+      {
+        id: 'build',
+        label: 'Build',
+        description: 'Generate implementation artifacts.',
+        state: index === 1 ? 'running' : index > 1 ? 'success' : 'pending',
+      },
+      {
+        id: 'verify',
+        label: 'Verify',
+        description: 'Validate behavior and quality.',
+        state: index === 2 ? 'running' : 'pending',
+      },
+      {
+        id: 'launch',
+        label: 'Launch',
+        description: 'Approve and release to production.',
+        state: 'pending',
+      },
+    ],
+  };
 
   return (
     <Card>
@@ -36,7 +69,7 @@ export function SetupStepper({ onComplete }: SetupStepperProps) {
       <p className="mt-1 text-body-s text-secondary">Learn how to operate DEVteam like a production studio.</p>
 
       <div className="mt-4">
-        <ProjectStageTimeline currentStage={index === 0 ? 'decide' : index === 1 ? 'build' : 'verify'} />
+        <ProjectStageTimeline timeline={timeline} />
       </div>
 
       <section className="mt-4 rounded-[var(--radius-control)] border border-border bg-surface-tint p-3" aria-live="polite">

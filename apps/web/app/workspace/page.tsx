@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -27,7 +27,7 @@ import {
   TrustSummaryPanel,
   VerificationSummary,
 } from '../../src/features/projects/components';
-import { deriveUnifiedProjectStatus } from '../../src/features/projects/model';
+import { buildWorkflowTimelineViewModel, deriveUnifiedProjectStatus } from '../../src/features/projects/model';
 import { deriveCompletionMetrics, deriveCompletionReport } from '../../src/features/projects/model/contractCompletion';
 import { PreviewCanvasFrame } from '../../src/features/preview/components';
 import { LogEvidenceView } from '../../src/features/logs/components';
@@ -42,13 +42,18 @@ const WORKSPACE_TABS = [
   { id: 'logs', label: 'Logs' },
 ];
 
+type WorkspaceTabId = (typeof WORKSPACE_TABS)[number]['id'];
+type PreviewDevice = 'desktop' | 'tablet' | 'mobile';
+
 export default function WorkspacePage() {
   const searchParams = useSearchParams();
   const trackEvent = useTrackEvent();
   const experiments = useMemo(() => getExperimentAssignments(), []);
   const flags = useMemo(() => getUiRedesignFlags(), []);
-  const initialTab = searchParams.get('tab') ?? 'overview';
-  const [activeTab, setActiveTab] = useState(initialTab);
+  const rawInitialTab = searchParams.get('tab');
+  const initialTab = WORKSPACE_TABS.some((tab) => tab.id === rawInitialTab) ? (rawInitialTab as WorkspaceTabId) : 'overview';
+  const [activeTab, setActiveTab] = useState<WorkspaceTabId>(initialTab);
+  const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('desktop');
   const [projects, setProjects] = useState<GeneratedProject[]>([]);
   const [liveMessage, setLiveMessage] = useState('Workspace ready.');
   const [retrying, setRetrying] = useState(false);
@@ -61,6 +66,7 @@ export default function WorkspacePage() {
 
   const project = projects[0] ?? null;
   const status = deriveUnifiedProjectStatus(project);
+  const timeline = useMemo(() => buildWorkflowTimelineViewModel(project, status), [project, status]);
 
   const contract = useMemo<ProjectContract | null>(() => {
     const raw = (project as unknown as { projectContract?: ProjectContract })?.projectContract;
@@ -171,6 +177,26 @@ export default function WorkspacePage() {
     }
   }, [activeTab, previewState, status.healthy, status.stage, trackEvent]);
 
+  const handlePrimaryAction = () => {
+    if (status.key === 'preview-failed' || status.key === 'stale') {
+      retryPreview();
+      return;
+    }
+    if (status.key === 'preview-starting') {
+      setActiveTab('logs');
+      return;
+    }
+    if (status.key === 'verification-pending') {
+      setActiveTab('verify');
+      return;
+    }
+    if (status.key === 'launch-ready') {
+      setActiveTab('launch');
+      return;
+    }
+    setActiveTab('build');
+  };
+
   const tabContent = useMemo(() => {
     if (!project) {
       return <p className="text-body-s text-secondary">No project selected.</p>;
@@ -184,6 +210,8 @@ export default function WorkspacePage() {
           loading={project.preview?.previewStatus === 'starting' || project.preview?.previewStatus === 'building'}
           url={project.preview?.previewUrl ?? undefined}
           message="Preview output will appear as soon as runtime is healthy."
+          device={previewDevice}
+          onDeviceChange={setPreviewDevice}
         />
       );
     }
@@ -328,6 +356,8 @@ export default function WorkspacePage() {
             previewHealthy={Boolean(project.preview?.previewReady)}
             verificationHealthy={project.runtimeValidation?.finalVerdict === 'pass'}
             stale={status.key === 'stale'}
+            timeline={timeline}
+            onPrimaryAction={handlePrimaryAction}
           />
         ) : (
           <Panel title="Legacy status row" subtitle="Experiment baseline for status visibility.">
@@ -347,10 +377,30 @@ export default function WorkspacePage() {
             </div>
           </Panel>
         )}
-        <ProjectStageTimeline currentStage={status.stage} />
+        <PreviewCanvasFrame
+          ready={Boolean(project.preview?.previewReady)}
+          failed={project.preview?.previewStatus === 'failed'}
+          loading={project.preview?.previewStatus === 'starting' || project.preview?.previewStatus === 'building'}
+          url={project.preview?.previewUrl ?? undefined}
+          message="The artifact preview is the hero surface for this workspace."
+          device={previewDevice}
+          onDeviceChange={setPreviewDevice}
+        />
+        <ProjectStageTimeline timeline={timeline} />
       </div>
     );
-  }, [activeTab, completionReport, experiments.status_summary_variant, flags.ui_redesign_status_system, project, retrying, status]);
+  }, [
+    activeTab,
+    completionReport,
+    experiments.status_summary_variant,
+    flags.ui_redesign_status_system,
+    handlePrimaryAction,
+    previewDevice,
+    project,
+    retrying,
+    timeline,
+    status,
+  ]);
 
   return (
     <AppShell
@@ -358,10 +408,10 @@ export default function WorkspacePage() {
       subtitle="Primary production surface for deciding, building, verifying, and launching."
       lifecycle={{ label: status.label, tone: status.tone }}
       breadcrumbs={[{ label: 'Workspace', href: '/' }, { label: 'Project workspace' }]}
-      actions={<Button>{status.nextActionLabel}</Button>}
+      actions={<Button onClick={handlePrimaryAction}>{status.nextActionLabel}</Button>}
       contextTitle="Trust and context"
       contextContent={<TrustSummaryPanel status={status} stale={status.key === 'stale'} syncedAt={project?.completedAt ?? undefined} />}
-      defaultContextOpen
+      defaultContextOpen={false}
       workspaceName="DEVteam Studio"
     >
       <section aria-live="polite" className="sr-only">
@@ -392,16 +442,11 @@ export default function WorkspacePage() {
           />
         ) : null}
 
-        <ProjectHero project={project} status={status} />
-        <PreviewCanvasFrame
-          ready={Boolean(project?.preview?.previewReady)}
-          failed={project?.preview?.previewStatus === 'failed'}
-          loading={project?.preview?.previewStatus === 'starting' || project?.preview?.previewStatus === 'building'}
-          url={project?.preview?.previewUrl ?? undefined}
-          message="The artifact preview is the hero surface for this workspace."
-        />
-        <Tabs items={WORKSPACE_TABS} value={activeTab} onChange={setActiveTab} ariaLabel="Workspace sections" />
-        {tabContent}
+        <ProjectHero project={project} status={status} onPrimaryAction={handlePrimaryAction} />
+        <Tabs items={WORKSPACE_TABS} value={activeTab} onChange={(tab) => setActiveTab(tab as WorkspaceTabId)} ariaLabel="Workspace sections" />
+        <section role="tabpanel" id={`${activeTab}-panel`} aria-labelledby={`${activeTab}-tab`} className="min-w-0">
+          {tabContent}
+        </section>
 
         {flags.ui_redesign_workspace && experiments.command_dock_variant === 'command-dock' ? (
           <ProjectCommandDock
@@ -460,3 +505,4 @@ export default function WorkspacePage() {
     </AppShell>
   );
 }
+

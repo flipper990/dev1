@@ -12,7 +12,7 @@ import {
   ProjectStageTimeline,
   ProjectStatusSummary,
 } from '../src/features/projects/components';
-import { deriveUnifiedProjectStatus } from '../src/features/projects/model';
+import { buildWorkflowTimelineViewModel, deriveUnifiedProjectStatus } from '../src/features/projects/model';
 
 export default function HomePage() {
   const [projects, setProjects] = useState<GeneratedProject[]>([]);
@@ -23,6 +23,7 @@ export default function HomePage() {
 
   const selectedProject = projects[0] ?? null;
   const status = deriveUnifiedProjectStatus(selectedProject);
+  const timeline = buildWorkflowTimelineViewModel(selectedProject, status);
   const recentProjects = projects.slice(0, 4);
 
   const recentActivity = useMemo(() => {
@@ -42,7 +43,7 @@ export default function HomePage() {
       contextDescription="Operational health and evidence context"
       contextContent={
         <div className="space-y-4">
-          <ProjectStageTimeline currentStage={status.stage} />
+          <ProjectStageTimeline timeline={timeline} />
           <BuildEvidencePanel
             checksPassed={selectedProject?.runtimeValidation?.finalVerdict === 'pass' ? 2 : 1}
             checksTotal={2}
@@ -63,6 +64,7 @@ export default function HomePage() {
           previewHealthy={Boolean(selectedProject?.preview?.previewReady)}
           verificationHealthy={selectedProject?.runtimeValidation?.finalVerdict === 'pass'}
           stale={status.key === 'stale'}
+          timeline={timeline}
         />
 
         <div className="grid gap-4 lg:grid-cols-2">

@@ -1,4 +1,4 @@
-import { Card, StatusDot } from '../../../../components/ui';
+ï»¿import { Card, StatusDot } from '../../../../components/ui';
 
 interface TimelineEvent {
   id: string;
@@ -31,7 +31,7 @@ export function ProductionTimeline({ events }: ProductionTimelineProps) {
             {(event.runtime || event.cost) ? (
               <p className="mt-2 text-label-s text-secondary">
                 {event.runtime ? `Runtime: ${event.runtime}` : ''}
-                {event.runtime && event.cost ? ' • ' : ''}
+                {event.runtime && event.cost ? ' | ' : ''}
                 {event.cost ? `Cost: ${event.cost}` : ''}
               </p>
             ) : null}

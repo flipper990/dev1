@@ -1,2 +1,13 @@
-export { deriveUnifiedProjectStatus, PROJECT_STAGES } from './project-status';
-export type { UnifiedProjectStatus, UnifiedProjectStatusKey, ProjectStageKey, StatusTone } from './project-status';
+export {
+  buildWorkflowTimelineViewModel,
+  deriveUnifiedProjectStatus,
+  PROJECT_STAGES,
+} from './project-status';
+export type {
+  ProjectStageKey,
+  StatusTone,
+  UnifiedProjectStatus,
+  UnifiedProjectStatusKey,
+  WorkflowStepState,
+  WorkflowTimelineViewModel,
+} from './project-status';

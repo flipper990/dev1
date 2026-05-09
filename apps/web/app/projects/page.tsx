@@ -8,8 +8,8 @@ import { listProjects } from '../../lib/api';
 import { getExperimentAssignments } from '../../src/lib/flags/uiRedesignFlags';
 import { useTrackEvent } from '../../src/lib/telemetry/useTrackEvent';
 import type { GeneratedProject } from '../../types/dashboard';
-import { ProjectList } from '../../components/ProjectList';
 import { deriveUnifiedProjectStatus } from '../../src/features/projects/model';
+import { ProjectList } from '../../src/features/projects/components';
 
 export default function ProjectsPage() {
   const router = useRouter();

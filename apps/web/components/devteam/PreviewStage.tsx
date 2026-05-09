@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { Code2, Database, FileText, Loader2, Monitor, Play, RefreshCw, Smartphone, Tablet, Terminal } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -409,7 +409,7 @@ function PreviewPane({
     | 'docker-unavailable'  // platform-level: no backend
     | 'build-failed'        // project.status === 'failed' (terminal)
     | 'build-in-progress'   // project.status === 'generating' (neutral)
-    | 'preview-loading'     // preparing | installing | building | starting
+    | 'preview-loading'     // detecting | building | starting
     | 'preview-failed'      // preview state === 'failed' AND not generating
     | 'preview-idle'        // idle | stopped AND not generating
     | 'unknown';            // catch-all (should be unreachable)
@@ -426,9 +426,7 @@ function PreviewPane({
     //    leak through. Neutral placeholder, never "Preview failed".
     if (projectBuilding) return 'build-in-progress';
     // 5. Preview is actively transitioning toward ready.
-    if (state === 'preparing' || state === 'detecting' ||
-        state === 'installing' || state === 'building' ||
-        state === 'starting') {
+    if (state === 'detecting' || state === 'building' || state === 'starting') {
       return 'preview-loading';
     }
     // 6. Preview failure (project is NOT generating — already excluded above).
@@ -463,8 +461,8 @@ function PreviewPane({
     : previewMode === 'build-failed'      ? 'build failed'
     : previewMode === 'build-in-progress' ? 'generating'
     : previewMode === 'preview-loading'
-        ? (state === 'preparing' || state === 'detecting' ? 'preparing'
-          : state === 'installing' || state === 'building' ? 'installing'
+        ? (state === 'detecting' ? 'preparing'
+          : state === 'building' ? 'installing'
           : 'starting')
     : previewMode === 'iframe'         ? 'ready'
     : previewMode === 'preview-failed' ? 'failed'
@@ -707,9 +705,9 @@ function PreviewPane({
                       Preview starting…
                     </div>
                     <div className="text-[12px] text-[var(--text-secondary)] mt-1">
-                      {state === 'preparing' || state === 'detecting'
+                      {state === 'detecting'
                         ? 'Preparing sandbox container…'
-                        : state === 'installing' || state === 'building'
+                        : state === 'building'
                           ? 'Installing dependencies and building image…'
                           : 'Starting dev server. This usually takes 10–30 seconds.'}
                     </div>

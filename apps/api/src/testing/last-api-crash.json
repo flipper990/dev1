@@ -1,31 +1,31 @@
 {
-  "timestamp": "2026-05-09T00:06:55.062Z",
+  "timestamp": "2026-05-09T00:28:06.342Z",
   "kind": "signal",
   "signal": "SIGHUP",
   "message": "Process received signal SIGHUP",
   "stack": "Error: Process received signal SIGHUP\n    at recordSignal (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\crash-logger.ts:430:12)\n    at process.<anonymous> (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\crash-logger.ts:451:36)\n    at process.emit (node:events:508:28)\n    at process.emit (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\node_modules\\tsx\\dist\\suppress-warnings.cjs:1:472)",
   "errorName": "Error",
-  "pid": 28976,
-  "uptimeSeconds": 1759,
+  "pid": 35504,
+  "uptimeSeconds": 840,
   "watchMode": true,
   "pidInfo": {
-    "pid": 28976,
-    "startedAt": "2026-05-08T23:37:37.470Z",
+    "pid": 35504,
+    "startedAt": "2026-05-09T00:14:07.573Z",
     "argv": [
       "C:\\Program Files\\nodejs\\node.exe",
       "C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\server.ts"
     ],
     "watchMode": true,
-    "reloadedFromPid": 27172,
-    "reloadedFromStartedAt": "2026-05-08T16:19:03.123Z"
+    "reloadedFromPid": 33564,
+    "reloadedFromStartedAt": "2026-05-09T00:07:02.612Z"
   },
   "activeGenerations": [],
   "memoryUsage": {
-    "rss": 193904640,
-    "heapTotal": 78651392,
-    "heapUsed": 56880152,
-    "external": 38196994,
-    "arrayBuffers": 38126641
+    "rss": 182722560,
+    "heapTotal": 56328192,
+    "heapUsed": 54308488,
+    "external": 37871572,
+    "arrayBuffers": 37801419
   },
   "rawErrorJson": {}
 }

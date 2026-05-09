@@ -15,10 +15,10 @@ interface PreviewCanvasFrameProps {
   className?: string;
 }
 
-const DEVICE_LAYOUT: Record<PreviewDevice, { maxWidth: string; label: string; icon: typeof Monitor }> = {
-  desktop: { maxWidth: '100%', label: 'Desktop', icon: Monitor },
-  tablet: { maxWidth: '900px', label: 'Tablet', icon: Tablet },
-  mobile: { maxWidth: '430px', label: 'Mobile', icon: Smartphone },
+const DEVICE_LAYOUT: Record<PreviewDevice, { maxWidth: string; viewportHeightClass: string; label: string; icon: typeof Monitor }> = {
+  desktop: { maxWidth: '100%', viewportHeightClass: 'h-[min(68vh,760px)] min-h-[340px]', label: 'Desktop', icon: Monitor },
+  tablet: { maxWidth: '900px', viewportHeightClass: 'h-[min(72vh,840px)] min-h-[420px]', label: 'Tablet', icon: Tablet },
+  mobile: { maxWidth: '430px', viewportHeightClass: 'h-[min(78vh,900px)] min-h-[520px]', label: 'Mobile', icon: Smartphone },
 };
 
 export function PreviewCanvasFrame({
@@ -49,7 +49,7 @@ export function PreviewCanvasFrame({
         </span>
       </div>
 
-      <div className="mb-3 inline-flex items-center rounded-[var(--radius-control)] border border-border bg-surface-tint p-1">
+      <div role="tablist" aria-label="Preview viewport" className="mb-3 inline-flex items-center rounded-[var(--radius-control)] border border-border bg-surface-tint p-1">
         {(Object.keys(DEVICE_LAYOUT) as PreviewDevice[]).map((key) => {
           const Icon = DEVICE_LAYOUT[key].icon;
           const active = key === device;
@@ -58,11 +58,14 @@ export function PreviewCanvasFrame({
               key={key}
               type="button"
               onClick={() => onDeviceChange?.(key)}
+              role="tab"
+              id={`preview-device-${key}-tab`}
+              aria-controls={`preview-device-${key}-panel`}
+              aria-selected={active}
               className={cn(
                 'inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-control)] px-3 text-label-s transition-colors',
                 active ? 'bg-surface-raised text-ink shadow-card' : 'text-secondary hover:text-ink',
               )}
-              aria-pressed={active}
             >
               <Icon className="h-4 w-4" />
               {DEVICE_LAYOUT[key].label}
@@ -85,11 +88,16 @@ export function PreviewCanvasFrame({
             </div>
           </div>
 
-          <div className="min-h-[460px] bg-white">
+          <div
+            role="tabpanel"
+            id={`preview-device-${device}-panel`}
+            aria-labelledby={`preview-device-${device}-tab`}
+            className={cn('bg-white', DEVICE_LAYOUT[device].viewportHeightClass)}
+          >
             {ready && url ? (
-              <iframe title="Project preview" src={url} className="h-[460px] w-full border-0 bg-white" />
+              <iframe title="Project preview" src={url} className="h-full w-full border-0 bg-white" />
             ) : (
-              <div className="flex h-[460px] items-center justify-center px-6 text-center text-body-s text-secondary">
+              <div className="flex h-full items-center justify-center px-6 text-center text-body-s text-secondary">
                 {message ?? (failed ? 'Preview failed. Review evidence from the diagnostics panel.' : 'Preview output will appear here.')}
               </div>
             )}

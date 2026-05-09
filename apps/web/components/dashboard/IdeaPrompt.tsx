@@ -48,7 +48,7 @@ export function IdeaPrompt({ onSubmit, busy, placeholder }: Props) {
           className="cn-prompt-textarea flex-1"
           placeholder={
             placeholder ??
-            'Describe what you want to build — “a fullstack task tracker with auth and Postgres”'
+            'Tell us what you want to build — “a fullstack task tracker with auth and Postgres”'
           }
           value={text}
           onChange={(e) => setText(e.target.value)}

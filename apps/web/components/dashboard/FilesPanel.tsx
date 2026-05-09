@@ -230,7 +230,7 @@ export function FilesPanel({ projectId, projectName }: Props) {
             <LivePreview />
           ) : (
             <div className="h-full grid place-items-center text-muted text-sm px-6 text-center leading-relaxed">
-              Pick a recent project — or describe a new idea — to see a live, sandboxed preview here.
+              Choose a project to see a live preview.
             </div>
           )}
         </div>
@@ -268,7 +268,7 @@ export function FilesPanel({ projectId, projectName }: Props) {
           <div className={cn('border-r border-white/[0.05] overflow-auto py-2 px-1.5 min-h-0 bg-ink-1/20', mobilePane !== 'tree' && 'hidden md:block')}>
             {!projectId ? (
               <div className="text-muted text-sm px-3 py-6 text-center leading-relaxed">
-                Pick a recent project — or describe a new idea — to inspect its files.
+                Choose a project to inspect its files.
               </div>
             ) : loadingFiles ? (
               <div className="text-muted text-sm px-3 py-4">Loading files…</div>

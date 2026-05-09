@@ -5,9 +5,9 @@ import { Tooltip } from './Tooltip';
 const meta: Meta<typeof Tooltip> = {
   title: 'Primitives/Tooltip',
   component: Tooltip,
-  render: (args) => (
+  render: () => (
     <div className="p-10">
-      <Tooltip {...args}>
+      <Tooltip tooltipContent="Project metadata and diagnostics are available in the context panel.">
         <Button variant="secondary">Hover or focus</Button>
       </Tooltip>
     </div>

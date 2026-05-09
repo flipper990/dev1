@@ -13,22 +13,22 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    'bg-primary text-white border border-primary shadow-[0_1px_0_rgba(255,255,255,0.18)_inset] hover:bg-primary-hover active:bg-primary-hover',
+    'border-brand-primary bg-brand-primary text-brand-primary-contrast shadow-hairline hover:bg-brand-primary-hover active:bg-brand-primary-hover',
   secondary:
-    'bg-surface-raised text-ink border border-border hover:bg-surface-tint active:bg-surface-tint',
+    'border-border bg-surface-raised text-text-primary shadow-hairline hover:border-border-strong hover:bg-surface-tint active:bg-surface-tint',
   ghost:
-    'bg-transparent text-ink border border-transparent hover:bg-surface-tint active:bg-surface-tint',
+    'border-transparent bg-transparent text-text-primary hover:bg-surface-tint active:bg-surface-tint',
   success:
-    'bg-success text-white border border-success hover:brightness-95 active:brightness-95',
+    'border-status-success bg-status-success text-text-inverse shadow-hairline hover:brightness-95 active:brightness-95',
   warning:
-    'bg-warning text-white border border-warning hover:brightness-95 active:brightness-95',
+    'border-status-warning bg-status-warning text-text-inverse shadow-hairline hover:brightness-95 active:brightness-95',
   danger:
-    'bg-error text-white border border-error hover:brightness-95 active:brightness-95',
+    'border-status-error bg-status-error text-text-inverse shadow-hairline hover:brightness-95 active:brightness-95',
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
   sm: 'h-9 px-3.5 text-label-s',
-  md: 'h-10.5 px-4 text-label-m',
+  md: 'h-11 px-4 text-label-m',
   lg: 'h-12 px-5 text-body-s font-semibold',
 };
 
@@ -48,10 +48,10 @@ export function Button({
       type="button"
       {...props}
       className={cn(
-        'inline-flex min-w-[44px] items-center justify-center gap-2 rounded-[var(--radius-control)]',
-        'transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-out',
+        'inline-flex min-w-11 items-center justify-center gap-2 rounded-[var(--radius-control)] border',
+        'transition-[background-color,border-color,color,box-shadow,transform,filter] duration-120 ease-ledger',
         'focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none',
-        'disabled:cursor-not-allowed disabled:opacity-50',
+        'disabled:cursor-not-allowed disabled:opacity-55',
         variantClasses[variant],
         sizeClasses[size],
         className,

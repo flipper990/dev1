@@ -10,11 +10,11 @@ interface SyncWarningPanelProps {
 export function SyncWarningPanel({ onRefresh, onInspect, retrying = false }: SyncWarningPanelProps) {
   return (
     <Card>
-      <h3 className="text-title-s text-ink">State out of sync</h3>
-      <p className="mt-1 text-body-s text-secondary">
+      <h3 className="text-title-s text-text-primary">State out of sync</h3>
+      <p className="mt-1 text-body-s text-text-secondary">
         We detected conflicting state signals. Build evidence remains intact, but status needs reconciliation.
       </p>
-      <div className="mt-4 rounded-[var(--radius-control)] border border-warning/35 bg-feedback-warning-subtle p-3 text-body-s text-warning">
+      <div className="mt-4 rounded-[var(--radius-control)] border border-status-warning bg-status-warning-subtle p-3 text-body-s text-status-warning">
         Refresh status to align project, preview, and verification outcomes.
       </div>
       <div className="mt-4">
@@ -29,7 +29,14 @@ export function SyncWarningPanel({ onRefresh, onInspect, retrying = false }: Syn
         />
       </div>
       <div className="mt-3">
-        <Button variant="ghost" onClick={onInspect}>What is out of sync?</Button>
+        <Button
+          variant="ghost"
+          onClick={onInspect}
+          disabled={!onInspect}
+          title={!onInspect ? 'Diagnostics are unavailable on this surface. Open the workspace logs for details.' : undefined}
+        >
+          {onInspect ? 'What is out of sync?' : 'Diagnostics unavailable'}
+        </Button>
       </div>
     </Card>
   );

@@ -33,32 +33,32 @@ export function InlineStatusPanel({
     <Card>
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-title-s text-ink">{title}</h3>
+          <h3 className="text-title-s text-text-primary">{title}</h3>
           <Badge variant={toneVariant[tone]}>{tone}</Badge>
         </div>
-        <dl className="grid gap-2 text-body-s text-secondary sm:grid-cols-2">
+        <dl className="grid gap-2 text-body-s text-text-secondary sm:grid-cols-2">
           {where ? (
             <div>
-              <dt className="text-label-s text-secondary">Where</dt>
-              <dd className="mt-1 text-ink">{where}</dd>
+              <dt className="text-label-s text-text-secondary">Where</dt>
+              <dd className="mt-1 text-text-primary">{where}</dd>
             </div>
           ) : null}
           {whatFailed ? (
             <div>
-              <dt className="text-label-s text-secondary">What failed</dt>
-              <dd className="mt-1 text-ink">{whatFailed}</dd>
+              <dt className="text-label-s text-text-secondary">What failed</dt>
+              <dd className="mt-1 text-text-primary">{whatFailed}</dd>
             </div>
           ) : null}
           {whatWorked ? (
             <div>
-              <dt className="text-label-s text-secondary">What still worked</dt>
-              <dd className="mt-1 text-ink">{whatWorked}</dd>
+              <dt className="text-label-s text-text-secondary">What still worked</dt>
+              <dd className="mt-1 text-text-primary">{whatWorked}</dd>
             </div>
           ) : null}
           {nextAction ? (
             <div>
-              <dt className="text-label-s text-secondary">Next action</dt>
-              <dd className="mt-1 text-ink">{nextAction}</dd>
+              <dt className="text-label-s text-text-secondary">Next action</dt>
+              <dd className="mt-1 text-text-primary">{nextAction}</dd>
             </div>
           ) : null}
         </dl>

@@ -74,4 +74,3 @@ export const statusPresentation: Record<ProductStatusKey, StatusPresentation> = 
     description: 'Project is ready to launch.',
   },
 };
-

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Badge, type BadgeVariant } from '../../../components/ui';
 import { cn } from '../../../lib/cn';
 import { Breadcrumbs, type BreadcrumbItem } from './Breadcrumbs';
 
@@ -19,12 +20,12 @@ interface PageHeaderProps {
   className?: string;
 }
 
-const lifecycleToneClass: Record<LifecycleTone, string> = {
-  neutral: 'border-border bg-surface-tint text-secondary',
-  success: 'border-success/35 bg-feedback-success-subtle text-success',
-  warning: 'border-warning/35 bg-feedback-warning-subtle text-warning',
-  error: 'border-error/35 bg-feedback-error-subtle text-error',
-  active: 'border-primary/35 bg-primary-subtle text-primary',
+const lifecycleToneVariant: Record<LifecycleTone, BadgeVariant> = {
+  neutral: 'neutral',
+  success: 'success',
+  warning: 'warning',
+  error: 'error',
+  active: 'active',
 };
 
 export function PageHeader({
@@ -37,27 +38,16 @@ export function PageHeader({
   className,
 }: PageHeaderProps) {
   return (
-    <header className={cn('space-y-5 border-b border-border/70 pb-7 sm:pb-8', className)}>
+    <header className={cn('space-y-5 border-b border-border-muted pb-7 sm:pb-8', className)}>
       {breadcrumbs ? <Breadcrumbs items={breadcrumbs} /> : null}
 
       <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0 space-y-2.5">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-title-l font-semibold tracking-[-0.015em] text-ink">{title}</h1>
-            {lifecycle ? (
-              <span
-                className={cn(
-                  'inline-flex items-center rounded-[var(--radius-control)] border px-2.5 py-1 text-label-s',
-                  lifecycleToneClass[lifecycle.tone ?? 'neutral'],
-                )}
-              >
-                {lifecycle.label}
-              </span>
-            ) : null}
+            <h1 className="text-title-l font-semibold text-text-primary">{title}</h1>
+            {lifecycle ? <Badge variant={lifecycleToneVariant[lifecycle.tone ?? 'neutral']}>{lifecycle.label}</Badge> : null}
           </div>
-          {subtitle ? (
-            <p className="max-w-[88ch] text-body-s leading-6 text-secondary">{subtitle}</p>
-          ) : null}
+          {subtitle ? <p className="max-w-[88ch] text-body-s leading-6 text-text-secondary">{subtitle}</p> : null}
         </div>
 
         {(secondaryActions || actions) ? (

@@ -7,15 +7,7 @@ interface SkeletonProps extends HTMLAttributes<HTMLDivElement> {
 
 export function Skeleton({ className, lines = 1, ...props }: SkeletonProps) {
   if (lines <= 1) {
-    return (
-      <div
-        {...props}
-        className={cn(
-          'h-4 w-full rounded-[var(--radius-control)] bg-surface-tint motion-safe:animate-pulse',
-          className,
-        )}
-      />
-    );
+    return <div {...props} className={cn('h-4 w-full rounded-[var(--radius-control)] bg-surface-tint motion-safe:animate-pulse', className)} />;
   }
 
   return (

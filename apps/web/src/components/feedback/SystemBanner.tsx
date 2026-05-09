@@ -14,22 +14,22 @@ interface SystemBannerProps {
 
 const toneStyles: Record<BannerTone, { wrapper: string; Icon: typeof Info; liveRole: 'status' | 'alert' }> = {
   info: {
-    wrapper: 'border-primary/35 bg-primary-subtle text-primary',
+    wrapper: 'border-status-info bg-status-info-subtle text-status-info',
     Icon: Info,
     liveRole: 'status',
   },
   success: {
-    wrapper: 'border-success/35 bg-feedback-success-subtle text-success',
+    wrapper: 'border-status-success bg-status-success-subtle text-status-success',
     Icon: CheckCircle2,
     liveRole: 'status',
   },
   warning: {
-    wrapper: 'border-warning/35 bg-feedback-warning-subtle text-warning',
+    wrapper: 'border-status-warning bg-status-warning-subtle text-status-warning',
     Icon: AlertTriangle,
     liveRole: 'status',
   },
   error: {
-    wrapper: 'border-error/35 bg-feedback-error-subtle text-error',
+    wrapper: 'border-status-error bg-status-error-subtle text-status-error',
     Icon: AlertCircle,
     liveRole: 'alert',
   },
@@ -54,8 +54,8 @@ export function SystemBanner({
         <div className="flex items-start gap-2">
           <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <div>
-            <h3 className="text-label-m text-ink">{title}</h3>
-            {description ? <p className="mt-1 text-body-s text-secondary">{description}</p> : null}
+            <h3 className="text-label-m text-text-primary">{title}</h3>
+            {description ? <p className="mt-1 text-body-s text-text-secondary">{description}</p> : null}
           </div>
         </div>
         {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}

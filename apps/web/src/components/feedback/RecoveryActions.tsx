@@ -21,13 +21,13 @@ export function RecoveryActions({
 }: RecoveryActionsProps) {
   return (
     <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Recovery actions">
-      <Button loading={retrying} onClick={onPrimary}>
+      <Button loading={retrying} onClick={onPrimary} disabled={!onPrimary} title={!onPrimary ? 'Retry action is not available on this surface.' : undefined}>
         {retrying ? 'Retrying' : primaryLabel}
       </Button>
-      <Button variant="secondary" onClick={onSecondary}>
+      <Button variant="secondary" onClick={onSecondary} disabled={!onSecondary} title={!onSecondary ? 'Logs action is not available on this surface.' : undefined}>
         {secondaryLabel}
       </Button>
-      <Button variant="ghost" onClick={onTertiary}>
+      <Button variant="ghost" onClick={onTertiary} disabled={!onTertiary} title={!onTertiary ? 'Diagnostics action is not available on this surface.' : undefined}>
         {tertiaryLabel}
       </Button>
     </div>

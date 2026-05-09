@@ -17,7 +17,8 @@ export function useTrackEvent() {
   return useCallback(<K extends TelemetryEventName>(name: K, payload: TelemetryEventPayloadMap[K]) => {
     if (!canTrackTelemetry()) return;
 
-    const event = buildTelemetryEvent(name, sanitizeTelemetryPayload(payload));
+    const sanitizedPayload = sanitizeTelemetryPayload(payload) as TelemetryEventPayloadMap[K];
+    const event = buildTelemetryEvent(name, sanitizedPayload);
     const body = JSON.stringify(event);
 
     if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {

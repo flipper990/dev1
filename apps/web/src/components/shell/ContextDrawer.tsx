@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { IconButton } from '../../../components/ui/IconButton';
 import { cn } from '../../../lib/cn';
 
 interface ContextDrawerProps {
@@ -17,23 +18,13 @@ interface ContextDrawerProps {
 const FOCUSABLE_SELECTOR =
   'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
-export function ContextDrawer({
-  open,
-  onClose,
-  title = 'Context',
-  description,
-  children,
-  className,
-}: ContextDrawerProps) {
-  const mobileRef = useRef<HTMLDivElement | null>(null);
+export function ContextDrawer({ open, onClose, title = 'Context', description, children, className }: ContextDrawerProps) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
 
-    const isDesktop = window.matchMedia('(min-width: 1280px)').matches;
-    if (isDesktop) return;
-
-    const panel = mobileRef.current;
+    const panel = panelRef.current;
     if (!panel) return;
 
     const focusables = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
@@ -66,49 +57,30 @@ export function ContextDrawer({
   if (!open) return null;
 
   return (
-    <>
-      <aside
+    <div className="fixed inset-0 top-16 z-50" role="dialog" aria-modal="true" aria-label={title}>
+      <button
+        type="button"
+        aria-label="Close context drawer"
+        className="absolute inset-0 bg-text-primary/20 backdrop-blur-[1px]"
+        onClick={onClose}
+      />
+      <div
+        ref={panelRef}
         className={cn(
-          'hidden h-full w-[360px] shrink-0 border-l border-border/80 bg-surface-raised/95 xl:flex xl:flex-col',
+          'absolute inset-y-0 right-0 flex w-full max-w-[420px] flex-col border-l border-border bg-surface-raised shadow-overlay',
+          'sm:max-w-[440px]',
           className,
         )}
-        aria-label="Context panel"
       >
-        <div className="border-b border-border/80 px-5 py-4">
-          <h2 className="text-label-m text-ink">{title}</h2>
-          {description ? <p className="mt-1 text-label-s text-secondary">{description}</p> : null}
-        </div>
-        <div className="min-h-0 flex-1 overflow-auto p-5">{children}</div>
-      </aside>
-
-      <div className="fixed inset-0 z-50 xl:hidden" role="dialog" aria-modal="true" aria-label={title}>
-        <button
-          type="button"
-          aria-label="Close context panel"
-          className="absolute inset-0 bg-ink/25 backdrop-blur-[1px]"
-          onClick={onClose}
-        />
-        <div
-          ref={mobileRef}
-          className="absolute inset-y-0 right-0 flex w-full max-w-[400px] flex-col border-l border-border bg-surface-raised shadow-[0_24px_60px_rgba(15,23,42,0.22)]"
-        >
-          <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
-            <div>
-              <h2 className="text-label-m text-ink">{title}</h2>
-              {description ? <p className="mt-1 text-label-s text-secondary">{description}</p> : null}
-            </div>
-            <button
-              type="button"
-              aria-label="Close context panel"
-              onClick={onClose}
-              className="inline-grid h-10 w-10 place-items-center rounded-[var(--radius-control)] border border-border bg-surface-raised text-secondary hover:bg-surface-tint focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-            >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
+        <div className="flex items-start justify-between gap-3 border-b border-border-muted px-5 py-4">
+          <div className="min-w-0">
+            <h2 className="truncate text-title-s text-text-primary">{title}</h2>
+            {description ? <p className="mt-1 text-body-s text-text-secondary">{description}</p> : null}
           </div>
-          <div className="min-h-0 flex-1 overflow-auto p-4">{children}</div>
+          <IconButton icon={<X className="h-4 w-4" aria-hidden="true" />} label="Close context drawer" onClick={onClose} />
         </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-5">{children}</div>
       </div>
-    </>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 /**
- * Circular gold progress ring used for the "Lv 12" agent-progression badge.
+ * Circular progress ring used for production-level diagnostics.
  * `value` is a 0..1 fraction.
  */
 export function ProgressRing({
@@ -22,18 +22,11 @@ export function ProgressRing({
       <svg className="cn-ring__svg" viewBox={`0 0 ${size} ${size}`}>
         <defs>
           <linearGradient id={id} x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#E2BB5A" />
-            <stop offset="100%" stopColor="#C99030" />
+            <stop offset="0%" stopColor="var(--color-brand-secondary)" />
+            <stop offset="100%" stopColor="var(--color-brand-primary)" />
           </linearGradient>
         </defs>
-        <circle
-          className="cn-ring__bg"
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          strokeWidth={stroke}
-          fill="none"
-        />
+        <circle className="cn-ring__bg" cx={size / 2} cy={size / 2} r={r} strokeWidth={stroke} fill="none" />
         <circle
           className="cn-ring__fg"
           cx={size / 2}
@@ -47,7 +40,7 @@ export function ProgressRing({
       </svg>
       <div className="cn-ring__label">
         <div className="flex flex-col items-center leading-none">
-          <span className="text-[10px] uppercase tracking-[0.18em] text-muted">Lv</span>
+          <span className="text-[10px] uppercase tracking-[0.18em] text-text-muted">Lv</span>
           <span className="cn-ring__label-num">{level}</span>
         </div>
       </div>

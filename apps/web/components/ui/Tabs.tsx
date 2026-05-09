@@ -19,13 +19,7 @@ interface TabsProps {
   autoFocusSelected?: boolean;
 }
 
-export function Tabs({
-  items,
-  value,
-  onChange,
-  ariaLabel = 'Tabs',
-  autoFocusSelected = false,
-}: TabsProps) {
+export function Tabs({ items, value, onChange, ariaLabel = 'Tabs', autoFocusSelected = false }: TabsProps) {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const focusAndSelect = (nextIndex: number) => {
@@ -70,9 +64,7 @@ export function Tabs({
     if (event.key === 'End') {
       event.preventDefault();
       const lastEnabled = [...items].reverse().findIndex((item) => !item.disabled);
-      if (lastEnabled >= 0) {
-        focusAndSelect(items.length - 1 - lastEnabled);
-      }
+      if (lastEnabled >= 0) focusAndSelect(items.length - 1 - lastEnabled);
     }
   };
 
@@ -80,7 +72,7 @@ export function Tabs({
     <div
       role="tablist"
       aria-label={ariaLabel}
-      className="flex w-full max-w-full min-h-11 items-center gap-1 overflow-x-auto rounded-[var(--radius-control)] border border-border bg-surface-tint p-1 [scrollbar-width:thin]"
+      className="flex min-h-11 w-full max-w-full items-center gap-1 overflow-x-auto rounded-[var(--radius-control)] border border-border bg-surface-tint p-1 [scrollbar-width:thin]"
     >
       {items.map((item, index) => {
         const selected = item.id === value;
@@ -101,11 +93,12 @@ export function Tabs({
             onClick={() => onChange(item.id)}
             onKeyDown={(event) => handleKeyDown(event, index)}
             className={cn(
-              'inline-flex min-h-9 min-w-[44px] shrink-0 items-center gap-2 whitespace-nowrap rounded-[var(--radius-control)] px-3 text-label-m transition-colors duration-100',
+              'inline-flex min-h-9 min-w-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-[var(--radius-control)] border px-3 text-label-m',
+              'transition-[background-color,border-color,color,box-shadow] duration-120 ease-ledger',
               'focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50',
               selected
-                ? 'bg-surface-raised text-ink border border-border'
-                : 'border border-transparent text-secondary hover:bg-surface-raised/70 hover:text-ink',
+                ? 'border-border bg-surface-raised text-text-primary shadow-hairline'
+                : 'border-transparent text-text-secondary hover:bg-surface-raised hover:text-text-primary',
             )}
           >
             {item.icon}

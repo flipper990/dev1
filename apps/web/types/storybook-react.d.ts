@@ -1,4 +1,4 @@
-﻿declare module '@storybook/react' {
+declare module '@storybook/react' {
   export interface Meta<T = unknown> {
     title?: string;
     component?: T;
@@ -7,6 +7,7 @@
     parameters?: Record<string, unknown>;
     tags?: string[];
     argTypes?: Record<string, unknown>;
+    decorators?: Array<(Story: unknown) => unknown>;
   }
 
   export type StoryObj<TMetaOrCmp = unknown> = {

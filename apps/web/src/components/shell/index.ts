@@ -5,5 +5,6 @@ export { ContextDrawer } from './ContextDrawer';
 export { PageHeader } from './PageHeader';
 export { Breadcrumbs } from './Breadcrumbs';
 export { GlobalSearch } from './GlobalSearch';
+export { GlobalCommandBar } from './GlobalCommandBar';
 export type { BreadcrumbItem } from './Breadcrumbs';
 export type { LeftNavItem } from './LeftNav';

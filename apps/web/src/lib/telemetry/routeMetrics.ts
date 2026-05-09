@@ -40,7 +40,7 @@ export function useRouteMetrics({ onMetrics }: RouteMetricsOptions) {
         const last = entries[entries.length - 1] as PerformanceEntry & { duration?: number };
         if (last?.duration !== undefined) inp = Math.round(last.duration);
       });
-      inpObserver.observe({ type: 'event', buffered: true, durationThreshold: 40 });
+      inpObserver.observe({ type: 'event', buffered: true, durationThreshold: 40 } as PerformanceObserverInit);
       observers.push(inpObserver);
     } catch {}
 

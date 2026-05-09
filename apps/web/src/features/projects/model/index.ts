@@ -11,3 +11,5 @@ export type {
   WorkflowStepState,
   WorkflowTimelineViewModel,
 } from './project-status';
+export { deriveProjectPresentation, sortProjectsByUpdated } from './project-presentation';
+export type { ProjectPresentation, ProjectTone } from './project-presentation';

@@ -7,46 +7,44 @@ export default function SettingsPage() {
   return (
     <AppShell
       title="Settings"
-      subtitle="Configure workspace-wide defaults and operating policies."
-      lifecycle={{ label: 'Setup in progress', tone: 'warning' }}
-      breadcrumbs={[{ label: 'Workspace', href: '/' }, { label: 'Settings' }]}
-      actions={<Button>Save changes</Button>}
-      secondaryActions={<Button variant="secondary">Discard</Button>}
-      contextTitle="Diagnostics"
-      contextDescription="Secondary context and operational metadata"
+      subtitle="Workspace-wide defaults and operating policies."
+      lifecycle={{ label: 'Settings API missing', tone: 'warning' }}
+      breadcrumbs={[{ label: 'Workspace', href: '/overview' }, { label: 'Settings' }]}
+      actions={<Button disabled title="Settings cannot be saved because no workspace settings endpoint exists">Save unavailable</Button>}
+      secondaryActions={<Button variant="secondary" disabled title="There is no persisted settings draft to discard">Discard unavailable</Button>}
+      contextTitle="Settings contract"
+      contextDescription="Administrative persistence is disabled until backend contracts exist."
       contextContent={
-        <Panel title="Change log" subtitle="Recent administrative actions">
-          <ul className="space-y-2 text-body-s text-secondary">
-            <li>Updated deployment policy - 2h ago</li>
-            <li>Rotated API key - yesterday</li>
-            <li>Added workspace member - 3 days ago</li>
-          </ul>
+        <Panel title="Persistence unavailable" subtitle="No workspace settings endpoint was found">
+          <p className="text-body-s text-text-secondary">
+            The fields on this page are read-only examples of the settings shape. Saving is disabled to avoid pretending workspace policy changes are persisted.
+          </p>
         </Panel>
       }
       workspaceName="DEVteam Studio"
     >
       <div className="space-y-4">
         <SystemBanner
-          tone="info"
-          title="Workspace onboarding"
-          description="Learn lifecycle stages, ownership, and how to interpret preview and health states."
+          tone="warning"
+          title="Settings are read-only"
+          description="Workspace settings require a backend persistence contract. Actions are disabled until that endpoint exists."
         />
 
         <div className="grid gap-4 xl:grid-cols-2">
           <Card>
-            <h2 className="text-title-s text-ink">Workspace identity</h2>
+            <h2 className="text-title-s text-text-primary">Workspace identity</h2>
             <div className="mt-4 space-y-3">
-              <Input defaultValue="DEVteam Studio" aria-label="Workspace name" />
-              <Textarea rows={4} defaultValue="Software production studio for multi-agent delivery" aria-label="Workspace description" />
+              <Input defaultValue="DEVteam Studio" aria-label="Workspace name" disabled />
+              <Textarea rows={4} defaultValue="Software production studio for multi-agent delivery" aria-label="Workspace description" disabled />
             </div>
           </Card>
 
           <Card>
-            <h2 className="text-title-s text-ink">Defaults</h2>
-            <div className="mt-4 space-y-3 text-body-s text-secondary">
-              <p>Default stack: Next.js + Fastify + PostgreSQL</p>
-              <p>Region: eu-north-1</p>
-              <p>Approval policy: required for production deploys</p>
+            <h2 className="text-title-s text-text-primary">Defaults</h2>
+            <div className="mt-4 space-y-3 text-body-s text-text-secondary">
+              <p>Default stack: requires settings API</p>
+              <p>Region: requires settings API</p>
+              <p>Approval policy: requires settings API</p>
             </div>
           </Card>
         </div>

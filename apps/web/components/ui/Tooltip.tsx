@@ -26,7 +26,7 @@ export function Tooltip({ tooltipContent, children, className, ...props }: Toolt
         <span
           id={id}
           role="tooltip"
-          className="pointer-events-none absolute bottom-[calc(100%+8px)] left-1/2 z-30 w-max max-w-[240px] -translate-x-1/2 rounded-[var(--radius-control)] border border-border bg-surface-overlay px-2 py-1 text-label-s text-ink shadow-md"
+          className="pointer-events-none absolute bottom-[calc(100%+8px)] left-1/2 z-30 w-max max-w-[240px] -translate-x-1/2 rounded-[var(--radius-control)] border border-border bg-surface-overlay px-2 py-1 text-label-s text-text-primary shadow-md"
         >
           {tooltipContent}
         </span>

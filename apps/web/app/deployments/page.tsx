@@ -1,30 +1,32 @@
-﻿import { AppShell } from '../../src/components/shell';
+import { AppShell } from '../../src/components/shell';
 import { Badge, Button, Card, StatusDot } from '../../components/ui';
 
 export default function DeploymentsPage() {
   return (
     <AppShell
       title="Deployments"
-      subtitle="Track release readiness and production rollout history."
-      lifecycle={{ label: '1 pending approval', tone: 'warning' }}
-      breadcrumbs={[{ label: 'Workspace', href: '/' }, { label: 'Deployments' }]}
-      actions={<Button>New deployment</Button>}
+      subtitle="Release readiness and production rollout history."
+      lifecycle={{ label: 'Deployment backend missing', tone: 'warning' }}
+      breadcrumbs={[{ label: 'Workspace', href: '/overview' }, { label: 'Deployments' }]}
+      actions={<Button disabled title="No deployment creation endpoint exists">New deployment unavailable</Button>}
       contextTitle="Trust details"
       contextContent={
         <div className="space-y-2">
-          <StatusDot tone="success" label="Rollback window active" />
-          <StatusDot tone="warning" label="Pending change approval" />
+          <StatusDot tone="warning" label="Deployment API missing" />
+          <StatusDot tone="neutral" label="Use export source for handoff" />
         </div>
       }
       workspaceName="DEVteam Studio"
     >
       <Card>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-title-s text-ink">Production - v1.42.0</h2>
-            <p className="mt-1 text-body-s text-secondary">Released today at 10:42</p>
+            <h2 className="text-title-s text-text-primary">Deployment tracking unavailable</h2>
+            <p className="mt-1 text-body-s text-text-secondary">
+              No deployment endpoint or release history contract exists in this repository. Export source from the workspace and deploy through your own delivery system.
+            </p>
           </div>
-          <Badge variant="success">Live</Badge>
+          <Badge variant="warning">Not connected</Badge>
         </div>
       </Card>
     </AppShell>

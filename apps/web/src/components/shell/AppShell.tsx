@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
+import { IconButton } from '../../../components/ui/IconButton';
 import { cn } from '../../../lib/cn';
 import { getExperimentAssignments, getUiRedesignFlags } from '../../lib/flags/uiRedesignFlags';
 import { useRouteMetrics } from '../../lib/telemetry/routeMetrics';
@@ -27,6 +28,7 @@ interface AppShellProps {
   contextContent?: ReactNode;
   defaultContextOpen?: boolean;
   workspaceName?: string;
+  projectName?: string;
   className?: string;
 }
 
@@ -43,11 +45,13 @@ export function AppShell({
   contextContent,
   defaultContextOpen = false,
   workspaceName,
+  projectName,
   className,
 }: AppShellProps) {
   const pathname = usePathname() ?? '/';
+  const router = useRouter();
   const trackEvent = useTrackEvent();
-  const [searchValue, setSearchValue] = useState('');
+  const [commandValue, setCommandValue] = useState('');
   const [leftNavOpen, setLeftNavOpen] = useState(false);
   const [leftNavCollapsed, setLeftNavCollapsed] = useState(false);
   const [contextOpen, setContextOpen] = useState(defaultContextOpen);
@@ -68,6 +72,7 @@ export function AppShell({
   useEffect(() => {
     variantTrackedRef.current = false;
     keyboardTrackedRef.current = false;
+    setLeftNavOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -110,7 +115,7 @@ export function AppShell({
       trackEvent('shell_loaded', {
         route: pathname,
         theme: themeDark ? 'dark' : 'light',
-        variant: flags.ui_redesign_shell ? 'redesign-shell' : 'legacy-shell',
+        variant: flags.ui_redesign_shell ? 'studio-ledger-shell' : 'legacy-shell',
         lcp_ms: metrics.lcp_ms,
         inp_ms: metrics.inp_ms,
         cls: metrics.cls,
@@ -118,8 +123,43 @@ export function AppShell({
     },
   });
 
+  const handleGlobalCommandSubmit = (rawValue: string) => {
+    const value = rawValue.trim();
+    if (!value) return;
+
+    const normalized = value.toLowerCase();
+    const routes: Array<{ match: RegExp; href: string }> = [
+      { match: /^(overview|home|dashboard)$/, href: '/overview' },
+      { match: /^(projects|portfolio)$/, href: '/projects' },
+      { match: /^(workspace|builder|build|new project|create project)$/, href: '/workspace' },
+      { match: /^(activity|agents|pipeline)$/, href: '/agents' },
+      { match: /^(diagnostics|logs)$/, href: '/workspace?tab=logs' },
+      { match: /^(docs|documentation|how it works)$/, href: '/how-it-works' },
+      { match: /^(billing|usage|costs?)$/, href: '/billing' },
+      { match: /^(settings|preferences)$/, href: '/settings' },
+      { match: /^(security|admin|trust)$/, href: '/security' },
+    ];
+
+    const directRoute = routes.find((route) => route.match.test(normalized));
+    const isProjectId = /^[a-z0-9_-]{8,}$/i.test(value);
+    const href = directRoute?.href
+      ?? (isProjectId ? `/workspace?projectId=${encodeURIComponent(value)}` : `/projects?search=${encodeURIComponent(value)}`);
+
+    setCommandValue('');
+    router.push(href);
+    if (!directRoute && !isProjectId && pathname === '/projects') {
+      window.dispatchEvent(new CustomEvent('devteam:project-search', { detail: value }));
+    }
+  };
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        const input = document.querySelector<HTMLInputElement>('[aria-label="Global command bar"] input');
+        input?.focus();
+      }
+
       if (keyboardTrackedRef.current) return;
       if (event.key === 'Tab' || event.key.startsWith('Arrow')) {
         keyboardTrackedRef.current = true;
@@ -136,81 +176,75 @@ export function AppShell({
   }, [pathname, themeDark, trackEvent]);
 
   return (
-    <div className={cn('min-h-screen bg-surface-base text-ink', className)}>
+    <div className={cn('min-h-screen overflow-x-hidden bg-surface-canvas text-text-primary', className)}>
       <TopBar
         workspaceName={workspaceName}
-        searchValue={searchValue}
-        onSearchChange={setSearchValue}
+        projectName={projectName}
+        searchValue={commandValue}
+        onSearchChange={setCommandValue}
+        onSearchSubmit={handleGlobalCommandSubmit}
         onOpenNav={() => setLeftNavOpen(true)}
-        onToggleContext={() => setContextOpen((prev) => !prev)}
+        onToggleContext={hasContext ? () => setContextOpen((prev) => !prev) : undefined}
         onToggleTheme={flags.ui_redesign_dark_mode ? () => setThemeDark((prev) => !prev) : undefined}
         isDark={themeDark}
         showThemeToggle={flags.ui_redesign_dark_mode}
+        showContextToggle={hasContext}
       />
 
-      <div className="mx-auto flex w-full max-w-[1680px]">
-        <aside className="hidden min-h-[calc(100vh-4rem)] border-r border-border/70 bg-surface-raised/60 md:block">
-          <div className="sticky top-16">
+      <div className="mx-auto flex w-full max-w-[1600px] min-w-0">
+        <div className="hidden min-h-[calc(100vh-4rem)] shrink-0 lg:block">
+          <div className="sticky top-16 h-[calc(100vh-4rem)]">
             <LeftNav
               currentPath={pathname}
               collapsed={leftNavCollapsed}
               onToggleCollapsed={() => setLeftNavCollapsed((prev) => !prev)}
             />
           </div>
-        </aside>
+        </div>
 
         {leftNavOpen ? (
-          <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-label="Navigation menu" aria-modal="true">
+          <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-label="Navigation menu" aria-modal="true">
             <button
               type="button"
-              className="absolute inset-0 bg-ink/25 backdrop-blur-[2px]"
+              className="absolute inset-0 bg-text-primary/25 backdrop-blur-[2px]"
               aria-label="Close navigation menu"
               onClick={() => setLeftNavOpen(false)}
             />
-            <div className="absolute inset-y-0 left-0 flex w-[304px] max-w-[90vw] flex-col border-r border-border bg-surface-raised shadow-[0_28px_68px_rgba(15,23,42,0.25)]">
-              <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
-                <span className="text-label-m text-ink">Navigation</span>
-                <button
-                  type="button"
-                  aria-label="Close navigation menu"
-                  onClick={() => setLeftNavOpen(false)}
-                  className="inline-grid h-10 w-10 place-items-center rounded-[var(--radius-control)] border border-border bg-surface-raised text-secondary hover:bg-surface-tint focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+            <div className="absolute inset-y-0 left-0 flex w-[304px] max-w-[88vw] flex-col bg-surface-raised shadow-overlay">
+              <div className="flex items-center justify-between border-b border-border-muted px-4 py-3">
+                <span className="text-label-m text-text-primary">Navigation</span>
+                <IconButton icon={<X className="h-4 w-4" />} label="Close navigation menu" onClick={() => setLeftNavOpen(false)} />
               </div>
-              <LeftNav currentPath={pathname} onNavigate={() => setLeftNavOpen(false)} className="w-full border-r-0" />
+              <LeftNav currentPath={pathname} onNavigate={() => setLeftNavOpen(false)} className="w-full flex-1 border-r-0" />
             </div>
           </div>
         ) : null}
 
         <main className="min-w-0 flex-1">
-          <div className="flex min-h-[calc(100vh-4rem)] w-full">
-            <section className="min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-7 lg:px-10 lg:py-8 xl:px-12">
-              <PageHeader
-                title={title}
-                subtitle={subtitle}
-                lifecycle={lifecycle}
-                actions={actions}
-                secondaryActions={secondaryActions}
-                breadcrumbs={breadcrumbs}
-              />
-              <div className="pt-6 sm:pt-7">{children}</div>
-            </section>
-
-            {hasContext ? (
-              <ContextDrawer
-                open={contextOpen}
-                onClose={() => setContextOpen(false)}
-                title={contextTitle}
-                description={contextDescription}
-              >
-                {contextContent}
-              </ContextDrawer>
-            ) : null}
-          </div>
+          <section className="mx-auto min-h-[calc(100vh-4rem)] w-full max-w-[1240px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8 xl:px-10">
+            <PageHeader
+              title={title}
+              subtitle={subtitle}
+              lifecycle={lifecycle}
+              actions={actions}
+              secondaryActions={secondaryActions}
+              breadcrumbs={breadcrumbs}
+            />
+            <div className="min-w-0 pt-6 sm:pt-7">{children}</div>
+          </section>
         </main>
       </div>
+
+      {hasContext ? (
+        <ContextDrawer
+          open={contextOpen}
+          onClose={() => setContextOpen(false)}
+          title={contextTitle}
+          description={contextDescription}
+        >
+          {contextContent}
+        </ContextDrawer>
+      ) : null}
     </div>
   );
 }

@@ -1,36 +1,63 @@
 import type { GeneratedProject } from '../../../../types/dashboard';
 import { Badge, Button, Card, StatusDot } from '../../../../components/ui';
-import { deriveUnifiedProjectStatus } from '../model/project-status';
+import { deriveProjectPresentation } from '../model/project-presentation';
 
 interface ProjectCardProps {
   project: GeneratedProject;
   owner?: string;
+  showDebugId?: boolean;
   onOpen?: (projectId: string) => void;
+  onPreview?: (projectId: string) => void;
+  onExport?: (projectId: string) => void;
 }
 
-export function ProjectCard({ project, owner = 'Platform team', onOpen }: ProjectCardProps) {
-  const status = deriveUnifiedProjectStatus(project);
+function badgeTone(tone: 'neutral' | 'active' | 'success' | 'warning' | 'error') {
+  return tone === 'active' ? 'active' : tone;
+}
+
+function dotTone(tone: 'neutral' | 'active' | 'success' | 'warning' | 'error') {
+  return tone === 'active' ? 'active' : tone;
+}
+
+export function ProjectCard({ project, owner, showDebugId = false, onOpen, onPreview, onExport }: ProjectCardProps) {
+  const vm = deriveProjectPresentation(project, owner);
 
   return (
-    <Card interactive className="overflow-hidden w-full max-w-full">
-      <div className="h-36 rounded-[var(--radius-control)] border border-border bg-surface-tint w-full" aria-hidden="true" />
-      <div className="mt-4 space-y-3 w-full">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 max-w-full">
-            <h3 className="truncate break-words text-title-s text-ink w-full" title={project.name}>{project.name}</h3>
-            <p className="mt-1 text-label-s text-secondary break-words">Owner: {owner}</p>
+    <Card className="min-w-0 overflow-hidden" padded={false}>
+      <div className="border-b border-border-muted bg-surface-base p-4">
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="truncate text-title-s text-text-primary" title={vm.name}>{vm.name}</h3>
+            {showDebugId ? <p className="mt-1 truncate font-mono text-mono-s text-text-muted">{vm.projectId}</p> : null}
           </div>
-          <Badge variant={status.healthy ? 'success' : status.tone === 'warning' ? 'warning' : 'error'}>
-            {status.label}
-          </Badge>
+          <Badge variant={badgeTone(vm.health.tone)}>{vm.health.label}</Badge>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <StatusDot tone={status.healthy ? 'success' : 'warning'} label={`Stage: ${status.stage}`} />
-          <span className="text-label-s text-secondary">Updated {new Date(project.createdAt).toLocaleDateString()}</span>
+        <p className="mt-3 line-clamp-2 text-body-s text-text-secondary">{vm.stackLabel}</p>
+      </div>
+
+      <div className="space-y-4 p-4">
+        <dl className="grid gap-3 text-body-s sm:grid-cols-2">
+          <div className="min-w-0">
+            <dt className="text-label-s text-text-muted">Owner</dt>
+            <dd className="mt-1 truncate text-text-primary">{vm.owner}</dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-label-s text-text-muted">Last updated</dt>
+            <dd className="mt-1 truncate text-text-primary">{vm.lastUpdatedLabel}</dd>
+          </div>
+        </dl>
+
+        <div className="grid gap-2">
+          <StatusDot tone={dotTone(vm.build.tone)} label={`Build: ${vm.build.label}`} />
+          <StatusDot tone={dotTone(vm.preview.tone)} label={`Preview: ${vm.preview.label}`} />
+          <StatusDot tone={dotTone(vm.export.tone)} label={`Export: ${vm.export.label}`} />
         </div>
-        <Button variant="secondary" className="w-full" onClick={() => onOpen?.(project.id)}>
-          Open workspace
-        </Button>
+
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Button variant="secondary" size="sm" onClick={() => onOpen?.(vm.projectId)} disabled={!onOpen} title={!onOpen ? 'Open action is not available here.' : undefined}>Open</Button>
+          <Button variant="secondary" size="sm" onClick={() => onPreview?.(vm.projectId)} disabled={!onPreview || vm.preview.tone === 'neutral'} title={!onPreview ? 'Preview action is not available here.' : vm.preview.tone === 'neutral' ? 'Preview is not available for this project yet.' : undefined}>Preview</Button>
+          <Button variant="secondary" size="sm" onClick={() => onExport?.(vm.projectId)} disabled={!onExport || vm.export.tone !== 'success'} title={!onExport ? 'Export action is not available here.' : vm.export.tone !== 'success' ? 'Export requires completed source and validation evidence.' : undefined}>Export</Button>
+        </div>
       </div>
     </Card>
   );

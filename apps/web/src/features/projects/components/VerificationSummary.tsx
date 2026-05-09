@@ -19,8 +19,8 @@ export function VerificationSummary({
 }: VerificationSummaryProps) {
   return (
     <Card>
-      <h3 className="text-title-s text-ink">Verification summary</h3>
-      <p className="mt-1 text-body-s text-secondary">Evidence checks required before launch.</p>
+      <h3 className="text-title-s text-text-primary">Verification summary</h3>
+      <p className="mt-1 text-body-s text-text-secondary">Evidence checks required before launch.</p>
       <div className="mt-4 space-y-2">
         <StatusDot tone={tone(runtimeStatus)} label={`Runtime checks: ${runtimeStatus}`} />
         <StatusDot tone={tone(qaStatus)} label={`Quality checks: ${qaStatus}`} />

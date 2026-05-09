@@ -106,7 +106,7 @@ export async function generateProject(
   prompt: string,
   preferences?: Record<string, unknown>,
 ): Promise<GenerateResponse> {
-  const result = await request<{ project: GenerateResponse['project']; pipeline: { sessionId: string } }>('/api/projects', {
+  const result = await request<GenerateProjectResponse>('/api/projects', {
     method: 'POST',
     body: JSON.stringify(preferences ? { prompt, preferences } : { prompt }),
   });
@@ -128,6 +128,9 @@ export async function generateProject(
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Raw = Record<string, unknown>;
+type ProjectListResponse = { projects: Raw[] } | Raw[];
+type ProjectDetailResponse = Raw | { project: Raw };
+type GenerateProjectResponse = { project: GenerateResponse['project']; pipeline: { sessionId: string } };
 
 function str(v: unknown, fallback = ''): string {
   return typeof v === 'string' ? v : fallback;
@@ -148,7 +151,7 @@ export function normalizeProject(raw: unknown): GeneratedProject {
     statusRaw === 'failed'    ? 'failed' :
     'generating';
   const promptLegacy = typeof p['prompt'] === 'string' ? [p['prompt'] as string] : [];
-  return {
+  const normalized = {
     id:             str(p['id'], `unknown-${Date.now()}`),
     sessionId:      str(p['sessionId']),
     name:           str(p['name'], 'Untitled project'),
@@ -164,6 +167,12 @@ export function normalizeProject(raw: unknown): GeneratedProject {
     preview:        (p['preview'] && typeof p['preview'] === 'object')
       ? (p['preview'] as GeneratedProject['preview'])
       : undefined,
+    runtimeValidation: (p['runtimeValidation'] && typeof p['runtimeValidation'] === 'object')
+      ? (p['runtimeValidation'] as GeneratedProject['runtimeValidation'])
+      : undefined,
+    executionValidation: (p['executionValidation'] && typeof p['executionValidation'] === 'object')
+      ? (p['executionValidation'] as GeneratedProject['executionValidation'])
+      : undefined,
     stackSelectionMode:
       p['stackSelectionMode'] === 'manual' || p['stackSelectionMode'] === 'auto'
         ? (p['stackSelectionMode'] as 'auto' | 'manual')
@@ -171,7 +180,16 @@ export function normalizeProject(raw: unknown): GeneratedProject {
     techStack:      (p['techStack'] && typeof p['techStack'] === 'object')
       ? (p['techStack'] as Record<string, string>)
       : undefined,
-  };
+  } satisfies GeneratedProject;
+
+  return {
+    ...normalized,
+    ...Object.fromEntries(
+      ['projectContract', 'requirementCoverage', 'gateResults', 'warnings', 'fileCount', 'updatedAt']
+        .filter((key) => key in p)
+        .map((key) => [key, p[key]]),
+    ),
+  } as GeneratedProject;
 }
 
 /** Normalize a raw file-entry row into a fully-populated ProjectFileEntry. */
@@ -193,21 +211,9 @@ export function normalizeFileContent(raw: unknown, fallbackPath = ''): ProjectFi
 }
 
 export async function listProjects(): Promise<GeneratedProject[]> {
-  try {
-    const result = await request<{ projects: Raw[] } | Raw[]>('/api/projects');
-    const raw = Array.isArray(result) ? result : arr<Raw>((result as { projects: Raw[] }).projects);
-    return raw.map(normalizeProject).filter((p) => p.id && !p.id.startsWith('unknown-'));
-  } catch (err) {
-    // If the backend is unreachable we fall back to an empty list instead of
-    // crashing the dashboard. Live-backend consumers already tolerate an
-    // empty list (shows the welcome/empty-state), so this is a true no-op
-    // from the UI's point of view.
-    if (err instanceof ApiError && err.isUnreachable) {
-      console.warn('[api] listProjects: backend unreachable, returning empty list');
-      return [];
-    }
-    throw err;
-  }
+  const result = await request<ProjectListResponse>('/api/projects');
+  const raw = Array.isArray(result) ? result : arr<Raw>((result as { projects: Raw[] }).projects);
+  return raw.map(normalizeProject).filter((p) => p.id && !p.id.startsWith('unknown-'));
 }
 
 /**
@@ -221,7 +227,7 @@ export async function listProjects(): Promise<GeneratedProject[]> {
  */
 export async function getProject(projectId: string): Promise<GeneratedProject | null> {
   try {
-    const raw = await request<Raw | { project: Raw }>(`/api/projects/${projectId}`);
+    const raw = await request<ProjectDetailResponse>(`/api/projects/${projectId}`);
     const proj = (raw && typeof raw === 'object' && 'project' in (raw as object))
       ? (raw as { project: Raw }).project
       : (raw as Raw);
@@ -231,10 +237,6 @@ export async function getProject(projectId: string): Promise<GeneratedProject | 
     return normalized;
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) return null;
-    if (err instanceof ApiError && err.isUnreachable) {
-      console.warn(`[api] getProject(${projectId}): backend unreachable`);
-      return null;
-    }
     throw err;
   }
 }
@@ -289,31 +291,15 @@ export async function getProjectDetail(projectId: string): Promise<GetProjectDet
 }
 
 export async function getProjectFiles(projectId: string): Promise<ProjectFileEntry[]> {
-  try {
-    const result = await request<ProjectFileEntry[] | { files: ProjectFileEntry[] }>(`/api/projects/${projectId}/files`);
-    const raw = Array.isArray(result) ? result : arr((result as { files: unknown[] }).files);
-    return raw.map(normalizeFileEntry).filter((f) => f.path);
-  } catch (err) {
-    if (err instanceof ApiError && err.isUnreachable) {
-      console.warn(`[api] getProjectFiles(${projectId}): backend unreachable, returning empty list`);
-      return [];
-    }
-    throw err;
-  }
+  const result = await request<ProjectFileEntry[] | { files: ProjectFileEntry[] }>(`/api/projects/${projectId}/files`);
+  const raw = Array.isArray(result) ? result : arr((result as { files: unknown[] }).files);
+  return raw.map(normalizeFileEntry).filter((f) => f.path);
 }
 
 export async function getProjectFile(projectId: string, filePath: string): Promise<ProjectFileContent> {
-  const encodedPath = encodeURIComponent(filePath);
-  try {
-    const raw = await request<Raw>(`/api/projects/${projectId}/file?path=${encodedPath}`);
-    return normalizeFileContent(raw, filePath);
-  } catch (err) {
-    if (err instanceof ApiError && err.isUnreachable) {
-      console.warn(`[api] getProjectFile(${projectId},${filePath}): backend unreachable, returning empty content`);
-      return { path: filePath, content: '' };
-    }
-    throw err;
-  }
+  const encodedPath = filePath.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+  const raw = await request<Raw>(`/api/projects/${projectId}/files/${encodedPath}`);
+  return normalizeFileContent(raw, filePath);
 }
 
 export async function updateProject(
@@ -321,7 +307,7 @@ export async function updateProject(
   prompt: string,
   preferences?: Record<string, unknown>,
 ): Promise<GenerateResponse> {
-  const result = await request<{ project: GenerateResponse['project']; pipeline: { sessionId: string } }>(`/api/projects/${projectId}/prompts`, {
+  const result = await request<GenerateProjectResponse>(`/api/projects/${projectId}/prompts`, {
     method: 'POST',
     body: JSON.stringify(preferences ? { prompt, preferences } : { prompt }),
   });
@@ -337,7 +323,7 @@ export async function getProjectPromptHistory(projectId: string): Promise<import
     const result = await request<{ prompts: import('../types/dashboard').PromptHistoryEntry[] }>(`/api/projects/${projectId}/prompts`);
     return arr(result?.prompts) as import('../types/dashboard').PromptHistoryEntry[];
   } catch (err) {
-    if (err instanceof ApiError && (err.isUnreachable || err.status === 404)) return [];
+    if (err instanceof ApiError && err.status === 404) return [];
     throw err;
   }
 }
@@ -347,7 +333,7 @@ export async function getProjectVersions(projectId: string): Promise<import('../
     const result = await request<{ versions: import('../types/dashboard').ProjectVersion[] }>(`/api/projects/${projectId}/versions`);
     return arr(result?.versions) as import('../types/dashboard').ProjectVersion[];
   } catch (err) {
-    if (err instanceof ApiError && (err.isUnreachable || err.status === 404)) return [];
+    if (err instanceof ApiError && err.status === 404) return [];
     throw err;
   }
 }
@@ -363,14 +349,7 @@ export async function restoreProjectVersion(projectId: string, versionId: string
 }
 
 export async function getContainerInfo(projectId: string): Promise<{ available: boolean; status: string; url: string | null }> {
-  try {
-    return await request<{ available: boolean; status: string; url: string | null }>(`/api/projects/${projectId}/container`);
-  } catch (err) {
-    if (err instanceof ApiError && (err.isUnreachable || err.status === 404)) {
-      return { available: false, status: 'unavailable', url: null };
-    }
-    throw err;
-  }
+  return request<{ available: boolean; status: string; url: string | null }>(`/api/projects/${projectId}/container`);
 }
 
 /* ── Docker preview API ────────────────────────────────────────
@@ -526,6 +505,19 @@ export async function exportProject(projectId: string, projectName?: string): Pr
 
 export async function getSessionProgress(sessionId: string): Promise<SessionProgress> {
   return request<SessionProgress>(`/api/sessions/${sessionId}/progress`);
+}
+
+export interface ActiveSessionSummary {
+  sessionId?: string;
+  id?: string;
+  status?: string;
+  progress?: number;
+  currentStep?: unknown;
+  durationMs?: number;
+}
+
+export async function listActiveSessions(): Promise<ActiveSessionSummary[]> {
+  return request<ActiveSessionSummary[]>('/api/sessions/active');
 }
 
 export function openSessionSocket(

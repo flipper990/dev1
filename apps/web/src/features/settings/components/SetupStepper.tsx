@@ -29,6 +29,7 @@ interface SetupStepperProps {
 
 export function SetupStepper({ onComplete }: SetupStepperProps) {
   const [index, setIndex] = useState(0);
+  const [completed, setCompleted] = useState(false);
   const step = DEFAULT_STEPS[index];
   const timeline: WorkflowTimelineViewModel = {
     heading: 'Onboarding workflow',
@@ -65,16 +66,18 @@ export function SetupStepper({ onComplete }: SetupStepperProps) {
 
   return (
     <Card>
-      <h3 className="text-title-s text-ink">Onboarding</h3>
-      <p className="mt-1 text-body-s text-secondary">Learn how to operate DEVteam like a production studio.</p>
+      <h3 className="text-title-s text-text-primary">Onboarding</h3>
+      <p className="mt-1 text-body-s text-text-secondary">Learn how to operate DEVteam like a production studio.</p>
 
       <div className="mt-4">
         <ProjectStageTimeline timeline={timeline} />
       </div>
 
       <section className="mt-4 rounded-[var(--radius-control)] border border-border bg-surface-tint p-3" aria-live="polite">
-        <h4 className="text-label-m text-ink">{step.title}</h4>
-        <p className="mt-1 text-body-s text-secondary">{step.detail}</p>
+        <h4 className="text-label-m text-text-primary">{completed ? 'Setup guide completed' : step.title}</h4>
+        <p className="mt-1 text-body-s text-text-secondary">
+          {completed ? 'This local onboarding guide is complete. Workspace settings still require backend persistence before they can be saved.' : step.detail}
+        </p>
       </section>
 
       <div className="mt-4 flex flex-wrap justify-end gap-2">
@@ -84,7 +87,16 @@ export function SetupStepper({ onComplete }: SetupStepperProps) {
         {index < DEFAULT_STEPS.length - 1 ? (
           <Button onClick={() => setIndex((prev) => Math.min(DEFAULT_STEPS.length - 1, prev + 1))}>Next</Button>
         ) : (
-          <Button onClick={onComplete}>Finish setup</Button>
+          <Button
+            disabled={completed && !onComplete}
+            title={completed && !onComplete ? 'Setup guide is already complete. Workspace persistence is not connected.' : undefined}
+            onClick={() => {
+              setCompleted(true);
+              onComplete?.();
+            }}
+          >
+            {completed ? 'Setup guide complete' : 'Finish setup'}
+          </Button>
         )}
       </div>
     </Card>

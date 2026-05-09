@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
+import { IconButton } from '../../../components/ui/IconButton';
 import { cn } from '../../../lib/cn';
 
 interface ModalProps {
@@ -51,25 +52,18 @@ export function Modal({ open, title, description, onClose, children }: ModalProp
 
   return (
     <div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true" aria-label={title}>
-      <button type="button" aria-label="Close modal" className="absolute inset-0 bg-ink/35" onClick={onClose} />
+      <button type="button" aria-label="Close modal" className="absolute inset-0 bg-text-primary/35" onClick={onClose} />
       <div className="absolute inset-0 grid place-items-center p-4">
         <div
           ref={panelRef}
           className={cn('w-full max-w-[640px] rounded-[var(--radius-modal)] border border-border bg-surface-overlay shadow-overlay')}
         >
-          <header className="flex items-start justify-between gap-3 border-b border-border p-4">
+          <header className="flex items-start justify-between gap-3 border-b border-border-muted p-4">
             <div>
-              <h2 className="text-title-s text-ink">{title}</h2>
-              {description ? <p className="mt-1 text-body-s text-secondary">{description}</p> : null}
+              <h2 className="text-title-s text-text-primary">{title}</h2>
+              {description ? <p className="mt-1 text-body-s text-text-secondary">{description}</p> : null}
             </div>
-            <button
-              type="button"
-              aria-label="Close modal"
-              onClick={onClose}
-              className="inline-grid h-10 w-10 place-items-center rounded-[var(--radius-control)] border border-border bg-surface-raised text-secondary hover:bg-surface-tint focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <IconButton icon={<X className="h-4 w-4" />} label="Close modal" onClick={onClose} />
           </header>
           <div className="p-4">{children}</div>
         </div>

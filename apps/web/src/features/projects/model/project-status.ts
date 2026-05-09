@@ -1,5 +1,6 @@
 import type { GeneratedProject } from '../../../../types/dashboard';
 import type { ProductStatusKey, StatusTone as ProductStatusTone } from '../../../design/tokens/status';
+import { derivePreviewTruth } from '../../preview/model';
 
 export type UnifiedProjectStatusKey = ProductStatusKey;
 
@@ -136,9 +137,14 @@ function formatTimestampLabel(value: string | number | Date | undefined): string
 
 function collectBuildMetadata(project: GeneratedProject): string[] {
   const meta: string[] = [];
-  if (typeof project.fileCount === 'number') meta.push(`${project.fileCount} files`);
-  if (typeof project.totalTokens === 'number') meta.push(`${project.totalTokens.toLocaleString()} tokens`);
-  if (typeof project.totalCostUsd === 'number') meta.push(`$${project.totalCostUsd.toFixed(2)} cost`);
+  const buildMetrics = project as GeneratedProject & {
+    fileCount?: number;
+    totalTokens?: number;
+    totalCostUsd?: number;
+  };
+  if (typeof buildMetrics.fileCount === 'number') meta.push(`${buildMetrics.fileCount} files`);
+  if (typeof buildMetrics.totalTokens === 'number') meta.push(`${buildMetrics.totalTokens.toLocaleString()} tokens`);
+  if (typeof buildMetrics.totalCostUsd === 'number') meta.push(`$${buildMetrics.totalCostUsd.toFixed(2)} cost`);
   return meta;
 }
 
@@ -185,13 +191,13 @@ export function deriveUnifiedProjectStatus(
   }
 
   const previewStatus = project.preview?.previewStatus;
-  const previewReady = project.preview?.previewReady;
+  const previewTruth = derivePreviewTruth(project);
 
   if (project.status === 'generating') {
     return { key: 'generating', ...STATUS_META.generating };
   }
 
-  if (previewStatus === 'failed' || project.status === 'failed') {
+  if (previewTruth.isBroken || previewTruth.isFailure || project.status === 'failed') {
     return { key: 'preview-failed', ...STATUS_META['preview-failed'] };
   }
 
@@ -199,7 +205,11 @@ export function deriveUnifiedProjectStatus(
     return { key: 'preview-starting', ...STATUS_META['preview-starting'] };
   }
 
-  if (previewStatus === 'ready' || previewReady) {
+  if (previewTruth.isPlaceholder || (previewTruth.previewTransportStatus === 'reachable' && !previewTruth.isHealthy)) {
+    return { key: 'stale', ...STATUS_META.stale };
+  }
+
+  if (previewTruth.isHealthy) {
     if (!hasVerificationSignal(project)) {
       return { key: 'preview-ready', ...STATUS_META['preview-ready'] };
     }
@@ -220,16 +230,32 @@ export function buildWorkflowTimelineViewModel(
   project: GeneratedProject | null | undefined,
   unifiedStatus: UnifiedProjectStatus,
 ): WorkflowTimelineViewModel {
+  const projectTimestamps = project as
+    | (GeneratedProject & {
+        updatedAt?: string | number | Date;
+        completedAt?: string | number | Date;
+      })
+    | null
+    | undefined;
   const buildMeta = project ? collectBuildMetadata(project) : [];
   const lastUpdated =
-    formatTimestampLabel(project?.updatedAt) ??
-    formatTimestampLabel(project?.completedAt) ??
+    formatTimestampLabel(projectTimestamps?.updatedAt) ??
+    formatTimestampLabel(projectTimestamps?.completedAt) ??
     formatTimestampLabel(project?.createdAt);
 
   const previewMeta: string[] = [];
+  const previewMetrics = project?.preview as
+    | {
+        previewStatus?: string;
+        port?: number;
+        url?: string | null;
+        previewUrl?: string | null;
+      }
+    | null
+    | undefined;
   if (project?.preview?.previewStatus) previewMeta.push(`Runtime: ${project.preview.previewStatus}`);
-  if (project?.preview?.port) previewMeta.push(`Port ${project.preview.port}`);
-  if (project?.preview?.url) previewMeta.push('URL available');
+  if (previewMetrics?.port) previewMeta.push(`Port ${previewMetrics.port}`);
+  if (previewMetrics?.url || previewMetrics?.previewUrl) previewMeta.push('URL available');
 
   const verificationMeta: string[] = [];
   if (project?.runtimeValidation?.status) verificationMeta.push(`Runtime ${project.runtimeValidation.status}`);

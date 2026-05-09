@@ -57,7 +57,7 @@ export function buildTelemetryEvent<K extends TelemetryEventName>(
 }
 
 export function sanitizeTelemetryPayload(payload: TelemetryEventBase): TelemetryEventBase {
-  const next: TelemetryEventBase = {};
+  const next: Record<string, TelemetryEventBase[keyof TelemetryEventBase]> = {};
 
   const keys = Object.keys(payload) as Array<keyof TelemetryEventBase>;
   for (const key of keys) {
@@ -67,5 +67,5 @@ export function sanitizeTelemetryPayload(payload: TelemetryEventBase): Telemetry
     next[key] = value;
   }
 
-  return next;
+  return next as TelemetryEventBase;
 }

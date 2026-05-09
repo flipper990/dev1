@@ -2,6 +2,7 @@
 // LLM routes live in ./llm-routes.ts; versioning routes in ./version-routes.ts.
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import archiver from 'archiver';
 import { z } from 'zod';
 import type { ProjectGenerator } from '../pipeline/project-generator.js';
 import type { ProjectStore } from '../storage/project-store.js';
@@ -24,6 +25,20 @@ const GenerateSchema = z.object({
   userId: z.string().optional(),
   preferences: z.record(z.unknown()).optional(),
 });
+
+function safeArchivePath(filePath: string): string {
+  const normalized = filePath
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter((segment) => segment && segment !== '.' && segment !== '..' && !segment.includes('\0'))
+    .join('/');
+  return normalized || 'file.txt';
+}
+
+function safeDownloadName(value: string): string {
+  const normalized = value.replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase();
+  return normalized || 'devteam-project';
+}
 
 export function registerRoutes(
   app: FastifyInstance,
@@ -279,6 +294,47 @@ export function registerRoutes(
     const file = project.files.find(f => f.path === filePath);
     if (!file) return reply.status(404).send({ error: 'File not found' });
     return { path: file.path, content: file.content };
+  });
+
+  app.get('/api/projects/:id/export', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const project = await projectStore.get(id);
+    if (!project) return reply.status(404).send({ error: 'Project not found' });
+    if (project.status !== 'completed') {
+      return reply.status(409).send({ error: 'Export is available only after the project generation completes successfully.' });
+    }
+    if (!project.files.length) {
+      return reply.status(404).send({ error: 'Project has no source files to export' });
+    }
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.on('error', (error) => {
+      request.log.error({ event: 'route:export-project:error', projectId: id, err: error.message }, 'project export stream failed');
+      reply.raw.destroy(error);
+    });
+
+    const manifest = {
+      projectId: project.id,
+      name: project.name,
+      status: project.status,
+      sessionId: project.sessionId,
+      prompts: project.prompts,
+      stackSelectionMode: project.stackSelectionMode ?? 'auto',
+      techStack: project.techStack ?? null,
+      exportedAt: new Date().toISOString(),
+    };
+
+    archive.append(`${JSON.stringify(manifest, null, 2)}\n`, { name: 'devteam-export.json' });
+    for (const file of project.files) {
+      archive.append(file.content, { name: safeArchivePath(file.path) });
+    }
+
+    reply
+      .header('Content-Type', 'application/zip')
+      .header('Content-Disposition', `attachment; filename="${safeDownloadName(project.name ?? id)}-${id}-export.zip"`);
+
+    void archive.finalize();
+    return reply.send(archive);
   });
 
   app.delete('/api/projects/:id', async (request, reply) => {

@@ -1,7 +1,8 @@
 export const elevation = {
   none: 'none',
-  sm: '0 1px 2px rgba(15, 23, 42, 0.05)',
-  md: '0 2px 10px rgba(15, 23, 42, 0.08)',
-  lg: '0 8px 20px rgba(15, 23, 42, 0.14)',
-  overlay: '0 16px 40px rgba(15, 23, 42, 0.2)',
+  hairline: '0 1px 0 var(--shadow-hairline-color)',
+  sm: '0 1px 2px var(--shadow-sm-color), 0 1px 0 var(--shadow-hairline-color)',
+  md: '0 8px 24px var(--shadow-md-color), 0 1px 0 var(--shadow-hairline-color)',
+  lg: '0 18px 48px var(--shadow-lg-color), 0 1px 0 var(--shadow-hairline-color)',
+  overlay: '0 28px 80px var(--shadow-overlay-color), 0 1px 0 var(--shadow-hairline-color)',
 } as const;

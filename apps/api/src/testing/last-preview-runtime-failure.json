@@ -1,98 +1,177 @@
 {
-  "timestamp": "2026-05-06T23:01:33.467Z",
+  "timestamp": "2026-05-06T23:23:36.477Z",
   "projectId": "AH0QOxRHDYV9",
-  "previewId": "780aa4a82be1",
-  "runtime": "local",
+  "previewId": "a5e8897b547b",
+  "runtime": "local-fallback",
   "stack": null,
-  "reason": "Local preview failed: Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react\".",
+  "reason": "Local-fallback preview failed (after docker also failed): dev server did not become ready on port 48031 within 90000ms",
   "exitCode": null,
   "signal": null,
   "oomKilled": false,
   "dockerError": null,
-  "command": null,
-  "commandArgs": null,
-  "cwd": null,
-  "port": null,
+  "command": "npm.cmd",
+  "commandArgs": [
+    "run",
+    "dev"
+  ],
+  "cwd": "..\\..\\data\\projects\\AH0QOxRHDYV9\\output\\.preview-runtime",
+  "port": 48031,
   "envSafe": {
-    "PORT": "3003",
-    "HOST": "0.0.0.0",
-    "NODE_ENV": "development"
+    "PORT": "48031",
+    "HOST": "127.0.0.1",
+    "HOSTNAME": "127.0.0.1",
+    "BROWSER": "none",
+    "CI": "1",
+    "FORCE_COLOR": "0",
+    "NO_COLOR": "1",
+    "NEXT_TELEMETRY_DISABLED": "1"
   },
   "imageTag": null,
   "containerName": null,
   "containerId": null,
-  "lastSuccessfulStep": "Local preview failed: Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove th",
+  "lastSuccessfulStep": "⚠ Both preview backends failed:\n\n── Docker attempt ──\nDev server did not become healthy within 90000ms (last status: 500)\nexitCode=0\nlast successful step: docker container started\nstderr tail:\n   desc",
   "stdoutTail": null,
   "stderrTail": null,
-  "errorStack": "Error: Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react\".\n    at PreviewManager.doStartLocal (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:2584:15)\n    at async PreviewManager.startWithAutoFixRetry (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:1135:22)\n    at async PreviewManager.start (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:1055:14)\n    at async Object.<anonymous> (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\routes\\preview-routes.ts:66:22)",
+  "errorStack": "Error: dev server did not become ready on port 48031 within 90000ms\n    at LocalPreviewRunner.waitForReady (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\local-runner.ts:1008:11)\n    at async LocalPreviewRunner.start (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\local-runner.ts:613:7)\n    at async PreviewManager.doStartLocal (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:2722:16)\n    at async PreviewManager.startWithAutoFixRetry (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:1135:22)\n    at async PreviewManager.start (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:1055:14)\n    at async Object.<anonymous> (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\routes\\preview-routes.ts:66:22)",
   "currentStep": "preview:failed",
-  "stepStartedAt": "2026-05-06T23:01:33.466Z",
+  "stepStartedAt": "2026-05-06T23:23:36.477Z",
   "stepDurations": [
     {
       "step": "preview:queued",
-      "startedAt": "2026-05-06T23:01:33.428Z",
-      "completedAt": "2026-05-06T23:01:33.429Z",
+      "startedAt": "2026-05-06T23:19:54.763Z",
+      "completedAt": "2026-05-06T23:19:54.764Z",
       "durationMs": 1
     },
     {
       "step": "preview:staging-files",
-      "startedAt": "2026-05-06T23:01:33.429Z",
-      "completedAt": "2026-05-06T23:01:33.466Z",
-      "durationMs": 37
+      "startedAt": "2026-05-06T23:19:54.764Z",
+      "completedAt": "2026-05-06T23:19:54.788Z",
+      "durationMs": 24
+    },
+    {
+      "step": "preview:installing",
+      "startedAt": "2026-05-06T23:19:54.788Z",
+      "completedAt": "2026-05-06T23:20:09.859Z",
+      "durationMs": 15071
+    },
+    {
+      "step": "preview:timeout",
+      "startedAt": "2026-05-06T23:20:09.859Z",
+      "completedAt": "2026-05-06T23:20:33.735Z",
+      "durationMs": 23876
+    },
+    {
+      "step": "preview:spawning-server",
+      "startedAt": "2026-05-06T23:20:33.735Z",
+      "completedAt": "2026-05-06T23:20:33.743Z",
+      "durationMs": 8
+    },
+    {
+      "step": "preview:waiting-for-port",
+      "startedAt": "2026-05-06T23:20:33.743Z",
+      "completedAt": "2026-05-06T23:20:33.744Z",
+      "durationMs": 1
+    },
+    {
+      "step": "preview:http-probing",
+      "startedAt": "2026-05-06T23:20:33.744Z",
+      "completedAt": "2026-05-06T23:22:06.045Z",
+      "durationMs": 92301
+    },
+    {
+      "step": "preview:installing",
+      "startedAt": "2026-05-06T23:22:06.045Z",
+      "completedAt": "2026-05-06T23:22:06.088Z",
+      "durationMs": 43
+    },
+    {
+      "step": "preview:spawning-server",
+      "startedAt": "2026-05-06T23:22:06.088Z",
+      "completedAt": "2026-05-06T23:22:06.092Z",
+      "durationMs": 4
+    },
+    {
+      "step": "preview:waiting-for-port",
+      "startedAt": "2026-05-06T23:22:06.092Z",
+      "completedAt": "2026-05-06T23:22:06.094Z",
+      "durationMs": 2
+    },
+    {
+      "step": "preview:http-probing",
+      "startedAt": "2026-05-06T23:22:06.094Z",
+      "completedAt": "2026-05-06T23:23:36.477Z",
+      "durationMs": 90383
     }
   ],
   "previewStatusTransitions": [
     {
-      "step": "starting:local-runner",
-      "at": "2026-05-06T23:01:33.428Z"
+      "step": "starting:local-fallback",
+      "at": "2026-05-06T23:19:54.763Z"
     },
     {
-      "step": "failed:Local preview failed: Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove th",
-      "at": "2026-05-06T23:01:33.466Z"
+      "step": "failed:Preview startup timed out after 150s [cause=install-hung] — install never finished (npm install started but did not complete before the budget). Step at timeout: preview:installing (last successful: l",
+      "at": "2026-05-06T23:20:09.859Z"
+    },
+    {
+      "step": "failed:⚠ Both preview backends failed:\n\n── Docker attempt ──\nDev server did not become healthy within 90000ms (last status: 500)\nexitCode=0\nlast successful step: docker container started\nstderr tail:\n   desc",
+      "at": "2026-05-06T23:23:36.477Z"
     }
   ],
   "timeline": [
     {
       "event": "runner-start",
-      "at": "2026-05-06T23:01:33.429Z",
+      "at": "2026-05-06T23:19:54.764Z",
       "previewStatus": "starting",
       "durationMs": null,
       "details": {
-        "mode": "local",
-        "fileCount": 44
+        "mode": "local-fallback",
+        "fileCount": 44,
+        "fallbackFromDocker": true
       }
     },
     {
       "event": "install-start",
-      "at": "2026-05-06T23:01:33.429Z",
+      "at": "2026-05-06T23:19:54.764Z",
       "previewStatus": "starting",
       "durationMs": null,
       "details": {
-        "mode": "local"
+        "mode": "local-fallback"
       }
     },
     {
       "event": "install-end",
-      "at": "2026-05-06T23:01:33.463Z",
-      "previewStatus": "starting",
-      "durationMs": 34,
+      "at": "2026-05-06T23:22:04.038Z",
+      "previewStatus": "failed",
+      "durationMs": 129274,
       "details": {
         "ok": false,
-        "error": "Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react\"."
+        "error": "dev server did not become ready on port 61331 within 90000ms",
+        "attempt": 1,
+        "willRetry": true
+      }
+    },
+    {
+      "event": "install-end",
+      "at": "2026-05-06T23:23:36.471Z",
+      "previewStatus": "failed",
+      "durationMs": 221707,
+      "details": {
+        "ok": false,
+        "error": "dev server did not become ready on port 48031 within 90000ms"
       }
     },
     {
       "event": "failed",
-      "at": "2026-05-06T23:01:33.467Z",
+      "at": "2026-05-06T23:23:36.477Z",
       "previewStatus": "failed",
-      "durationMs": 38,
+      "durationMs": 221713,
       "details": {
-        "message": "Local preview failed: Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react\".",
-        "reason": "Local preview failed: Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react\".",
+        "message": "⚠ Both preview backends failed:\n\n── Docker attempt ──\nDev server did not become healthy within 90000ms (last status: 500)\nexitCode=0\nlast successful step: docker container started\nstderr tail:\n   description: \"A minimalist counter app with increment, decrement, and reset functionality, persisting state locally.\"\n| };\n> import Link from \"next/link\";\n| import \"./globals.css\";\n| import { AppShell } from \"@/components/ui/AppShell\";\n\nImport trace for requested module:\n./src/app/layout.tsx\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: ENOENT: no such file or directory, rename '/app/.next/cache/webpack/client-development-fallback/0.pack.gz_' -> '/app/.next/cache/webpack/client-development-fallback/0.pack.gz'\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: ENOENT: no such file or directory, rename '/app/.next/cache/webpack/client-development-fallback/0.pack.gz_' -> '/app/.next/cache/webpack/client-development-fallback/0.pack.gz'\n HEAD / 500 in 1507ms\n HEAD / 500 in 103ms\n HEAD / 500 in 124ms\n GET / 500 in 7ms\n HEAD / 500 in 6ms\n HEAD / 500 in 6ms\n HEAD / 500 in 6ms\n GET / 500 in 6ms\n HEAD / 500 in 6ms\n HEAD / 500 in 7ms\n HEAD / 500 in 6ms\n GET / 500 in 6ms\n HEAD / 500 in 5ms\n HEAD / 500 in 6ms\n HEAD / 500 in 11ms\n GET / 500 in 8ms\n HEAD / 500 in 6ms\n HEAD / 500 in 10ms\n HEAD / 500 in 6ms\n GET / 500 in 7ms\n HEAD / 500 in 5ms\n HEAD / 500 in 6ms\n HEAD / 500 in 6ms\n GET / 500 in 5ms\n HEAD / 500 in 6ms\n HEAD / 500 in 5ms\n HEAD / 500 in 6ms\n GET / 500 in 9ms\n HEAD / 500 in 5ms\n HEAD / 500 in 7ms\n HEAD / 500 in 79ms\n GET / 500 in 89ms\n HEAD / 500 in 7ms\n HEAD / 500 in 5ms\n HEAD / 500 in 5ms\n GET / 500 in 5ms\n HEAD / 500 in 5ms\n\n── Local fallback attempt ──\nLocal-fallback preview failed (after docker also failed): dev server did not become ready on port 48031 within 90000ms",
+        "reason": "Local-fallback preview failed (after docker also failed): dev server did not become ready on port 48031 within 90000ms",
         "exitCode": null,
         "signal": null,
         "oomKilled": false,
-        "lastSuccessfulStep": "Local preview failed: Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove th"
+        "lastSuccessfulStep": "⚠ Both preview backends failed:\n\n── Docker attempt ──\nDev server did not become healthy within 90000ms (last status: 500)\nexitCode=0\nlast successful step: docker container started\nstderr tail:\n   desc"
       }
     }
   ]

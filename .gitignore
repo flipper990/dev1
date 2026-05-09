@@ -18,3 +18,4 @@ last-test-id.txt
 test-pid.txt
 test-prompt.json
 preview-src.js
+.aider*

@@ -6,7 +6,11 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:smoke:routes": "node ./scripts/route-smoke.mjs",
+    "test:smoke:rollback": "node ./scripts/rollback-smoke.mjs",
+    "test:smoke:a11y": "node ./scripts/a11y-smoke.mjs",
+    "test:smoke:visual": "node ./scripts/visual-regression-smoke.mjs"
   },
   "dependencies": {
     "@devteam/types": "*",

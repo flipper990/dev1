@@ -1,0 +1,154 @@
+:root {
+  color-scheme: light;
+
+  --color-primary: #245cff;
+  --color-primary-hover: #1d4be0;
+  --color-primary-subtle: #e9f0ff;
+  --color-accent: #11b6a5;
+  --color-accent-subtle: #ddf8f4;
+  --color-ink: #0f172a;
+  --color-text-secondary: #526072;
+  --color-border: #d9e1ea;
+  --color-border-strong: #bac8d8;
+  --color-surface-base: #f7f9fc;
+  --color-surface-raised: #ffffff;
+  --color-surface-tint: #eef3f9;
+  --color-surface-overlay: #ffffff;
+  --color-success: #12805c;
+  --color-success-subtle: #e4f6ef;
+  --color-info: #245cff;
+  --color-info-subtle: #e9f0ff;
+  --color-warning: #a35d00;
+  --color-warning-subtle: #fbefd9;
+  --color-error: #c13d53;
+  --color-error-subtle: #fbe8ec;
+
+  --color-text-primary: var(--color-ink);
+  --color-action-primary: var(--color-primary);
+  --color-action-primary-hover: var(--color-primary-hover);
+  --color-action-secondary: var(--color-surface-raised);
+  --color-action-secondary-hover: var(--color-surface-tint);
+  --color-action-ghost-hover: var(--color-surface-tint);
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --radius-modal: 16px;
+  --radius-round: 9999px;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 2px 10px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 8px 20px rgba(15, 23, 42, 0.14);
+  --shadow-overlay: 0 16px 40px rgba(15, 23, 42, 0.2);
+
+  --motion-press: 80ms;
+  --motion-hover: 100ms;
+  --motion-small: 160ms;
+  --motion-drawer: 240ms;
+  --motion-layout: 300ms;
+  --motion-easing: cubic-bezier(0.2, 0, 0, 1);
+
+  --focus-ring-color: #245cff;
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--focus-ring-color) 28%, transparent);
+
+  /* Compatibility variables used across existing DEVteam components */
+  --bg-void: var(--color-surface-base);
+  --bg-surface: var(--color-surface-raised);
+  --bg-elevated: var(--color-surface-tint);
+  --border-subtle: var(--color-border);
+  --accent-amber: var(--color-primary);
+  --accent-blue: var(--color-accent);
+  --text-primary: var(--color-ink);
+  --text-secondary: var(--color-text-secondary);
+  --success: var(--color-success);
+  --info: var(--color-info);
+  --warning: var(--color-warning);
+  --error: var(--color-error);
+}
+
+.dark,
+[data-theme='dark'],
+.theme-dark {
+  color-scheme: dark;
+
+  --color-primary: #7d9dff;
+  --color-primary-hover: #688bff;
+  --color-primary-subtle: #1a2c63;
+  --color-accent: #3cc6b8;
+  --color-accent-subtle: #133c3a;
+  --color-ink: #e7edf8;
+  --color-text-secondary: #a5b4c7;
+  --color-border: #2a3645;
+  --color-border-strong: #3a4a5e;
+  --color-surface-base: #0f1725;
+  --color-surface-raised: #141f31;
+  --color-surface-tint: #1a273d;
+  --color-surface-overlay: #1d2b42;
+  --color-success: #47c99e;
+  --color-success-subtle: #123a31;
+  --color-info: #7d9dff;
+  --color-info-subtle: #1a2c63;
+  --color-warning: #e0a24b;
+  --color-warning-subtle: #3f2b12;
+  --color-error: #e47e92;
+  --color-error-subtle: #3d1a24;
+
+  --focus-ring-color: #7d9dff;
+
+  --shadow-sm: none;
+  --shadow-md: 0 2px 12px rgba(2, 10, 22, 0.38);
+  --shadow-lg: 0 10px 24px rgba(2, 10, 22, 0.46);
+  --shadow-overlay: 0 24px 52px rgba(2, 10, 22, 0.6);
+}
+
+html,
+body {
+  background: var(--color-surface-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.devteam-root {
+  min-height: 100vh;
+  background: var(--color-surface-base);
+  color: var(--color-ink);
+}
+
+.devteam-root .devteam-glow {
+  box-shadow: none;
+}
+
+.devteam-root .devteam-focus-glow:focus-within {
+  box-shadow: var(--focus-ring);
+  border-color: var(--color-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}

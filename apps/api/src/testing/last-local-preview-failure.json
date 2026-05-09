@@ -1,37 +1,53 @@
 {
-  "timestamp": "2026-05-06T23:01:33.463Z",
+  "timestamp": "2026-05-08T13:59:51.655Z",
   "projectId": "AH0QOxRHDYV9",
-  "previewId": "780aa4a82be1",
+  "previewId": "b912179988f1",
   "runtime": "local",
-  "reason": "Package.json has 4 blocking conflict(s); first: overrides.@types/react=\"^18.3.12\" conflicts with direct dependency @types/react=\"18.3.12\"; npm will fail with EOVERRIDE. Remove the override or use \"$@types/react\".",
-  "timeoutCause": null,
-  "timeoutLifecycle": null,
-  "command": null,
-  "commandArgs": null,
-  "cwd": null,
-  "runtimePath": null,
-  "packageJsonPath": null,
+  "reason": "dev server exited before becoming ready (code=null, signal=SIGTERM) — | import \"./globals.css\"; | | import { AppShell } from \"@/components/ui/AppShell\"; |  | Import trace for requested module: | ./src/app/layout.tsx",
+  "timeoutCause": "install-hung",
+  "timeoutLifecycle": {
+    "installStarted": true,
+    "installCompleted": false,
+    "buildStarted": false,
+    "buildCompleted": false,
+    "serverSpawned": true,
+    "portOpened": false,
+    "firstProbeAttempted": true
+  },
+  "command": "npm.cmd",
+  "commandArgs": [
+    "run",
+    "dev"
+  ],
+  "cwd": "..\\..\\data\\projects\\AH0QOxRHDYV9\\output\\.preview-runtime",
+  "runtimePath": "..\\..\\data\\projects\\AH0QOxRHDYV9\\output\\.preview-runtime",
+  "packageJsonPath": "..\\..\\data\\projects\\AH0QOxRHDYV9\\output\\.preview-runtime\\package.json",
   "packageManager": "npm",
   "installCommand": "npm install --no-audit --no-fund",
   "installCommandFallback": null,
   "startCommand": "npm run dev",
   "reproduceCommand": [
-    "# cd <runtimePath unavailable — staging never started>",
+    "cd \"..\\..\\data\\projects\\AH0QOxRHDYV9\\output\\.preview-runtime\"",
     "# Install (the runner used: unknown)",
     "npm install --no-audit --no-fund",
     "# Start dev server on the same port the runner used:",
-    "$env:PORT=\"<port>\"; npm run dev"
+    "$env:PORT=\"60712\"; npm run dev"
   ],
   "host": "127.0.0.1",
-  "port": null,
+  "port": 60712,
   "envSafe": {
-    "PORT": "3003",
-    "HOST": "0.0.0.0",
-    "NODE_ENV": "development"
+    "PORT": "60712",
+    "HOST": "127.0.0.1",
+    "HOSTNAME": "127.0.0.1",
+    "BROWSER": "none",
+    "CI": "1",
+    "FORCE_COLOR": "0",
+    "NO_COLOR": "1",
+    "NEXT_TELEMETRY_DISABLED": "1"
   },
-  "pid": null,
-  "currentStep": "preview:staging-files",
-  "lastSuccessfulStep": "local runner starting",
+  "pid": 8448,
+  "currentStep": "preview:timeout",
+  "lastSuccessfulStep": "Preview startup timed out after 150s [cause=install-hung] — install never finished (npm install started but did not complete before the budget). Step at timeout: preview:http-probing (last successful:",
   "installCompleted": false,
   "installMode": null,
   "serverSpawned": false,
@@ -50,17 +66,94 @@
   "stepDurations": [
     {
       "step": "preview:queued",
-      "startedAt": "2026-05-06T23:01:33.428Z",
-      "completedAt": "2026-05-06T23:01:33.429Z",
+      "startedAt": "2026-05-08T13:57:21.266Z",
+      "completedAt": "2026-05-08T13:57:21.267Z",
       "durationMs": 1
+    },
+    {
+      "step": "preview:staging-files",
+      "startedAt": "2026-05-08T13:57:21.267Z",
+      "completedAt": "2026-05-08T13:57:21.296Z",
+      "durationMs": 29
+    },
+    {
+      "step": "preview:installing",
+      "startedAt": "2026-05-08T13:57:21.296Z",
+      "completedAt": "2026-05-08T13:57:21.338Z",
+      "durationMs": 42
+    },
+    {
+      "step": "preview:spawning-server",
+      "startedAt": "2026-05-08T13:57:21.338Z",
+      "completedAt": "2026-05-08T13:57:21.346Z",
+      "durationMs": 8
+    },
+    {
+      "step": "preview:waiting-for-port",
+      "startedAt": "2026-05-08T13:57:21.346Z",
+      "completedAt": "2026-05-08T13:57:21.349Z",
+      "durationMs": 3
+    },
+    {
+      "step": "preview:http-probing",
+      "startedAt": "2026-05-08T13:57:21.349Z",
+      "completedAt": "2026-05-08T13:58:53.647Z",
+      "durationMs": 92298
+    },
+    {
+      "step": "preview:installing",
+      "startedAt": "2026-05-08T13:58:53.647Z",
+      "completedAt": "2026-05-08T13:58:53.713Z",
+      "durationMs": 66
+    },
+    {
+      "step": "preview:spawning-server",
+      "startedAt": "2026-05-08T13:58:53.713Z",
+      "completedAt": "2026-05-08T13:58:53.718Z",
+      "durationMs": 5
+    },
+    {
+      "step": "preview:waiting-for-port",
+      "startedAt": "2026-05-08T13:58:53.718Z",
+      "completedAt": "2026-05-08T13:58:53.719Z",
+      "durationMs": 1
+    },
+    {
+      "step": "preview:http-probing",
+      "startedAt": "2026-05-08T13:58:53.719Z",
+      "completedAt": "2026-05-08T13:59:51.306Z",
+      "durationMs": 57587
     }
   ],
   "previewStatusTransitions": [
     {
       "step": "starting:local-runner",
-      "at": "2026-05-06T23:01:33.428Z"
+      "at": "2026-05-08T13:57:21.266Z"
+    },
+    {
+      "step": "failed:Preview startup timed out after 150s [cause=install-hung] — install never finished (npm install started but did not complete before the budget). Step at timeout: preview:http-probing (last successful:",
+      "at": "2026-05-08T13:59:51.306Z"
     }
   ],
-  "localStartAttempts": [],
-  "localRetrySucceeded": null
+  "localStartAttempts": [
+    {
+      "attempt": 1,
+      "ok": false,
+      "error": "dev server did not become ready on port 21894 within 90000ms",
+      "portOpened": false,
+      "durationMs": 90338,
+      "startedAtIso": "2026-05-08T13:57:21.296Z",
+      "endedAtIso": "2026-05-08T13:58:51.634Z"
+    },
+    {
+      "attempt": 2,
+      "ok": false,
+      "error": "dev server exited before becoming ready (code=null, signal=SIGTERM) — | import \"./globals.css\"; | | import { AppShell } from \"@/components/ui/AppShell\"; |  | Import trace for requested module: | ./src/app/layout.tsx",
+      "portOpened": false,
+      "durationMs": 58008,
+      "startedAtIso": "2026-05-08T13:58:53.647Z",
+      "endedAtIso": "2026-05-08T13:59:51.655Z"
+    }
+  ],
+  "localRetrySucceeded": false
 }

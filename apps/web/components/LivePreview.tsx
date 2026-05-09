@@ -216,8 +216,8 @@ export function LivePreview() {
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-3 border-b border-white/[0.06] bg-[#0B0F19]/50 flex-shrink-0" style={{ height: 40 }}>
-        <div className="flex items-center gap-2 flex-1 min-w-0">
+      <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-white/[0.06] bg-[#0B0F19]/50 flex-shrink-0 min-h-[40px]">
+        <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
           <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#64748B] flex-shrink-0">Preview</span>
 
           {/* Sandbox indicator — emphasises "frontend-only, no network" */}
@@ -283,55 +283,57 @@ export function LivePreview() {
           )}
         </div>
 
-        {/* Device toggle */}
-        <div className="flex bg-white/[0.04] border border-white/[0.06] rounded p-0.5 gap-0.5 flex-shrink-0">
-          {VIEWPORTS.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setViewport(item.id)}
-                title={item.label}
-                className={cn(
-                  'flex items-center justify-center w-6 h-6 rounded text-[#64748B] transition-colors',
-                  viewport === item.id ? 'bg-white/[0.10] text-[#3B82F6]' : 'hover:text-[#F1F5F9]',
-                )}
-              >
-                <Icon size={13} />
-              </button>
-            );
-          })}
+        <div className="flex items-center gap-2 ml-auto flex-shrink-0">
+          {/* Device toggle */}
+          <div className="flex bg-white/[0.04] border border-white/[0.06] rounded p-0.5 gap-0.5 flex-shrink-0">
+            {VIEWPORTS.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setViewport(item.id)}
+                  title={item.label}
+                  className={cn(
+                    'flex items-center justify-center w-6 h-6 rounded text-[#64748B] transition-colors',
+                    viewport === item.id ? 'bg-white/[0.10] text-[#3B82F6]' : 'hover:text-[#F1F5F9]',
+                  )}
+                >
+                  <Icon size={13} />
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            onClick={handleRefresh}
+            disabled={!enabled}
+            title="Refresh — rebuild preview from source"
+            className="flex items-center justify-center w-7 h-7 rounded border border-transparent text-[#64748B] hover:bg-white/[0.06] hover:border-white/[0.06] hover:text-[#F1F5F9] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <RefreshCw size={13} className={preview.status === 'loading' ? 'animate-spin' : undefined} />
+          </button>
+
+          <button
+            onClick={handleExport}
+            disabled={!enabled || isExporting}
+            title="Download Source Code — production-ready ZIP (mocks excluded)"
+            className={cn(
+              'flex items-center gap-1.5 px-2.5 h-7 rounded-md border text-[11px] font-semibold transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed select-none',
+              exportDone
+                ? 'border-[#22C55E]/50 text-[#22C55E] bg-[#22C55E]/[0.12] shadow-[0_0_8px_rgba(34,197,94,0.25)]'
+                : 'border-[#33e6be]/40 text-[#33e6be] bg-[#33e6be]/[0.08] hover:bg-[#33e6be]/[0.18] hover:border-[#33e6be]/60 hover:shadow-[0_0_10px_rgba(51,230,190,0.2)] active:scale-95',
+            )}
+          >
+            {isExporting ? <Loader2 size={11} className="animate-spin" />
+              : exportDone ? <CheckCircle2 size={11} />
+              : <Download size={11} />}
+            {isExporting ? 'Downloading…' : exportDone ? 'Downloaded!' : 'Download Source Code'}
+          </button>
         </div>
-
-        <button
-          onClick={handleRefresh}
-          disabled={!enabled}
-          title="Refresh — rebuild preview from source"
-          className="flex items-center justify-center w-7 h-7 rounded border border-transparent text-[#64748B] hover:bg-white/[0.06] hover:border-white/[0.06] hover:text-[#F1F5F9] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-        >
-          <RefreshCw size={13} className={preview.status === 'loading' ? 'animate-spin' : undefined} />
-        </button>
-
-        <button
-          onClick={handleExport}
-          disabled={!enabled || isExporting}
-          title="Download Source Code — production-ready ZIP (mocks excluded)"
-          className={cn(
-            'flex items-center gap-1.5 px-2.5 h-7 rounded-md border text-[11px] font-semibold transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed select-none',
-            exportDone
-              ? 'border-[#22C55E]/50 text-[#22C55E] bg-[#22C55E]/[0.12] shadow-[0_0_8px_rgba(34,197,94,0.25)]'
-              : 'border-[#33e6be]/40 text-[#33e6be] bg-[#33e6be]/[0.08] hover:bg-[#33e6be]/[0.18] hover:border-[#33e6be]/60 hover:shadow-[0_0_10px_rgba(51,230,190,0.2)] active:scale-95',
-          )}
-        >
-          {isExporting ? <Loader2 size={11} className="animate-spin" />
-            : exportDone ? <CheckCircle2 size={11} />
-            : <Download size={11} />}
-          {isExporting ? 'Downloading…' : exportDone ? 'Downloaded!' : 'Download Source Code'}
-        </button>
       </div>
 
       {/* Stage */}
-      <div className="flex-1 relative flex flex-col overflow-hidden rounded-b-[20px]" style={{ background: '#07090f' }}>
+      <div className="flex-1 relative flex flex-col overflow-hidden rounded-b-2xl sm:rounded-b-[20px]" style={{ background: '#07090f' }}>
         {/* Status-message banner — single source of truth for the user-
             facing copy ("Project generated successfully", "Preview
             starting…", "Preview ready"). Auto-hides on idle so it
@@ -397,7 +399,7 @@ export function LivePreview() {
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="absolute inset-0 flex items-center justify-center bg-[#07090f]/60 backdrop-blur-sm z-10"
             >
-              <div className="flex flex-col items-center gap-4 bg-[#1E293B]/90 border border-white/10 rounded-2xl p-8 min-w-[280px] text-center">
+              <div className="flex flex-col items-center gap-4 bg-[#1E293B]/90 border border-white/10 rounded-2xl p-6 sm:p-8 w-[min(92vw,420px)] text-center">
                 <div className="w-11 h-11 rounded-full border-[3px] border-[#3B82F6]/20 border-t-[#3B82F6]" style={{ animation: 'spin 0.7s linear infinite' }} />
                 <div className="text-[2.2rem] font-bold text-[#3B82F6] font-mono leading-none">{pct}%</div>
                 <div className="text-[12px] text-[#CBD5E1]">{currentStep ?? 'Initialising pipeline...'}</div>

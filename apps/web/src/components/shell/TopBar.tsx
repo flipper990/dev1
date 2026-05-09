@@ -31,7 +31,7 @@ export function TopBar({
 }: TopBarProps) {
   return (
     <header className={cn('sticky top-0 z-40 border-b border-border bg-surface-raised/95 backdrop-blur', className)}>
-      <div className="mx-auto flex h-16 w-full max-w-[1760px] items-center gap-3 px-4 sm:px-6">
+      <div className="mx-auto flex h-16 w-full max-w-[1760px] items-center gap-2 sm:gap-3 px-4 sm:px-6">
         <button
           type="button"
           aria-label="Open navigation"
@@ -41,7 +41,7 @@ export function TopBar({
           <Menu className="h-4 w-4" />
         </button>
 
-        <div className="flex items-center gap-2 pr-1">
+        <div className="flex items-center gap-2 pr-1 shrink-0">
           <span className="inline-grid h-8 w-8 place-items-center rounded-[var(--radius-control)] bg-primary-subtle text-primary">
             <Search className="h-4 w-4" aria-hidden="true" />
           </span>
@@ -51,7 +51,7 @@ export function TopBar({
           </div>
         </div>
 
-        <div className="hidden flex-1 md:block">
+        <div className="hidden min-w-0 flex-1 md:block">
           <GlobalSearch
             value={searchValue}
             onChange={onSearchChange}
@@ -59,7 +59,7 @@ export function TopBar({
           />
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <div className="hidden rounded-[var(--radius-control)] border border-border bg-surface-tint px-3 py-2 text-label-s text-secondary lg:block">
             Workspace: <span className="text-ink">{workspaceName}</span>
           </div>
@@ -102,7 +102,7 @@ export function TopBar({
         </div>
       </div>
 
-      <div className="px-4 pb-3 md:hidden">
+      <div className="px-4 pb-3 pt-1 md:hidden">
         <GlobalSearch
           value={searchValue}
           onChange={onSearchChange}

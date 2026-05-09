@@ -53,7 +53,7 @@ export function RecentProjects({
         // dominate the dashboard; users can scroll to reach older
         // projects.
         <div
-          className="flex flex-col gap-2 max-h-[420px] overflow-y-auto pr-1 -mr-1 overscroll-contain"
+          className="flex flex-col gap-2 max-h-[360px] sm:max-h-[420px] overflow-y-auto pr-1 -mr-1 overscroll-contain"
           style={{ scrollbarGutter: 'stable' }}
         >
           {projects.map((p) => (
@@ -71,7 +71,7 @@ export function RecentProjects({
               </span>
               <span className="flex-1 min-w-0">
                 <span className="cn-row__title block truncate">{p.name}</span>
-                <span className="cn-row__meta block">
+                <span className="cn-row__meta block truncate">
                   {formatRelative(p.createdAt)} · {p.totalTokens.toLocaleString()} tok
                 </span>
               </span>
@@ -114,7 +114,7 @@ export function RecentIdeas({
           Your previous prompts will appear here.
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2.5">
           {ideas.map((idea, i) => (
             <button
               key={i}

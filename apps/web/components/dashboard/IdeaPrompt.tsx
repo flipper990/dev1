@@ -39,7 +39,7 @@ export function IdeaPrompt({ onSubmit, busy, placeholder }: Props) {
   };
 
   return (
-    <form onSubmit={submit} className="cn-prompt-shell">
+    <form onSubmit={submit} className="cn-prompt-shell space-y-3">
       <div className="flex items-start gap-3">
         <div className="mt-1.5 text-gold-300">
           <Sparkle size={18} />
@@ -58,7 +58,7 @@ export function IdeaPrompt({ onSubmit, busy, placeholder }: Props) {
         />
       </div>
 
-      <div className="cn-prompt-toolbar">
+      <div className="cn-prompt-toolbar flex flex-wrap items-center gap-2">
         <button
           type="button"
           className="cn-icon-btn"
@@ -78,7 +78,7 @@ export function IdeaPrompt({ onSubmit, busy, placeholder }: Props) {
 
         <StackPicker value={picker} onChange={setPicker} />
 
-        <span className="ml-auto text-[11px] text-muted hidden sm:inline">
+        <span className="ml-auto text-[11px] text-muted hidden lg:inline">
           <kbd className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] font-mono">
             ⌘
           </kbd>{' '}
@@ -91,7 +91,7 @@ export function IdeaPrompt({ onSubmit, busy, placeholder }: Props) {
 
         <button
           type="submit"
-          className={cn('cn-btn cn-btn--gold !rounded-full !px-4 !py-2.5')}
+          className={cn('cn-btn cn-btn--gold !rounded-full !px-4 !py-2.5 ml-auto')}
           disabled={busy || text.trim().length === 0}
           aria-label="Send"
         >

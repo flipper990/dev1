@@ -43,8 +43,8 @@ export function AppHeader({ onNewProject }: { onNewProject?: () => void }) {
 
   return (
     <header
-      className="app-header flex items-center gap-3 flex-shrink-0"
-      style={{ height: 'var(--header-h)' }}
+      className="app-header flex flex-wrap items-center gap-2 sm:gap-3 flex-shrink-0 min-w-0"
+      style={{ minHeight: 'var(--header-h)' }}
     >
       {/* Branded wordmark */}
       <a href="/" className="brand-wordmark flex-shrink-0" aria-label="DEVteam home">
@@ -57,7 +57,7 @@ export function AppHeader({ onNewProject }: { onNewProject?: () => void }) {
       <div className="w-px h-5 bg-white/10 flex-shrink-0" />
 
       {/* Project selector */}
-      <div className="flex items-center gap-2 bg-white/[0.04] border border-white/[0.06] rounded px-2.5 py-1.5 text-[11px] text-[#94A3B8] min-w-[140px] max-w-[240px] cursor-pointer hover:bg-white/[0.07] hover:border-white/10 transition-colors overflow-hidden">
+      <div className="flex items-center gap-2 bg-white/[0.04] border border-white/[0.06] rounded px-2.5 py-1.5 text-[11px] text-[#94A3B8] min-w-0 w-full sm:w-auto sm:min-w-[180px] sm:max-w-[320px] md:min-w-[220px] cursor-pointer hover:bg-white/[0.07] hover:border-white/10 transition-colors overflow-hidden">
         <FolderOpen size={11} className="text-[#64748B] flex-shrink-0" />
         <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-medium text-[#F1F5F9]">
           {selected ? selected.name : 'Select project…'}
@@ -65,40 +65,42 @@ export function AppHeader({ onNewProject }: { onNewProject?: () => void }) {
         <ChevronDown size={10} className="text-[#64748B] flex-shrink-0" />
       </div>
 
-      {/* Status badge */}
-      {/* BUILD pill — raw project.status (no masking). */}
-      <StatusBadge status={statusLabel} pct={progress?.progress != null ? Math.round(progress.progress * 100) : undefined} />
-      {/* PREVIEW pill — raw preview.previewStatus. Rendered
-          independently so a (failed, ready) backend record shows
-          BUILD FAILED + PREVIEW READY without either field rewriting
-          the other. Hidden when the project has no preview block. */}
-      {selected?.preview?.previewStatus && (
-        <PreviewBadge status={selected.preview.previewStatus} />
-      )}
-      {/* VALIDATION pill — exec/runtime validators. Independent of
-          BUILD: a 'warning' here means the project itself is fine
-          (build completed, preview ready) but a post-completion
-          health probe disagreed. Aggregated across executionValidation
-          and runtimeValidation; the worst status wins. */}
-      <ValidationBadge
-        execStatus={selected?.executionValidation?.status ?? null}
-        execVerdict={selected?.executionValidation?.finalVerdict ?? null}
-        runtimeStatus={selected?.runtimeValidation?.status ?? null}
-        runtimeVerdict={selected?.runtimeValidation?.finalVerdict ?? null}
-      />
+      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+        {/* BUILD pill — raw project.status (no masking). */}
+        <StatusBadge status={statusLabel} pct={progress?.progress != null ? Math.round(progress.progress * 100) : undefined} />
+        {/* PREVIEW pill — raw preview.previewStatus. Rendered
+            independently so a (failed, ready) backend record shows
+            BUILD FAILED + PREVIEW READY without either field rewriting
+            the other. Hidden when the project has no preview block. */}
+        {selected?.preview?.previewStatus && (
+          <PreviewBadge status={selected.preview.previewStatus} />
+        )}
+        {/* VALIDATION pill — exec/runtime validators. Independent of
+            BUILD: a 'warning' here means the project itself is fine
+            (build completed, preview ready) but a post-completion
+            health probe disagreed. Aggregated across executionValidation
+            and runtimeValidation; the worst status wins. */}
+        <ValidationBadge
+          execStatus={selected?.executionValidation?.status ?? null}
+          execVerdict={selected?.executionValidation?.finalVerdict ?? null}
+          runtimeStatus={selected?.runtimeValidation?.status ?? null}
+          runtimeVerdict={selected?.runtimeValidation?.finalVerdict ?? null}
+        />
+      </div>
 
-      <div className="flex-1" />
+      <div className="hidden lg:block flex-1" />
+      <div className="basis-full lg:hidden" />
 
       {/* Metrics row */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap min-w-0 w-full lg:w-auto lg:justify-end">
         <MetricCard label="Projects" value={String(projects.length)}     icon={<FolderOpen size={11} />} />
-        <MetricCard label="Tokens"   value={fmtTokens(totalTokens)}      icon={<Hash size={11} />} mono />
-        <MetricCard label="Cost"     value={`$${totalCost.toFixed(3)}`}  icon={<DollarSign size={11} />} mono
+        <MetricCard className="hidden sm:flex" label="Tokens"   value={fmtTokens(totalTokens)}      icon={<Hash size={11} />} mono />
+        <MetricCard className="hidden md:flex" label="Cost"     value={`$${totalCost.toFixed(3)}`}  icon={<DollarSign size={11} />} mono
           trend={totalCost > 0 ? 'up' : 'neutral'} />
 
         {/* WS badge */}
         <div className={cn(
-          'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-widest uppercase border',
+          'hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-widest uppercase border',
           wsConnected
             ? 'text-[#22C55E] border-[#22C55E]/30 bg-[#22C55E]/[0.08]'
             : 'text-[#64748B] border-white/[0.06] bg-white/[0.03]',
@@ -127,7 +129,7 @@ export function AppHeader({ onNewProject }: { onNewProject?: () => void }) {
             window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }));
           }}
           title="Keyboard shortcuts (?)"
-          className="flex items-center justify-center w-7 h-7 rounded-md border border-transparent text-[#64748B] hover:bg-white/[0.06] hover:border-white/[0.08] hover:text-[#F1F5F9] transition-colors font-mono text-[13px]"
+          className="hidden md:flex items-center justify-center w-7 h-7 rounded-md border border-transparent text-[#64748B] hover:bg-white/[0.06] hover:border-white/[0.08] hover:text-[#F1F5F9] transition-colors font-mono text-[13px]"
           aria-label="Show keyboard shortcuts"
         >
           ?
@@ -169,12 +171,12 @@ export function AppHeader({ onNewProject }: { onNewProject?: () => void }) {
 }
 
 function MetricCard({
-  label, value, icon, trend, mono,
+  label, value, icon, trend, mono, className,
 }: {
-  label: string; value: string; icon?: React.ReactNode; trend?: 'up' | 'down' | 'neutral'; mono?: boolean;
+  label: string; value: string; icon?: React.ReactNode; trend?: 'up' | 'down' | 'neutral'; mono?: boolean; className?: string;
 }) {
   return (
-    <div className="flex items-center gap-1.5 bg-white/[0.04] border border-white/[0.06] rounded px-2.5 py-1.5 text-[11px]">
+    <div className={cn('flex items-center gap-1.5 bg-white/[0.04] border border-white/[0.06] rounded px-2.5 py-1.5 text-[11px]', className)}>
       {icon && <span className="text-[#64748B]">{icon}</span>}
       <span className="text-[#64748B]">{label}</span>
       <span className={cn('font-semibold text-[#F1F5F9]', mono && 'font-mono')}>{value}</span>

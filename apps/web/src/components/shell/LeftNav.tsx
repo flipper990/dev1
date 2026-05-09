@@ -52,7 +52,7 @@ export function LeftNav({
   return (
     <aside
       className={cn(
-        'flex h-full flex-col border-r border-border bg-surface-raised px-2 py-3',
+        'flex h-full min-h-0 flex-col border-r border-border bg-surface-raised px-2 py-3',
         collapsed ? 'w-[84px]' : 'w-[248px]',
         className,
       )}
@@ -71,7 +71,9 @@ export function LeftNav({
         </button>
       </div>
 
-      <nav aria-label="Primary" className="space-y-1">
+      <div className="mb-2 h-px bg-border/70" />
+
+      <nav aria-label="Primary" className="min-h-0 flex-1 space-y-1 overflow-auto pr-1">
         {items.map((item) => {
           const active = isActive(currentPath, item.href);
           const Icon = item.icon;

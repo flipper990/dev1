@@ -3,17 +3,11 @@ import { cn } from '../../lib/cn';
 
 interface CardProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;
-  /** Adds a hover gold-glow treatment. */
   interactive?: boolean;
-  /** Forces the gold-bordered "active" treatment. */
   highlight?: boolean;
   padded?: boolean;
 }
 
-/**
- * Editorial card primitive — rounded-2xl, subtle inner highlight, hairline border
- * that warms to gold on hover when `interactive`.
- */
 export function Card({
   children,
   interactive,
@@ -26,10 +20,11 @@ export function Card({
     <div
       {...rest}
       className={cn(
-        'cn-card',
-        interactive && 'cn-card--hover',
-        highlight && 'cn-card--gold',
-        padded && 'p-5',
+        'rounded-[var(--radius-panel)] border border-border bg-surface-raised text-ink shadow-card',
+        interactive && 'transition-colors duration-160 hover:bg-surface-tint',
+        highlight &&
+          'border-primary bg-[color:color-mix(in_srgb,var(--color-primary)_6%,var(--color-surface-raised))]',
+        padded && 'p-6',
         className,
       )}
     >
@@ -50,8 +45,8 @@ export function CardTitle({
   className?: string;
 }) {
   return (
-    <div className={cn('flex items-center justify-between mb-4', className)}>
-      <div className="cn-card__title-eyebrow">
+    <div className={cn('mb-4 flex items-center justify-between', className)}>
+      <div className="inline-flex items-center gap-2 text-label-m font-semibold text-ink">
         {icon}
         <span>{children}</span>
       </div>

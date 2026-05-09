@@ -1,24 +1,16 @@
 import type { Metadata } from 'next';
-import { Inter, Fraunces, JetBrains_Mono } from 'next/font/google';
+import { IBM_Plex_Mono, Inter } from 'next/font/google';
 import './globals.css';
+import '../src/styles/theme.css';
 
 const sans = Inter({
   subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
+  weight: ['400', '500', '600'],
   variable: '--font-sans',
   display: 'swap',
 });
 
-/** Editorial display serif used for hero headings ("Got an idea?", "Agents", …). */
-const display = Fraunces({
-  subsets: ['latin'],
-  weight: 'variable',
-  axes: ['SOFT', 'opsz'],
-  variable: '--font-display',
-  display: 'swap',
-});
-
-const mono = JetBrains_Mono({
+const mono = IBM_Plex_Mono({
   subsets: ['latin'],
   weight: ['400', '500'],
   variable: '--font-mono',
@@ -26,18 +18,15 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'DEVteam — Multi-Agent Control Center',
-  description: 'Editorial cosmic dashboard for multi-agent AI project generation',
+  title: 'DEVteam',
+  description: 'Software production studio for multi-agent fullstack generation',
 };
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html
-      lang="en"
-      className={`${sans.variable} ${display.variable} ${mono.variable}`}
-    >
+    <html lang="en" className={`${sans.variable} ${mono.variable}`}>
       <body>{children}</body>
     </html>
   );

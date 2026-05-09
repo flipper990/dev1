@@ -1543,3 +1543,41 @@ input, textarea { font-family: inherit; color: var(--text); letter-spacing: inhe
   background: rgba(245,158,11,0.08);
   border-color: rgba(245,158,11,0.35);
 }
+
+/* Phase 0 compatibility overrides: map legacy global variables to semantic theme tokens
+   so existing pages share one foundation during incremental migration. */
+:root {
+  color-scheme: light;
+  --bg: var(--color-surface-base);
+  --bg-1: var(--color-surface-raised);
+  --bg-2: var(--color-surface-tint);
+  --bg-3: var(--color-surface-overlay);
+  --surface: color-mix(in srgb, var(--color-surface-raised) 96%, var(--color-ink) 4%);
+  --surface-hover: color-mix(in srgb, var(--color-surface-tint) 88%, var(--color-ink) 12%);
+  --surface-active: color-mix(in srgb, var(--color-surface-tint) 82%, var(--color-ink) 18%);
+  --surface-raised: color-mix(in srgb, var(--color-surface-raised) 94%, var(--color-ink) 6%);
+  --border: color-mix(in srgb, var(--color-border) 85%, transparent);
+  --border-strong: color-mix(in srgb, var(--color-border-strong) 90%, transparent);
+  --border-focus: color-mix(in srgb, var(--color-primary) 42%, transparent);
+  --text: var(--color-text-primary);
+  --text-2: var(--color-text-secondary);
+  --muted: var(--color-text-secondary);
+  --muted-2: color-mix(in srgb, var(--color-text-secondary) 78%, transparent);
+  --brand-1: var(--color-primary);
+  --brand-2: var(--color-primary);
+  --brand-3: var(--color-accent);
+  --brand-grad: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 45%, var(--color-accent) 100%);
+  --brand-grad-soft: linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 20%, transparent) 0%, color-mix(in srgb, var(--color-accent) 20%, transparent) 100%);
+  --accent: var(--color-primary);
+  --accent-dim: color-mix(in srgb, var(--color-primary) 15%, transparent);
+  --success: var(--color-success);
+  --warning: var(--color-warning);
+  --error: var(--color-error);
+  --info: var(--color-info);
+}
+
+.dark,
+[data-theme='dark'],
+.theme-dark {
+  color-scheme: dark;
+}

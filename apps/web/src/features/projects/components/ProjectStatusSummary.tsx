@@ -63,7 +63,7 @@ export function ProjectStatusSummary({
           {currentStep?.metadata?.length ? (
             <ul className="mt-2 flex flex-wrap gap-1.5">
               {currentStep.metadata.map((item) => (
-                <li key={item} className="rounded-[var(--radius-control)] border border-border bg-surface-raised px-2 py-1 text-[11px] text-text-secondary">
+                <li key={item} className="rounded-[var(--radius-control)] border border-border bg-surface-raised px-2 py-1 text-label-s text-text-secondary">
                   {item}
                 </li>
               ))}

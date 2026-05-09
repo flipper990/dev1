@@ -85,11 +85,11 @@ export function ProjectStageTimeline({ timeline, onRetryStep }: ProjectStageTime
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h4 className={cn('text-label-m font-semibold', meta.titleClass)}>{step.label}</h4>
-                    <span className="rounded-[var(--radius-control)] border border-border bg-surface-raised px-2 py-0.5 text-[11px] text-text-secondary">
+                    <span className="rounded-[var(--radius-control)] border border-border bg-surface-raised px-2 py-0.5 text-label-s text-text-secondary">
                       {meta.label}
                     </span>
                     {step.timestampLabel ? (
-                      <span className="text-[11px] text-text-secondary">Updated {step.timestampLabel}</span>
+                      <span className="text-label-s text-text-secondary">Updated {step.timestampLabel}</span>
                     ) : null}
                   </div>
                   <p className="mt-1 text-body-s text-text-secondary">{step.description}</p>
@@ -97,7 +97,7 @@ export function ProjectStageTimeline({ timeline, onRetryStep }: ProjectStageTime
                   {step.metadata?.length ? (
                     <ul className="mt-2 flex flex-wrap gap-1.5">
                       {step.metadata.map((m) => (
-                        <li key={m} className="rounded-[var(--radius-control)] border border-border bg-surface-raised px-2 py-1 text-[11px] text-text-secondary">
+                        <li key={m} className="rounded-[var(--radius-control)] border border-border bg-surface-raised px-2 py-1 text-label-s text-text-secondary">
                           {m}
                         </li>
                       ))}

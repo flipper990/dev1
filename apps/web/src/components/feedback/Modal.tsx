@@ -56,7 +56,7 @@ export function Modal({ open, title, description, onClose, children }: ModalProp
       <div className="absolute inset-0 grid place-items-center p-4">
         <div
           ref={panelRef}
-          className={cn('w-full max-w-[640px] rounded-[var(--radius-modal)] border border-border bg-surface-overlay shadow-overlay')}
+          className={cn('flex max-h-[min(760px,calc(100vh-2rem))] w-full max-w-[640px] flex-col overflow-hidden rounded-[var(--radius-modal)] border border-border bg-surface-overlay shadow-overlay')}
         >
           <header className="flex items-start justify-between gap-3 border-b border-border-muted p-4">
             <div>
@@ -65,7 +65,7 @@ export function Modal({ open, title, description, onClose, children }: ModalProp
             </div>
             <IconButton icon={<X className="h-4 w-4" />} label="Close modal" onClick={onClose} />
           </header>
-          <div className="p-4">{children}</div>
+          <div className="min-h-0 overflow-y-auto p-4">{children}</div>
         </div>
       </div>
     </div>

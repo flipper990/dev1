@@ -73,7 +73,7 @@ export function AgentStepCard({ event, index }: AgentStepCardProps) {
         {evidence.length ? (
           <ul className="mt-3 flex flex-wrap gap-1.5">
             {evidence.map((item) => (
-              <li key={item} className="rounded-[var(--radius-control)] border border-border-muted bg-surface-raised px-2 py-1 text-[11px] text-text-secondary">
+              <li key={item} className="rounded-[var(--radius-control)] border border-border-muted bg-surface-raised px-2 py-1 text-label-s text-text-secondary">
                 {item}
               </li>
             ))}

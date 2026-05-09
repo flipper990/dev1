@@ -99,7 +99,7 @@ export function LeftNav({
 
           return (
             <div key={section} className="mb-5 last:mb-0">
-              <div className={cn('mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-text-muted', collapsed && 'sr-only')}>
+              <div className={cn('mb-2 px-2 text-label-s uppercase tracking-[0.12em] text-text-muted', collapsed && 'sr-only')}>
                 {SECTION_LABELS[section]}
               </div>
               <div className="space-y-1">
@@ -120,7 +120,7 @@ export function LeftNav({
                     <>
                       <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                       <span className={cn('min-w-0 truncate', collapsed && 'sr-only')}>{item.label}</span>
-                      {item.disabled ? <span className={cn('ml-auto text-[10px] uppercase tracking-[0.08em] text-text-muted', collapsed && 'sr-only')}>Soon</span> : null}
+                      {item.disabled ? <span className={cn('ml-auto text-label-s uppercase tracking-[0.08em] text-text-muted', collapsed && 'sr-only')}>Soon</span> : null}
                     </>
                   );
 

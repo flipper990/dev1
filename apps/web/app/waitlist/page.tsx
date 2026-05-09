@@ -20,17 +20,28 @@ export default function WaitlistPage() {
           </div>
           <div className="rounded-[var(--radius-modal)] border border-border bg-surface-raised p-6 shadow-card">
             <div className="space-y-4">
-              <Input aria-label="Work email" placeholder="Work email" type="email" />
-              <Input aria-label="Company or project" placeholder="Company or project" />
-              <Select aria-label="Primary use case" defaultValue="">
-                <option value="" disabled>Primary use case</option>
-                <option>SaaS platform</option>
-                <option>Marketplace</option>
-                <option>Internal tool</option>
-                <option>Dashboard</option>
-                <option>Booking system</option>
-                <option>Social or community platform</option>
-              </Select>
+              <label className="block text-label-m text-text-primary" htmlFor="waitlist-email">
+                Work email
+                <Input id="waitlist-email" className="mt-1.5" placeholder="name@company.com" type="email" disabled />
+              </label>
+              <label className="block text-label-m text-text-primary" htmlFor="waitlist-company">
+                Company or project
+                <Input id="waitlist-company" className="mt-1.5" placeholder="Company or project" disabled />
+              </label>
+              <label className="block text-label-m text-text-primary" htmlFor="waitlist-use-case">
+                <span>Primary use case</span>
+                <div className="mt-1.5">
+                  <Select id="waitlist-use-case" defaultValue="" disabled>
+                    <option value="" disabled>Primary use case</option>
+                    <option>SaaS platform</option>
+                    <option>Marketplace</option>
+                    <option>Internal tool</option>
+                    <option>Dashboard</option>
+                    <option>Booking system</option>
+                    <option>Social or community platform</option>
+                  </Select>
+                </div>
+              </label>
             </div>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-label-s text-text-muted">Waitlist submission is disabled because no early-access intake endpoint is connected.</p>

@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import type { ReactNode } from 'react';
+import { cloneElement, isValidElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { Factory, ShieldCheck } from 'lucide-react';
 import { cn } from '../../../lib/cn';
 
@@ -103,13 +104,18 @@ export function AuthField({
   children: ReactNode;
 }) {
   const descriptionId = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
+  const field = isValidElement(children)
+    ? cloneElement(children as ReactElement<{ 'aria-describedby'?: string }>, {
+        'aria-describedby': descriptionId,
+      })
+    : children;
 
   return (
     <div>
       <label htmlFor={id} className="text-label-m text-text-primary">
         {label}
       </label>
-      <div className="mt-1.5">{children}</div>
+      <div className="mt-1.5">{field}</div>
       {error ? (
         <p id={`${id}-error`} className="mt-1.5 text-label-s text-status-error">
           {error}
@@ -119,7 +125,6 @@ export function AuthField({
           {hint}
         </p>
       ) : null}
-      {descriptionId ? <span className="sr-only">{descriptionId}</span> : null}
     </div>
   );
 }

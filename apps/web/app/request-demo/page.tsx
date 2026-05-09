@@ -22,18 +22,35 @@ export default function RequestDemoPage() {
           </div>
           <div className="rounded-[var(--radius-modal)] border border-border bg-surface-raised p-6 shadow-card">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Input aria-label="Work email" placeholder="Work email" type="email" />
-              <Input aria-label="Name" placeholder="Name" />
-              <Input aria-label="Company" placeholder="Company" />
-              <Select aria-label="Team size" defaultValue="">
-                <option value="" disabled>Team size</option>
-                <option>1-10</option>
-                <option>11-50</option>
-                <option>51-200</option>
-                <option>201+</option>
-              </Select>
+              <label className="block text-label-m text-text-primary" htmlFor="demo-email">
+                Work email
+                <Input id="demo-email" className="mt-1.5" placeholder="name@company.com" type="email" disabled />
+              </label>
+              <label className="block text-label-m text-text-primary" htmlFor="demo-name">
+                Name
+                <Input id="demo-name" className="mt-1.5" placeholder="Your name" disabled />
+              </label>
+              <label className="block text-label-m text-text-primary" htmlFor="demo-company">
+                Company
+                <Input id="demo-company" className="mt-1.5" placeholder="Company" disabled />
+              </label>
+              <label className="block text-label-m text-text-primary" htmlFor="demo-team-size">
+                <span>Team size</span>
+                <div className="mt-1.5">
+                  <Select id="demo-team-size" defaultValue="" disabled>
+                    <option value="" disabled>Team size</option>
+                    <option>1-10</option>
+                    <option>11-50</option>
+                    <option>51-200</option>
+                    <option>201+</option>
+                  </Select>
+                </div>
+              </label>
             </div>
-            <Textarea className="mt-4" rows={5} aria-label="What do you want to build?" placeholder="What type of application do you want to evaluate?" />
+            <label className="mt-4 block text-label-m text-text-primary" htmlFor="demo-brief">
+              What do you want to build?
+              <Textarea id="demo-brief" className="mt-1.5" rows={5} placeholder="What type of application do you want to evaluate?" disabled />
+            </label>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-label-s text-text-muted">Demo request submission is disabled because no marketing intake endpoint is connected.</p>
               <Button type="button" disabled title="No request-demo backend endpoint exists">Request demo unavailable</Button>

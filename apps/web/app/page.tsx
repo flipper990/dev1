@@ -44,7 +44,7 @@ export default function LandingPage() {
         <div className="relative mx-auto grid w-full max-w-[1180px] gap-10 px-4 py-20 sm:px-6 lg:grid-cols-[1fr_0.9fr] lg:px-8 lg:py-24">
           <div className="flex flex-col justify-center">
             <p className="text-label-s uppercase tracking-[0.16em] text-brand-secondary">AI software production studio</p>
-            <h1 className="mt-4 max-w-[820px] text-[44px] font-semibold leading-[1.05] tracking-[-0.03em] text-text-primary sm:text-[64px]">
+            <h1 className="mt-4 max-w-[820px] text-display-l text-text-primary">
               Generate full-stack applications your team owns.
             </h1>
             <p className="mt-6 max-w-[680px] text-body-l text-text-secondary">

@@ -64,6 +64,19 @@ export function MarketingHeader() {
           </Link>
         </div>
       </div>
+      <nav aria-label="Marketing sections" className="border-t border-border-muted px-4 py-2 md:hidden">
+        <div className="mx-auto flex w-full max-w-[1180px] gap-1 overflow-x-auto [scrollbar-width:thin]">
+          {marketingNav.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="shrink-0 rounded-[var(--radius-control)] px-3 py-2 text-label-s text-text-secondary hover:bg-surface-tint hover:text-text-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </div>
+      </nav>
     </header>
   );
 }
@@ -189,7 +202,7 @@ export function ProofVisual() {
             </div>
           ))}
         </div>
-        <div className="border-t border-border-muted bg-surface-tint px-4 py-3 font-mono text-mono-s text-text-secondary">
+        <div className="overflow-x-auto border-t border-border-muted bg-surface-tint px-4 py-3 font-mono text-mono-s text-text-secondary [scrollbar-width:thin]">
           export devteam-source --target own-repo --include database api ui
         </div>
       </div>

@@ -32,6 +32,9 @@ interface AppShellProps {
   className?: string;
 }
 
+const FOCUSABLE_SELECTOR =
+  'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
 export function AppShell({
   title,
   subtitle,
@@ -58,6 +61,7 @@ export function AppShell({
   const [themeDark, setThemeDark] = useState(false);
   const keyboardTrackedRef = useRef(false);
   const variantTrackedRef = useRef(false);
+  const mobileNavRef = useRef<HTMLDivElement | null>(null);
 
   const hasContext = useMemo(() => Boolean(contextContent), [contextContent]);
   const flags = useMemo(() => getUiRedesignFlags(), []);
@@ -80,6 +84,38 @@ export function AppShell({
     root.dataset.theme = themeDark ? 'dark' : 'light';
     root.classList.toggle('theme-dark', themeDark);
   }, [themeDark]);
+
+  useEffect(() => {
+    if (!leftNavOpen) return;
+    const panel = mobileNavRef.current;
+    if (!panel) return;
+
+    const focusables = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    first?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setLeftNavOpen(false);
+        return;
+      }
+
+      if (event.key !== 'Tab' || focusables.length === 0) return;
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [leftNavOpen]);
 
   useEffect(() => {
     if (variantTrackedRef.current) return;
@@ -210,7 +246,7 @@ export function AppShell({
               aria-label="Close navigation menu"
               onClick={() => setLeftNavOpen(false)}
             />
-            <div className="absolute inset-y-0 left-0 flex w-[304px] max-w-[88vw] flex-col bg-surface-raised shadow-overlay">
+            <div ref={mobileNavRef} className="absolute inset-y-0 left-0 flex w-[304px] max-w-[88vw] flex-col bg-surface-raised shadow-overlay">
               <div className="flex items-center justify-between border-b border-border-muted px-4 py-3">
                 <span className="text-label-m text-text-primary">Navigation</span>
                 <IconButton icon={<X className="h-4 w-4" />} label="Close navigation menu" onClick={() => setLeftNavOpen(false)} />

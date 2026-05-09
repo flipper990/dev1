@@ -148,25 +148,27 @@ export function AppShell({
         showThemeToggle={flags.ui_redesign_dark_mode}
       />
 
-      <div className="flex min-h-[calc(100vh-4rem)]">
-        <div className="hidden border-r border-border md:block">
-          <LeftNav
-            currentPath={pathname}
-            collapsed={leftNavCollapsed}
-            onToggleCollapsed={() => setLeftNavCollapsed((prev) => !prev)}
-          />
-        </div>
+      <div className="mx-auto flex w-full max-w-[1680px]">
+        <aside className="hidden min-h-[calc(100vh-4rem)] border-r border-border/70 bg-surface-raised/60 md:block">
+          <div className="sticky top-16">
+            <LeftNav
+              currentPath={pathname}
+              collapsed={leftNavCollapsed}
+              onToggleCollapsed={() => setLeftNavCollapsed((prev) => !prev)}
+            />
+          </div>
+        </aside>
 
         {leftNavOpen ? (
           <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-label="Navigation menu" aria-modal="true">
             <button
               type="button"
-              className="absolute inset-0 bg-ink/20 backdrop-blur-[1px]"
+              className="absolute inset-0 bg-ink/25 backdrop-blur-[2px]"
               aria-label="Close navigation menu"
               onClick={() => setLeftNavOpen(false)}
             />
-            <div className="absolute inset-y-0 left-0 flex w-[296px] max-w-[90vw] flex-col border-r border-border bg-surface-raised shadow-[0_24px_60px_rgba(15,23,42,0.22)]">
-              <div className="flex items-center justify-between border-b border-border px-3 py-2">
+            <div className="absolute inset-y-0 left-0 flex w-[304px] max-w-[90vw] flex-col border-r border-border bg-surface-raised shadow-[0_28px_68px_rgba(15,23,42,0.25)]">
+              <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
                 <span className="text-label-m text-ink">Navigation</span>
                 <button
                   type="button"
@@ -182,9 +184,9 @@ export function AppShell({
           </div>
         ) : null}
 
-        <main className="min-w-0 flex-1 bg-surface-base">
-          <div className="mx-auto flex h-full w-full max-w-[1600px]">
-            <section className="min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-10 lg:py-8">
+        <main className="min-w-0 flex-1">
+          <div className="flex min-h-[calc(100vh-4rem)] w-full">
+            <section className="min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-7 lg:px-10 lg:py-8 xl:px-12">
               <PageHeader
                 title={title}
                 subtitle={subtitle}
@@ -193,7 +195,7 @@ export function AppShell({
                 secondaryActions={secondaryActions}
                 breadcrumbs={breadcrumbs}
               />
-              <div className="pt-5 sm:pt-6">{children}</div>
+              <div className="pt-6 sm:pt-7">{children}</div>
             </section>
 
             {hasContext ? (

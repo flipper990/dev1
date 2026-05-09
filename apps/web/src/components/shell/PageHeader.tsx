@@ -37,17 +37,17 @@ export function PageHeader({
   className,
 }: PageHeaderProps) {
   return (
-    <header className={cn('flex flex-col gap-4 border-b border-border/80 pb-5 sm:pb-6', className)}>
+    <header className={cn('space-y-4 border-b border-border/70 pb-6', className)}>
       {breadcrumbs ? <Breadcrumbs items={breadcrumbs} /> : null}
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-title-l font-semibold tracking-[-0.01em] text-ink">{title}</h1>
             {lifecycle ? (
               <span
                 className={cn(
-                  'inline-flex items-center rounded-[var(--radius-control)] border px-2 py-1 text-label-s',
+                  'inline-flex items-center rounded-[var(--radius-control)] border px-2.5 py-1 text-label-s',
                   lifecycleToneClass[lifecycle.tone ?? 'neutral'],
                 )}
               >
@@ -55,13 +55,17 @@ export function PageHeader({
               </span>
             ) : null}
           </div>
-          {subtitle ? <p className="max-w-[76ch] text-body-s leading-6 text-secondary">{subtitle}</p> : null}
+          {subtitle ? (
+            <p className="max-w-[84ch] text-body-s leading-6 text-secondary">{subtitle}</p>
+          ) : null}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 lg:justify-end">
-          {secondaryActions}
-          {actions}
-        </div>
+        {(secondaryActions || actions) ? (
+          <div className="flex flex-wrap items-center gap-2.5 xl:justify-end">
+            {secondaryActions ? <div className="flex flex-wrap items-center gap-2">{secondaryActions}</div> : null}
+            {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+          </div>
+        ) : null}
       </div>
     </header>
   );

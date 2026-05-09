@@ -188,7 +188,7 @@ export function FilesPanel({ projectId, projectName }: Props) {
             )}
           >
             <Play size={12} className="inline -mt-0.5 mr-1" />
-            Preview
+            Application
           </button>
           <button
             type="button"
@@ -214,7 +214,7 @@ export function FilesPanel({ projectId, projectName }: Props) {
             )}
           >
             <Code2 size={12} className="inline -mt-0.5 mr-1" />
-            Code
+            Diagnostics
           </button>
         </div>
         {projectName && (
@@ -225,7 +225,7 @@ export function FilesPanel({ projectId, projectName }: Props) {
       </div>
 
       {tab === 'preview' ? (
-        <div className="flex-1 min-h-0 overflow-hidden relative bg-surface-base">
+        <div className="flex-1 min-h-[62vh] overflow-hidden relative bg-surface-base rounded-b-[var(--radius-panel)]">
           {projectId ? (
             <LivePreview />
           ) : (
@@ -235,35 +235,40 @@ export function FilesPanel({ projectId, projectName }: Props) {
           )}
         </div>
       ) : (
-        <div className="flex-1 min-h-0 overflow-hidden flex flex-col md:grid md:grid-cols-[minmax(220px,260px)_minmax(0,1fr)]">
-          <div className="md:hidden sticky top-0 z-10 flex items-center gap-1 px-3 py-2 border-b border-border/70 bg-surface-raised">
-            <button
-              type="button"
-              onClick={() => setMobilePane('tree')}
-              className={cn(
-                'px-3 py-1.5 rounded-full text-xs font-medium transition-colors min-h-9',
-                mobilePane === 'tree'
-                  ? 'bg-gold-500/15 text-gold-200 border border-gold-300/30'
-                  : 'text-muted hover:text-secondary border border-transparent',
-              )}
-            >
-              <Folder size={12} className="inline -mt-0.5 mr-1" />
-              Files
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobilePane('code')}
-              className={cn(
-                'px-3 py-1.5 rounded-full text-xs font-medium transition-colors min-h-9',
-                mobilePane === 'code'
-                  ? 'bg-gold-500/15 text-gold-200 border border-gold-300/30'
-                  : 'text-muted hover:text-secondary border border-transparent',
-              )}
-            >
-              <Code2 size={12} className="inline -mt-0.5 mr-1" />
-              Code
-            </button>
-          </div>
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col md:grid md:grid-cols-[minmax(220px,260px)_minmax(0,1fr)] bg-surface-tint/20">
+          <details className="md:hidden border-b border-border/70 bg-surface-raised/70" open>
+            <summary className="list-none cursor-pointer px-3 py-2 text-label-s text-secondary">
+              Technical details
+            </summary>
+            <div className="sticky top-0 z-10 flex items-center gap-1 px-3 py-2 border-t border-border/70 bg-surface-raised">
+              <button
+                type="button"
+                onClick={() => setMobilePane('tree')}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-xs font-medium transition-colors min-h-9',
+                  mobilePane === 'tree'
+                    ? 'bg-gold-500/15 text-gold-200 border border-gold-300/30'
+                    : 'text-muted hover:text-secondary border border-transparent',
+                )}
+              >
+                <Folder size={12} className="inline -mt-0.5 mr-1" />
+                Files
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobilePane('code')}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-xs font-medium transition-colors min-h-9',
+                  mobilePane === 'code'
+                    ? 'bg-gold-500/15 text-gold-200 border border-gold-300/30'
+                    : 'text-muted hover:text-secondary border border-transparent',
+                )}
+              >
+                <Code2 size={12} className="inline -mt-0.5 mr-1" />
+                Code
+              </button>
+            </div>
+          </details>
 
           <div className={cn('border-r border-border/70 overflow-auto py-2 px-1.5 min-h-0 bg-ink-1/20', mobilePane !== 'tree' && 'hidden md:block')}>
             {!projectId ? (
@@ -291,4 +296,33 @@ export function FilesPanel({ projectId, projectName }: Props) {
           <div className={cn('overflow-auto bg-ink-1/50 min-h-0', mobilePane !== 'code' && 'hidden md:block')}>
             {content ? (
               <>
-                <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-border/70 bg-surface-raised/I'm sorry, but I cannot assist with that request.
+                <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-border/70 bg-surface-raised/80">
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted truncate">{content.path}</p>
+                  </div>
+                  {content.url ? (
+                    <a
+                      href={content.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-secondary hover:text-ink"
+                    >
+                      Open <ExternalLink size={12} />
+                    </a>
+                  ) : null}
+                </div>
+                <pre className="p-4 text-xs leading-relaxed overflow-auto">
+                  <code>{content.content}</code>
+                </pre>
+              </>
+            ) : (
+              <div className="h-full grid place-items-center text-muted text-sm px-6 text-center leading-relaxed">
+                Select a file to inspect source code.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}

@@ -70,15 +70,15 @@ export function LivePreview({
     status === 'ready' ? 'Live preview ready' : status === 'failed' ? 'Preview unavailable' : status === 'starting' ? 'Preview starting' : 'No preview yet';
 
   return (
-    <section className={cn('space-y-4', className)} aria-label="Project workspace preview">
-      <Card className="p-0 overflow-hidden">
+    <section className={cn('space-y-5', className)} aria-label="Project workspace preview">
+      <Card className="overflow-hidden p-0">
         <div className="border-b border-border/70 bg-surface-raised">
-          <div className="flex flex-col gap-3 p-4 sm:p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-col gap-4 p-5 sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-label-s uppercase tracking-[0.08em] text-secondary">Preview</p>
-                <h3 className="mt-1 text-title-m text-ink">{title}</h3>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-body-s">
+                <h3 className="mt-1.5 text-title-m font-semibold tracking-[-0.01em] text-ink">{title}</h3>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-body-s">
                   <span className={cn('inline-flex items-center rounded-[var(--radius-control)] border px-2.5 py-1 text-label-s', statusPillClass)}>
                     {statusText}
                   </span>
@@ -165,7 +165,7 @@ export function LivePreview({
               {previewUrl && status !== 'failed' ? (
                 <iframe title="Generated application preview" src={previewUrl} className="h-[560px] w-full border-0" />
               ) : (
-                <div className="flex h-[560px] items-center justify-center px-6 text-center text-body-s text-secondary">
+                <div className="flex h-[560px] items-center justify-center px-8 text-center text-body-s leading-6 text-secondary">
                   {status === 'failed'
                     ? 'Preview could not be loaded. Try refreshing or review diagnostics.'
                     : 'Run or resume generation to render the live application preview.'}
@@ -177,7 +177,7 @@ export function LivePreview({
       </Card>
 
       <Card>
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="inline-flex items-center rounded-[var(--radius-control)] border border-border bg-surface-tint p-1">
               <button
@@ -216,7 +216,7 @@ export function LivePreview({
           </div>
 
           {detailsOpen ? (
-            <div className="rounded-[var(--radius-control)] border border-border bg-surface-tint p-3 text-body-s text-secondary">
+            <div className="rounded-[var(--radius-control)] border border-border bg-surface-tint p-3.5 text-body-s leading-6 text-secondary">
               {secondaryTab === 'activity'
                 ? 'Recent workspace activity and milestones appear here in a compact timeline.'
                 : 'Technical logs remain available here when needed, but are intentionally secondary to product preview.'}

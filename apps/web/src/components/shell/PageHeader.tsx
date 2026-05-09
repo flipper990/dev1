@@ -37,13 +37,13 @@ export function PageHeader({
   className,
 }: PageHeaderProps) {
   return (
-    <header className={cn('space-y-4 border-b border-border/70 pb-6', className)}>
+    <header className={cn('space-y-5 border-b border-border/70 pb-7 sm:pb-8', className)}>
       {breadcrumbs ? <Breadcrumbs items={breadcrumbs} /> : null}
 
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0 space-y-2">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0 space-y-2.5">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-title-l font-semibold tracking-[-0.01em] text-ink">{title}</h1>
+            <h1 className="text-title-l font-semibold tracking-[-0.015em] text-ink">{title}</h1>
             {lifecycle ? (
               <span
                 className={cn(
@@ -56,7 +56,7 @@ export function PageHeader({
             ) : null}
           </div>
           {subtitle ? (
-            <p className="max-w-[84ch] text-body-s leading-6 text-secondary">{subtitle}</p>
+            <p className="max-w-[88ch] text-body-s leading-6 text-secondary">{subtitle}</p>
           ) : null}
         </div>
 

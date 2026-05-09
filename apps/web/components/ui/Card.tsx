@@ -20,12 +20,12 @@ export function Card({
     <div
       {...rest}
       className={cn(
-        'rounded-[var(--radius-panel)] border border-border bg-surface-raised text-ink shadow-card',
+        'rounded-[var(--radius-panel)] border border-border/90 bg-surface-raised text-ink shadow-card',
         'transition-[background-color,border-color,box-shadow,transform] duration-200 ease-out',
         interactive &&
           'cursor-pointer hover:-translate-y-px hover:border-border-strong hover:bg-surface-tint hover:shadow-[0_14px_34px_rgba(2,6,23,0.12)]',
         highlight &&
-          'border-primary bg-[color:color-mix(in_srgb,var(--color-primary)_8%,var(--color-surface-raised))] shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-primary)_24%,transparent),0_10px_28px_rgba(15,23,42,0.12)]',
+          'border-primary bg-[color:color-mix(in_srgb,var(--color-primary)_7%,var(--color-surface-raised))] shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-primary)_20%,transparent),0_12px_28px_rgba(15,23,42,0.10)]',
         padded ? 'p-5 sm:p-6' : 'p-0',
         className,
       )}

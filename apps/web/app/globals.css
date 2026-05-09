@@ -81,7 +81,8 @@
 /* ── Reset ──────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 html, body {
-  margin: 0; height: 100%; overflow: hidden;
+  margin: 0;
+  min-height: 100%;
   font-family: 'Inter', 'SF Pro Text', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 13px;
   color: var(--text);
@@ -106,6 +107,24 @@ input, textarea { font-family: inherit; color: var(--text); letter-spacing: inhe
 *::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; border: 2px solid transparent; background-clip: padding-box; }
 *::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); background-clip: padding-box; border: 2px solid transparent; }
 .mono { font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace; font-feature-settings: 'zero','ss01'; }
+
+/* --- New global SaaS layout utilities --- */
+.page-shell {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+@media (min-width: 768px) {
+  .page-shell {
+    padding: 1.25rem;
+  }
+}
+@media (min-width: 1280px) {
+  .page-shell {
+    padding: 1.5rem 2rem;
+  }
+}
 
 /* ── Root layout ─────────────────────────────────────────────────────────────*/
 .app-root {
@@ -359,7 +378,7 @@ input, textarea { font-family: inherit; color: var(--text); letter-spacing: inhe
 .log-entry__level--warn  { color: var(--warning); background: rgba(251,191,36,0.1); }
 .log-entry__level--error { color: var(--error);   background: rgba(248,113,113,0.1); }
 .log-entry__source--planner  { color: var(--agent-planner); }
-.log-entry__source--coder    { color: var(--agent-coder); }
+.log-entry__source--coder    { color: var(--agent-developer); }
 .log-entry__source--reviewer { color: var(--agent-reviewer); }
 .log-entry__source--tester   { color: var(--agent-tester); }
 .log-entry__source--devops   { color: var(--agent-devops); }
@@ -389,7 +408,7 @@ input, textarea { font-family: inherit; color: var(--text); letter-spacing: inhe
 
 /* ── Agent log source colors ─────────────────────────────────────────────────*/
 .log-src-planner  { color: var(--agent-planner); }
-.log-src-coder    { color: var(--agent-coder); }
+.log-src-coder    { color: var(--agent-developer); }
 .log-src-reviewer { color: var(--agent-reviewer); }
 .log-src-tester   { color: var(--agent-tester); }
 .log-src-devops   { color: var(--agent-devops); }

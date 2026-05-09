@@ -16,18 +16,20 @@ export function AgentActivityPanel({ progress }: AgentActivityPanelProps) {
     );
   }
 
+  const pct = Math.max(0, Math.min(100, Math.round(progress.progress * 100)));
+
   return (
-    <section className="panel">
+    <section className="panel overflow-hidden">
       <div className="panel__header panel__header--split">
         <h2>Agent Activity</h2>
-        <span className="status-chip">{Math.round(progress.progress * 100)}%</span>
+        <span className="status-chip">{pct}%</span>
       </div>
 
       <div className="progress-bar">
-        <div className="progress-bar__fill" style={{ width: `${Math.round(progress.progress * 100)}%` }} />
+        <div className="progress-bar__fill" style={{ width: `${pct}%` }} />
       </div>
 
-      <div className="step-list">
+      <div className="step-list max-h-[min(58vh,34rem)] overflow-auto pr-1">
         {progress.steps.map((step, index) => (
           <div className="step-item" key={`${step.stepId}-${index}`}>
             <div className="step-item__top">

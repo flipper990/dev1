@@ -1037,7 +1037,7 @@ input, textarea { font-family: inherit; color: var(--text); letter-spacing: inhe
 }
 .cn-ring__svg { width: 100%; height: 100%; transform: rotate(-90deg); }
 .cn-ring__bg  { stroke: rgba(255,255,255,0.08); }
-.cn-ring__fg  { stroke: url(#cn-ring-grad); transition: stroke-dashoffset 600ms ease; filter: drop-shadow(0 0 6px rgba(226,187,90,0.55)); }
+.cn-ring__fg  { stroke: var(--accent-amber, #F59E0B); transition: stroke-dashoffset 600ms ease; filter: drop-shadow(0 0 6px rgba(226,187,90,0.55)); }
 .cn-ring__label {
   position: absolute;
   inset: 0;

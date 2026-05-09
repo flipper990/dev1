@@ -73,6 +73,10 @@ export function LeftNav({
 
       <div className="mb-2 h-px bg-border/70" />
 
+      <div className={cn('px-3 pb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-secondary', collapsed && 'sr-only')}>
+        Studio
+      </div>
+
       <nav aria-label="Primary" className="min-h-0 flex-1 space-y-1 overflow-auto pr-1">
         {items.map((item) => {
           const active = isActive(currentPath, item.href);
@@ -85,10 +89,10 @@ export function LeftNav({
               onClick={onNavigate}
               aria-current={active ? 'page' : undefined}
               className={cn(
-                'group flex min-h-11 items-center gap-3 rounded-[var(--radius-control)] border px-3 text-body-s transition-colors duration-100 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]',
+                'group flex min-h-11 items-center gap-3 rounded-[var(--radius-control)] border px-3 text-body-s transition-[background-color,border-color,color] duration-150 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]',
                 active
-                  ? 'border-primary/35 bg-primary-subtle text-primary'
-                  : 'border-transparent text-secondary hover:border-border hover:bg-surface-tint hover:text-ink',
+                  ? 'border-primary/30 bg-primary-subtle text-primary shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-primary)_18%,transparent)]'
+                  : 'border-transparent text-secondary hover:border-border/80 hover:bg-surface-tint hover:text-ink',
                 collapsed ? 'justify-center px-0' : '',
               )}
             >
@@ -98,6 +102,15 @@ export function LeftNav({
           );
         })}
       </nav>
+
+      <div className={cn('mt-3 border-t border-border/70 pt-3 px-2', collapsed && 'px-0')}>
+        <div className={cn(
+          'rounded-[var(--radius-control)] border border-border/70 bg-surface-tint/60 px-3 py-2 text-[11px] text-secondary',
+          collapsed && 'hidden',
+        )}>
+          Studio navigation
+        </div>
+      </div>
     </aside>
   );
 }

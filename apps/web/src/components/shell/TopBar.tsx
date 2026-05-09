@@ -30,8 +30,8 @@ export function TopBar({
   className,
 }: TopBarProps) {
   return (
-    <header className={cn('sticky top-0 z-40 border-b border-border bg-surface-raised/95 backdrop-blur', className)}>
-      <div className="mx-auto flex h-16 w-full max-w-[1760px] items-center gap-2 sm:gap-3 px-4 sm:px-6">
+    <header className={cn('sticky top-0 z-40 border-b border-border/80 bg-surface-raised/90 supports-[backdrop-filter]:backdrop-blur-xl', className)}>
+      <div className="mx-auto flex h-16 w-full max-w-[1600px] items-center gap-3 px-4 sm:px-6 lg:px-10">
         <button
           type="button"
           aria-label="Open navigation"
@@ -41,13 +41,13 @@ export function TopBar({
           <Menu className="h-4 w-4" />
         </button>
 
-        <div className="flex items-center gap-2 pr-1 shrink-0">
+        <div className="flex items-center gap-2.5 pr-2 shrink-0">
           <span className="inline-grid h-8 w-8 place-items-center rounded-[var(--radius-control)] bg-primary-subtle text-primary">
             <Search className="h-4 w-4" aria-hidden="true" />
           </span>
-          <div>
-            <p className="text-label-m text-ink">DEVteam</p>
-            <p className="hidden text-label-s text-secondary sm:block">Software production studio</p>
+          <div className="min-w-0">
+            <p className="text-label-m font-semibold text-ink">DEVteam Studio</p>
+            <p className="hidden text-[12px] text-secondary sm:block">Product workspace</p>
           </div>
         </div>
 
@@ -60,7 +60,7 @@ export function TopBar({
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <div className="hidden rounded-[var(--radius-control)] border border-border bg-surface-tint px-3 py-2 text-label-s text-secondary lg:block">
+          <div className="hidden rounded-[var(--radius-control)] border border-border/80 bg-surface-tint/70 px-3 py-2 text-label-s text-secondary md:block">
             Workspace: <span className="text-ink">{workspaceName}</span>
           </div>
 

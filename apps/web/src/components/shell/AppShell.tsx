@@ -136,7 +136,7 @@ export function AppShell({
   }, [pathname, themeDark, trackEvent]);
 
   return (
-    <div className={cn('min-h-screen overflow-x-hidden bg-surface-base text-ink', className)}>
+    <div className={cn('min-h-screen bg-surface-base text-ink', className)}>
       <TopBar
         workspaceName={workspaceName}
         searchValue={searchValue}
@@ -161,11 +161,11 @@ export function AppShell({
           <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-label="Navigation menu" aria-modal="true">
             <button
               type="button"
-              className="absolute inset-0 bg-ink/30"
+              className="absolute inset-0 bg-ink/20 backdrop-blur-[1px]"
               aria-label="Close navigation menu"
               onClick={() => setLeftNavOpen(false)}
             />
-            <div className="absolute inset-y-0 left-0 flex w-[280px] max-w-[88vw] flex-col border-r border-border bg-surface-raised">
+            <div className="absolute inset-y-0 left-0 flex w-[296px] max-w-[90vw] flex-col border-r border-border bg-surface-raised shadow-[0_24px_60px_rgba(15,23,42,0.22)]">
               <div className="flex items-center justify-between border-b border-border px-3 py-2">
                 <span className="text-label-m text-ink">Navigation</span>
                 <button
@@ -182,9 +182,9 @@ export function AppShell({
           </div>
         ) : null}
 
-        <main className="min-w-0 flex-1">
-          <div className="mx-auto flex h-full w-full max-w-[1680px]">
-            <section className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <main className="min-w-0 flex-1 bg-surface-base">
+          <div className="mx-auto flex h-full w-full max-w-[1600px]">
+            <section className="min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-10 lg:py-8">
               <PageHeader
                 title={title}
                 subtitle={subtitle}
@@ -193,7 +193,7 @@ export function AppShell({
                 secondaryActions={secondaryActions}
                 breadcrumbs={breadcrumbs}
               />
-              <div className="pt-6">{children}</div>
+              <div className="pt-5 sm:pt-6">{children}</div>
             </section>
 
             {hasContext ? (

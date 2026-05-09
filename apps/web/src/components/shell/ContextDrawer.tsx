@@ -69,28 +69,28 @@ export function ContextDrawer({
     <>
       <aside
         className={cn(
-          'hidden h-full w-[340px] shrink-0 border-l border-border bg-surface-raised xl:flex xl:flex-col',
+          'hidden h-full w-[360px] shrink-0 border-l border-border/80 bg-surface-raised/95 xl:flex xl:flex-col',
           className,
         )}
         aria-label="Context panel"
       >
-        <div className="border-b border-border px-4 py-3">
+        <div className="border-b border-border/80 px-5 py-4">
           <h2 className="text-label-m text-ink">{title}</h2>
           {description ? <p className="mt-1 text-label-s text-secondary">{description}</p> : null}
         </div>
-        <div className="min-h-0 flex-1 overflow-auto p-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-auto p-5">{children}</div>
       </aside>
 
       <div className="fixed inset-0 z-50 xl:hidden" role="dialog" aria-modal="true" aria-label={title}>
         <button
           type="button"
           aria-label="Close context panel"
-          className="absolute inset-0 bg-ink/30"
+          className="absolute inset-0 bg-ink/25 backdrop-blur-[1px]"
           onClick={onClose}
         />
         <div
           ref={mobileRef}
-          className="absolute inset-y-0 right-0 flex w-full max-w-[380px] flex-col border-l border-border bg-surface-raised"
+          className="absolute inset-y-0 right-0 flex w-full max-w-[400px] flex-col border-l border-border bg-surface-raised shadow-[0_24px_60px_rgba(15,23,42,0.22)]"
         >
           <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
             <div>

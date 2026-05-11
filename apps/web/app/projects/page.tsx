@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppShell } from '../../src/components/shell';
-import { Button, Panel, Skeleton, StatusDot } from '../../components/ui';
+import { Button, Panel, Skeleton } from '../../components/ui';
 import { listProjects } from '../../lib/api';
 import { getExperimentAssignments } from '../../src/lib/flags/uiRedesignFlags';
 import { useTrackEvent } from '../../src/lib/telemetry/useTrackEvent';
@@ -100,9 +100,9 @@ export default function ProjectsPage() {
       contextTitle="Portfolio health"
       contextContent={
         <Panel title="Backend data" subtitle="Project identity and state source">
-          <div className="space-y-3">
-            <StatusDot tone={error ? 'error' : 'success'} label={error ? 'Unable to load /api/projects' : 'Using /api/projects'} />
-            <StatusDot tone={SHOW_DEBUG_IDS ? 'active' : 'neutral'} label={SHOW_DEBUG_IDS ? 'Debug project IDs visible' : 'Debug project IDs hidden'} />
+          <div className="space-y-2 text-body-s text-text-secondary">
+            <p>{error ? 'Unable to load /api/projects.' : 'Using /api/projects.'}</p>
+            <p>{SHOW_DEBUG_IDS ? 'Debug project IDs visible.' : 'Debug project IDs hidden.'}</p>
             <p className="text-body-s text-text-secondary">Project actions use projectId as identity. Names are display labels only.</p>
           </div>
         </Panel>

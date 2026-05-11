@@ -1,10 +1,13 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Bell, Building2, Factory, Menu, Moon, PanelRightOpen, Sun } from 'lucide-react';
 import { Badge } from '../../../components/ui/Badge';
 import { IconButton } from '../../../components/ui/IconButton';
 import { cn } from '../../../lib/cn';
+import { ApiError, checkBackendReachable } from '../../../lib/api';
 import { GlobalCommandBar } from './GlobalCommandBar';
+import { platformHealthToBadge, type PlatformHealthState } from './platformStatus';
 
 interface TopBarProps {
   workspaceName?: string;
@@ -18,6 +21,7 @@ interface TopBarProps {
   isDark?: boolean;
   showThemeToggle?: boolean;
   showContextToggle?: boolean;
+  platformHealth?: PlatformHealthState;
   className?: string;
 }
 
@@ -33,8 +37,37 @@ export function TopBar({
   isDark = false,
   showThemeToggle = true,
   showContextToggle = false,
+  platformHealth,
   className,
 }: TopBarProps) {
+  const [detectedPlatformHealth, setDetectedPlatformHealth] = useState<PlatformHealthState>('checking');
+
+  useEffect(() => {
+    if (platformHealth) return;
+
+    let cancelled = false;
+    setDetectedPlatformHealth('checking');
+
+    checkBackendReachable()
+      .then(() => {
+        if (!cancelled) setDetectedPlatformHealth('online');
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.kind === 'http') {
+          setDetectedPlatformHealth('reachable-degraded');
+          return;
+        }
+        setDetectedPlatformHealth('offline');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [platformHealth]);
+
+  const platformBadge = platformHealthToBadge(platformHealth ?? detectedPlatformHealth);
+
   return (
     <header
       className={cn(
@@ -78,7 +111,7 @@ export function TopBar({
 
         <div className="flex shrink-0 items-center gap-2">
           <div className="hidden xl:block">
-            <Badge variant="success">Operational</Badge>
+            <Badge variant={platformBadge.variant} title={platformBadge.title}>{platformBadge.label}</Badge>
           </div>
 
           {showContextToggle ? (

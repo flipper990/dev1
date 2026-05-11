@@ -9,7 +9,7 @@ const meta: Meta<typeof ContextDrawer> = {
     title: 'Project metadata',
     description: 'Secondary context',
     children: (
-      <div className="space-y-2 text-body-s text-secondary">
+      <div className="space-y-2 text-body-s text-text-secondary">
         <p>Owner: Platform Team</p>
         <p>Region: eu-north-1</p>
         <p>Last deploy: 2 hours ago</p>

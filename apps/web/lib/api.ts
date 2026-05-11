@@ -216,6 +216,10 @@ export async function listProjects(): Promise<GeneratedProject[]> {
   return raw.map(normalizeProject).filter((p) => p.id && !p.id.startsWith('unknown-'));
 }
 
+export async function checkBackendReachable(): Promise<void> {
+  await request<unknown>('/api/projects', { timeoutMs: 5_000 });
+}
+
 /**
  * Fetch the authoritative project record for a single id.
  *

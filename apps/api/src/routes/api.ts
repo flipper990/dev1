@@ -178,6 +178,24 @@ export function registerRoutes(
   app.post('/api/projects/generate', handleGenerate);
   app.post('/api/projects', handleGenerate);
 
+  app.get('/api/projects/:id/diagnostics/pipeline-ledger', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const project = await projectStore.get(id);
+    if (!project) {
+      return reply.status(404).send({ error: 'Project not found' });
+    }
+
+    const ledger = project.diagnostics?.pipelineLedger ?? null;
+    reply.header('Cache-Control', 'no-store, no-cache, must-revalidate');
+    reply.header('Pragma', 'no-cache');
+    return {
+      projectId: id,
+      sessionId: project.sessionId,
+      ledger,
+      records: ledger?.records ?? [],
+    };
+  });
+
   app.get('/api/projects/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     request.log.info(

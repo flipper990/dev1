@@ -45,6 +45,7 @@ import { ProjectUpdater } from './project-updater.js';
 import type { PreviewManager } from '../preview/preview-manager.js';
 import { validateAndAutoFix } from './auto-fix.js';
 import { runExecutionFeedbackLoop } from './execution-feedback-loop.js';
+import { applyPipelineLedgerEvent, createPipelineRunLedger } from './pipeline-ledger.js';
 
 export type {
   GenerateRequest, UpdateRequest, GenerateResult, UpdateResult, StepSummary,
@@ -338,6 +339,9 @@ export class ProjectGenerator {
         filesWrittenCount: 0,
         slicesPlannedCount: 0,
       },
+      diagnostics: {
+        pipelineLedger: createPipelineRunLedger(projectId, sessionId),
+      },
     };
     this.logger.info('[gen:reserve] placeholder created', {
       event: 'gen:reserve', projectId, sessionId, promptCount: request.prompts.length,
@@ -493,7 +497,7 @@ export class ProjectGenerator {
 
     // ── Load / build the record we'll persist ────────────
     let base: ProjectRecord;
-    let persisted: ProjectRecord | undefined;
+    let persisted: ProjectRecord | null | undefined;
     try {
       persisted = await this.projectStore.get(projectId);
     } catch (readErr) {
@@ -1568,6 +1572,9 @@ export class ProjectGenerator {
           filesWrittenCount: 0,
           slicesPlannedCount: 0,
         },
+        diagnostics: {
+          pipelineLedger: createPipelineRunLedger(projectId, sessionId),
+        },
       };
       await this.projectStore.save(project, {
         caller: 'project-generator:generate',
@@ -1720,6 +1727,37 @@ export class ProjectGenerator {
 
     const orchestrator = new PipelineOrchestrator(this.agents, bus, this.logger);
     orchestrator.onEvent(forwardEvents(/* orchSessionIsMain */ true));
+    const recordPipelineLedger = (event: PipelineEvent) => {
+      if (!event.type.startsWith('step:')) return;
+      project.diagnostics = project.diagnostics ?? {};
+      project.diagnostics.pipelineLedger = applyPipelineLedgerEvent(
+        project.diagnostics.pipelineLedger,
+        event,
+        {
+          projectId,
+          sessionId,
+          phase: phaseRef.current,
+        },
+      );
+      const ledger = project.diagnostics.pipelineLedger;
+      void this.projectStore.update(projectId, (current) => {
+        current.diagnostics = current.diagnostics ?? {};
+        current.diagnostics.pipelineLedger = ledger;
+      }, {
+        phase: 'pipeline-ledger',
+        caller: 'project-generator:pipeline-ledger',
+        reason: `${event.type}:${'stepId' in event ? event.stepId : 'pipeline'}`,
+      }).catch((err) => {
+        this.logger.warn('[pipeline-ledger:persist-failed] ledger update failed (non-fatal)', {
+          event: 'pipeline-ledger:persist-failed',
+          projectId,
+          sessionId,
+          pipelineEvent: event.type,
+          err: String(err),
+        });
+      });
+    };
+    orchestrator.onEvent(recordPipelineLedger);
     // Bump llmCallCount on every step:started so the watchdog sees real LLM
     // activity even before any artifacts are persisted. ALSO registered on
     // every per-slice + rebuild orchestrator below — without this we'd only
@@ -2062,6 +2100,7 @@ export class ProjectGenerator {
 
         const sliceOrch = new PipelineOrchestrator(this.agents, bus, this.logger);
         sliceOrch.onEvent(forwardEvents(/* orchSessionIsMain */ false));
+        sliceOrch.onEvent(recordPipelineLedger);
         sliceOrch.onEvent(bumpLlmCounter);
         phaseRef.currentStep = `${sliceLabel}:builder`;
         let sliceState = await sliceOrch.execute(sliceSession, sliceSeed);
@@ -2164,6 +2203,7 @@ export class ProjectGenerator {
 
           const rebuildOrch = new PipelineOrchestrator(this.agents, bus, this.logger);
           rebuildOrch.onEvent(forwardEvents(/* orchSessionIsMain */ false));
+          rebuildOrch.onEvent(recordPipelineLedger);
           rebuildOrch.onEvent(bumpLlmCounter);
           phaseRef.currentStep = `${sliceLabel}:builder-rebuild-${nextIter}`;
           sliceState = await rebuildOrch.execute(rebuildSession, rebuildSeed);

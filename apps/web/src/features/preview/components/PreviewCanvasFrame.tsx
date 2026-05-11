@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import { AlertTriangle, Copy, ExternalLink, Loader2, Monitor, RefreshCw, Smartphone, Tablet } from 'lucide-react';
-import { Badge, Button, IconButton, StatusDot } from '../../../../components/ui';
+import { Button, IconButton, StatusDot } from '../../../../components/ui';
 import { cn } from '../../../../lib/cn';
-import { previewToneToBadge, previewToneToStatusDot, type PreviewTruthModel } from '../model';
+import type { PreviewTruthModel, PreviewTransportStatus, PreviewHealthStatus } from '../model';
 
 type PreviewDevice = 'desktop' | 'tablet' | 'mobile';
 
@@ -19,16 +19,29 @@ interface PreviewCanvasFrameProps {
   onDeviceChange?: (device: PreviewDevice) => void;
   className?: string;
   previewTruth?: PreviewTruthModel;
-  runtimeType?: string | null;
   onRetry?: () => void;
   retrying?: boolean;
 }
 
 const DEVICE_LAYOUT: Record<PreviewDevice, { maxWidth: string; viewportHeightClass: string; label: string; icon: typeof Monitor }> = {
-  desktop: { maxWidth: '100%', viewportHeightClass: 'h-[min(68vh,760px)] min-h-[340px]', label: 'Desktop', icon: Monitor },
-  tablet: { maxWidth: '900px', viewportHeightClass: 'h-[min(72vh,840px)] min-h-[420px]', label: 'Tablet', icon: Tablet },
-  mobile: { maxWidth: '430px', viewportHeightClass: 'h-[min(78vh,900px)] min-h-[520px]', label: 'Mobile', icon: Smartphone },
+  desktop: { maxWidth: '100%', viewportHeightClass: 'h-[min(58vh,720px)] min-h-[360px]', label: 'Desktop', icon: Monitor },
+  tablet: { maxWidth: '900px', viewportHeightClass: 'h-[min(62vh,760px)] min-h-[400px]', label: 'Tablet', icon: Tablet },
+  mobile: { maxWidth: '430px', viewportHeightClass: 'h-[min(66vh,780px)] min-h-[460px]', label: 'Mobile', icon: Smartphone },
 };
+
+function transportTone(status: PreviewTransportStatus) {
+  if (status === 'failed') return 'error' as const;
+  if (status === 'building' || status === 'starting') return 'active' as const;
+  if (status === 'reachable') return 'success' as const;
+  return 'neutral' as const;
+}
+
+function healthTone(status: PreviewHealthStatus) {
+  if (status === 'healthy') return 'success' as const;
+  if (status === 'broken') return 'error' as const;
+  if (status === 'placeholder') return 'warning' as const;
+  return 'neutral' as const;
+}
 
 function fallbackTruth(ready: boolean, failed: boolean, loading: boolean, url?: string | null): PreviewTruthModel {
   return {
@@ -98,7 +111,6 @@ export function PreviewCanvasFrame({
   onDeviceChange,
   className,
   previewTruth,
-  runtimeType,
   onRetry,
   retrying = false,
 }: PreviewCanvasFrameProps) {
@@ -121,21 +133,49 @@ export function PreviewCanvasFrame({
   return (
     <section
       aria-label={title}
-      className={cn('rounded-[var(--radius-modal)] border border-border bg-surface-raised p-4 sm:p-5', className)}
+      className={cn(
+        'relative overflow-hidden rounded-[var(--radius-modal)] border border-border-strong bg-surface-raised p-2 shadow-lg sm:p-3',
+        'before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,255,255,0)_22%)] before:content-[""]',
+        className,
+      )}
     >
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div className="relative mb-2 flex flex-col gap-2 px-1 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
-          <h3 className="text-title-s text-text-primary">{title}</h3>
-          <p className="mt-1 text-body-s text-text-secondary">Primary product output for review and QA.</p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Badge variant={previewToneToBadge(truth.tone)}>{truth.label}</Badge>
-            <StatusDot tone={previewToneToStatusDot(truth.tone)} label={`Transport: ${truth.previewTransportStatus}`} />
-            <StatusDot tone={truth.previewHealthStatus === 'healthy' ? 'success' : truth.previewHealthStatus === 'broken' ? 'error' : truth.previewHealthStatus === 'placeholder' ? 'warning' : 'neutral'} label={`Health: ${truth.previewHealthStatus}`} />
-            {runtimeType || truth.runtimeType ? <Badge variant="neutral">Runtime: {runtimeType ?? truth.runtimeType}</Badge> : null}
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <p className="text-label-s uppercase tracking-[0.16em] text-text-muted">Primary output</p>
+            <StatusDot tone={transportTone(truth.previewTransportStatus)} label={`Transport: ${truth.previewTransportStatus}`} />
+            <StatusDot tone={healthTone(truth.previewHealthStatus)} label={`Health: ${truth.previewHealthStatus}`} />
           </div>
+          <h3 className="mt-0.5 truncate text-title-s text-text-primary">{title}</h3>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <div role="tablist" aria-label="Preview viewport" className="inline-flex max-w-full items-center overflow-x-auto rounded-[var(--radius-control)] border border-border bg-surface-tint p-1">
+            {(Object.keys(DEVICE_LAYOUT) as PreviewDevice[]).map((key) => {
+              const Icon = DEVICE_LAYOUT[key].icon;
+              const active = key === device;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => onDeviceChange?.(key)}
+                  disabled={!onDeviceChange}
+                  role="tab"
+                  id={`preview-device-${key}-tab`}
+                  aria-controls={`preview-device-${key}-panel`}
+                  aria-selected={active}
+                  className={cn(
+                    'inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-control)] px-2.5 text-label-s transition-colors',
+                    active ? 'bg-surface-raised text-text-primary shadow-card' : 'text-text-secondary hover:text-text-primary',
+                    !onDeviceChange && 'cursor-not-allowed opacity-55 hover:text-text-secondary',
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="hidden sm:inline">{DEVICE_LAYOUT[key].label}</span>
+                </button>
+              );
+            })}
+          </div>
           <IconButton
             icon={<Copy className="h-4 w-4" />}
             label={copied ? 'Preview URL copied' : 'Copy preview URL'}
@@ -153,36 +193,9 @@ export function PreviewCanvasFrame({
         </div>
       </div>
 
-      <div role="tablist" aria-label="Preview viewport" className="mb-3 inline-flex max-w-full items-center overflow-x-auto rounded-[var(--radius-control)] border border-border bg-surface-tint p-1">
-        {(Object.keys(DEVICE_LAYOUT) as PreviewDevice[]).map((key) => {
-          const Icon = DEVICE_LAYOUT[key].icon;
-          const active = key === device;
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => onDeviceChange?.(key)}
-              disabled={!onDeviceChange}
-              role="tab"
-              id={`preview-device-${key}-tab`}
-              aria-controls={`preview-device-${key}-panel`}
-              aria-selected={active}
-              className={cn(
-                'inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-control)] px-3 text-label-s transition-colors',
-                active ? 'bg-surface-raised text-text-primary shadow-card' : 'text-text-secondary hover:text-text-primary',
-                !onDeviceChange && 'cursor-not-allowed opacity-55 hover:text-text-secondary',
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {DEVICE_LAYOUT[key].label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="rounded-[var(--radius-panel)] border border-border bg-surface-tint p-2 sm:p-3">
+      <div className="relative rounded-[var(--radius-panel)] border border-border bg-surface-tint p-1.5 sm:p-2">
         <div
-          className="mx-auto overflow-hidden rounded-[var(--radius-preview)] border border-border bg-surface-raised shadow-lg"
+          className="mx-auto overflow-hidden rounded-[var(--radius-preview)] border border-border-strong bg-surface-raised shadow-overlay"
           style={{ maxWidth: DEVICE_LAYOUT[device].maxWidth }}
         >
           <div className="flex items-center gap-2 border-b border-border bg-surface-tint px-3 py-2">

@@ -1,5 +1,6 @@
-import { Button, Input, Select } from '../../components/ui';
-import { MarketingSection, MarketingShell } from '../../src/components/marketing';
+import { Badge, Input, Select } from '../../components/ui';
+import { SystemBanner } from '../../src/components/feedback';
+import { CTAButton, MarketingSection, MarketingShell } from '../../src/components/marketing';
 
 export default function WaitlistPage() {
   return (
@@ -19,7 +20,12 @@ export default function WaitlistPage() {
             </ul>
           </div>
           <div className="rounded-[var(--radius-modal)] border border-border bg-surface-raised p-6 shadow-card">
-            <div className="space-y-4">
+            <SystemBanner
+              tone="warning"
+              title="Early-access intake coming soon"
+              description="The waitlist form is visible as the planned intake shape. It does not submit until an early-access backend endpoint is connected."
+            />
+            <div className="mt-5 space-y-4">
               <label className="block text-label-m text-text-primary" htmlFor="waitlist-email">
                 Work email
                 <Input id="waitlist-email" className="mt-1.5" placeholder="name@company.com" type="email" disabled />
@@ -43,9 +49,14 @@ export default function WaitlistPage() {
                 </div>
               </label>
             </div>
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-label-s text-text-muted">Waitlist submission is disabled because no early-access intake endpoint is connected.</p>
-              <Button type="button" disabled title="No waitlist backend endpoint exists">Join waitlist unavailable</Button>
+            <div className="mt-5 flex flex-col gap-3 rounded-[var(--radius-panel)] border border-border bg-surface-base p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <Badge variant="warning">Requires waitlist endpoint</Badge>
+                <p className="mt-2 text-body-s text-text-secondary">
+                  No waitlist record is created from this page yet. Explore the current product workflow while intake is added.
+                </p>
+              </div>
+              <CTAButton href="/product" variant="secondary">Review product</CTAButton>
             </div>
           </div>
         </div>

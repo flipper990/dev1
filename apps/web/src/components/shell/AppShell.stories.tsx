@@ -14,12 +14,12 @@ function ShellDemo() {
   return (
     <div className="space-y-4">
       <Card>
-        <h2 className="text-title-s text-ink">Main canvas</h2>
-        <p className="mt-2 text-body-s text-secondary">Primary work stays central and readable.</p>
+        <h2 className="text-title-s text-text-primary">Main canvas</h2>
+        <p className="mt-2 text-body-s text-text-secondary">Primary work stays central and readable.</p>
         <div className="mt-4"><Badge variant="neutral">Focused layout</Badge></div>
       </Card>
       <Card>
-        <p className="text-body-s text-secondary">Secondary information is pushed to contextual surfaces.</p>
+        <p className="text-body-s text-text-secondary">Secondary information is pushed to contextual surfaces.</p>
       </Card>
     </div>
   );
@@ -28,12 +28,12 @@ function ShellDemo() {
 const baseArgs = {
   title: 'Overview',
   subtitle: 'Calm software production workspace.',
-  lifecycle: { label: 'Operational', tone: 'active' as const },
+  lifecycle: { label: 'Preview ready', tone: 'success' as const },
   breadcrumbs: [{ label: 'Workspace' }, { label: 'Overview' }],
   actions: <Button>New project</Button>,
   secondaryActions: <Button variant="secondary">Invite</Button>,
   contextTitle: 'Context',
-  contextContent: <Card><p className="text-body-s text-secondary">Diagnostics and metadata live here.</p></Card>,
+  contextContent: <Card><p className="text-body-s text-text-secondary">Diagnostics and metadata live here.</p></Card>,
   defaultContextOpen: true,
   workspaceName: 'DEVteam Studio',
   children: <ShellDemo />,

@@ -1,25 +1,54 @@
-import { ArrowUpRight, Boxes, CheckCircle2, Code2, Database, Eye, FileCode2, GitBranch, Layers3, LockKeyhole, Server, ShieldCheck } from 'lucide-react';
-import { CTAButton, FeatureCard, MarketingSection, MarketingShell, ProofVisual, TrustStrip } from '../src/components/marketing';
+import { BriefcaseBusiness, CalendarDays, CheckCircle2, Layers3, LayoutDashboard, ShoppingCart, Users } from 'lucide-react';
+import {
+  ComparisonTable,
+  CTAButton,
+  LifecycleDiagram,
+  MarketingSection,
+  MarketingShell,
+  OwnershipCallout,
+  ProofStrip,
+  ProofVisual,
+  TrustSecurityBand,
+  UseCaseGrid,
+} from '../src/components/marketing';
 
 const proofItems = [
-  { title: 'Frontend + backend + database', description: 'Generate application surfaces, service contracts, database schema, and persistence code as one coherent project.', icon: <Layers3 className="h-5 w-5" /> },
-  { title: 'Stack selection', description: 'Choose the implementation stack before generation so output matches your team and deployment target.', icon: <Boxes className="h-5 w-5" /> },
-  { title: 'Preview validation', description: 'Run the generated application and inspect health, logs, and runtime evidence before export.', icon: <Eye className="h-5 w-5" /> },
-  { title: 'Exportable source code', description: 'Keep the generated code in your own repository. DEVteam is a production tool, not a hosting lock-in.', icon: <FileCode2 className="h-5 w-5" /> },
+  { value: '3 layers', label: 'Frontend, backend, database', detail: 'Application UI, service contracts, schema, and persistence are generated as one package.' },
+  { value: '1 preview', label: 'Runtime validation surface', detail: 'Generated output is inspected through preview health, logs, and diagnostics.' },
+  { value: '100%', label: 'Source ownership posture', detail: 'The product direction prioritizes exportable code over proprietary runtime lock-in.' },
 ];
 
-const workflow = ['Define', 'Build', 'Verify', 'Preview', 'Export', 'Launch'];
-
-const differentiators = [
-  'Full-stack output',
-  '100% code ownership',
-  'No platform lock-in',
-  'Diagnostics built in',
-  'Real preview runtime',
-  'Stack choice before build',
+const workflow = [
+  { label: 'Define', detail: 'Capture the product brief and delivery assumptions.' },
+  { label: 'Select', detail: 'Choose the stack before generation starts.' },
+  { label: 'Build', detail: 'Produce UI, API, data, and project structure.' },
+  { label: 'Verify', detail: 'Inspect build health, diagnostics, and runtime evidence.' },
+  { label: 'Preview', detail: 'Review the generated application as the main artifact.' },
+  { label: 'Export', detail: 'Move source into your own engineering process.' },
 ];
 
-const useCases = ['SaaS platforms', 'Marketplaces', 'Internal tools', 'Dashboards', 'Booking systems', 'Social and community platforms'];
+const comparisonRows = [
+  { capability: 'Application scope', devteam: 'Full-stack application foundations', typical: 'Mostly screens or prompt-generated page flows' },
+  { capability: 'Engineering handoff', devteam: 'Exportable source and project artifacts', typical: 'Hosted output or opaque generation state' },
+  { capability: 'Runtime confidence', devteam: 'Preview, logs, diagnostics, and health state', typical: 'Visual preview without production evidence' },
+  { capability: 'Stack control', devteam: 'Stack selected before generation', typical: 'Preset stack or limited implementation control' },
+];
+
+const useCases = [
+  { title: 'SaaS platforms', description: 'Generate product surfaces, account flows, dashboards, and service foundations.', icon: <Layers3 className="h-5 w-5" /> },
+  { title: 'Marketplaces', description: 'Start from structured buyer, seller, listing, and transaction workflows.', icon: <ShoppingCart className="h-5 w-5" /> },
+  { title: 'Internal tools', description: 'Produce admin workflows with data models, actions, and operational views.', icon: <BriefcaseBusiness className="h-5 w-5" /> },
+  { title: 'Dashboards', description: 'Build validated reporting surfaces connected to application data concepts.', icon: <LayoutDashboard className="h-5 w-5" /> },
+  { title: 'Booking systems', description: 'Model scheduling, availability, customer flows, and management screens.', icon: <CalendarDays className="h-5 w-5" /> },
+  { title: 'Communities', description: 'Create foundations for profiles, feeds, moderation, and member workflows.', icon: <Users className="h-5 w-5" /> },
+];
+
+const trustItems = [
+  { label: 'Reviewable artifacts', detail: 'Generated source, preview state, diagnostics, and export package are visible before handoff.' },
+  { label: 'Repository portability', detail: 'Projects are intended to continue in your own repository and delivery system.' },
+  { label: 'Security conversations', detail: 'Enterprise review can cover controls, roadmap, and deployment assumptions.' },
+  { label: 'Operational evidence', detail: 'Runtime preview and logs help teams evaluate generated output.' },
+];
 
 const faq = [
   ['Is DEVteam an AI website builder?', 'No. DEVteam is focused on full-stack software production: application UI, backend services, database structure, preview validation, and exportable source code.'],
@@ -69,9 +98,7 @@ export default function LandingPage() {
         title="A production package, not a landing page mockup."
         description="DEVteam is designed around the artifacts engineering teams expect to review, run, and own."
       >
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {proofItems.map((item) => <FeatureCard key={item.title} {...item} />)}
-        </div>
+        <ProofStrip items={proofItems} />
       </MarketingSection>
 
       <MarketingSection
@@ -80,25 +107,11 @@ export default function LandingPage() {
         description="The workflow keeps generation grounded in software production stages rather than an open-ended prompt loop."
         className="border-y border-border bg-surface-base"
       >
-        <div className="grid gap-3 md:grid-cols-6">
-          {workflow.map((step, index) => (
-            <div key={step} className="rounded-[var(--radius-panel)] border border-border bg-surface-raised p-4 shadow-card">
-              <p className="font-mono text-mono-s text-text-muted">0{index + 1}</p>
-              <h3 className="mt-3 text-label-m text-text-primary">{step}</h3>
-            </div>
-          ))}
-        </div>
+        <LifecycleDiagram steps={workflow} />
       </MarketingSection>
 
       <MarketingSection eyebrow="Differentiators" title="Built for ownership, validation, and engineering control.">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {differentiators.map((item) => (
-            <div key={item} className="flex items-center gap-3 rounded-[var(--radius-panel)] border border-border bg-surface-raised p-4 shadow-hairline">
-              <CheckCircle2 className="h-5 w-5 shrink-0 text-status-success" aria-hidden="true" />
-              <span className="text-body-s text-text-primary">{item}</span>
-            </div>
-          ))}
-        </div>
+        <ComparisonTable rows={comparisonRows} />
       </MarketingSection>
 
       <MarketingSection
@@ -107,42 +120,41 @@ export default function LandingPage() {
         description="Use DEVteam when the output needs application logic, data models, operational visibility, and source ownership."
         className="border-y border-border bg-surface-base"
       >
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {useCases.map((item) => (
-            <div key={item} className="rounded-[var(--radius-panel)] border border-border bg-surface-raised p-5 shadow-card">
-              <h3 className="text-title-s text-text-primary">{item}</h3>
-              <p className="mt-2 text-body-s text-text-secondary">Generate the application foundation, validate behavior, then continue development in your own codebase.</p>
-            </div>
-          ))}
-        </div>
+        <UseCaseGrid items={useCases} />
       </MarketingSection>
 
       <MarketingSection eyebrow="Pricing preview" title="Start with early access. Scale with production needs.">
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="overflow-hidden rounded-[var(--radius-modal)] border border-border bg-surface-raised shadow-card">
           {[
             ['Early access', 'For builders validating the workflow.', 'Join waitlist'],
             ['Studio', 'For teams producing full-stack applications regularly.', 'Request pricing'],
             ['Enterprise', 'For governance, security, and deployment controls.', 'Talk to sales'],
-          ].map(([name, description, cta]) => (
-            <div key={name} className="rounded-[var(--radius-modal)] border border-border bg-surface-raised p-6 shadow-card">
+          ].map(([name, description, cta], index) => (
+            <div key={name} className={index > 0 ? 'border-t border-border-muted p-5 md:grid md:grid-cols-[0.7fr_1fr_0.7fr] md:items-center md:gap-6' : 'p-5 md:grid md:grid-cols-[0.7fr_1fr_0.7fr] md:items-center md:gap-6'}>
               <h3 className="text-title-s text-text-primary">{name}</h3>
-              <p className="mt-2 min-h-[44px] text-body-s text-text-secondary">{description}</p>
-              <div className="mt-5 flex items-center justify-between border-t border-border-muted pt-4">
+              <p className="mt-2 text-body-s text-text-secondary md:mt-0">{description}</p>
+              <div className="mt-4 flex items-center justify-between md:mt-0">
                 <span className="text-label-s text-text-muted">Pricing by access level</span>
-                <ArrowUpRight className="h-4 w-4 text-text-muted" />
+                <span className="text-label-m text-brand-primary">{cta}</span>
               </div>
-              <p className="mt-4 text-label-m text-brand-primary">{cta}</p>
             </div>
           ))}
         </div>
       </MarketingSection>
 
       <MarketingSection eyebrow="Enterprise trust" title="Control points for teams that ship software professionally." className="border-y border-border bg-surface-base">
-        <TrustStrip />
-        <div className="mt-4 grid gap-4 md:grid-cols-3">
-          <FeatureCard title="Security posture" description="Designed around code ownership, reviewable artifacts, and controlled access patterns." icon={<ShieldCheck className="h-5 w-5" />} />
-          <FeatureCard title="Repository portability" description="Move generated projects into your own repository and delivery process." icon={<GitBranch className="h-5 w-5" />} />
-          <FeatureCard title="Technical evidence" description="Use diagnostics and preview validation to assess generated output before handoff." icon={<Code2 className="h-5 w-5" />} />
+        <TrustSecurityBand items={trustItems} />
+        <div className="mt-6">
+          <OwnershipCallout
+            title="The output is meant to leave with you."
+            description="DEVteam is positioned around code ownership, reviewable implementation details, and a handoff into your existing engineering workflow."
+            points={[
+              'Generated source is the core artifact.',
+              'Preview and diagnostics support acceptance review.',
+              'Export is part of the product workflow, not an afterthought.',
+            ]}
+            action={<CTAButton href="/product" variant="secondary">See product flow</CTAButton>}
+          />
         </div>
       </MarketingSection>
 

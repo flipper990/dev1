@@ -1,13 +1,9 @@
 import { AlertTriangle, CheckCircle2, Clock3, Loader2, Rocket, Wrench } from 'lucide-react';
-import { Badge, Button, Card, StatusDot } from '../../../../components/ui';
+import { Button, Card } from '../../../../components/ui';
 import type { UnifiedProjectStatus, WorkflowTimelineViewModel } from '../model/project-status';
 
 interface ProjectStatusSummaryProps {
   status: UnifiedProjectStatus;
-  buildHealthy: boolean;
-  previewHealthy: boolean;
-  verificationHealthy: boolean;
-  stale?: boolean;
   timeline?: WorkflowTimelineViewModel;
   onPrimaryAction?: () => void;
 }
@@ -31,10 +27,6 @@ function getPrimaryActionIcon(status: UnifiedProjectStatus) {
 
 export function ProjectStatusSummary({
   status,
-  buildHealthy,
-  previewHealthy,
-  verificationHealthy,
-  stale = false,
   timeline,
   onPrimaryAction,
 }: ProjectStatusSummaryProps) {
@@ -47,12 +39,9 @@ export function ProjectStatusSummary({
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-title-s text-text-primary">Project progress</h3>
+            <h3 className="text-title-s text-text-primary">Lifecycle progress</h3>
             <p className="mt-1 text-body-s text-text-secondary">{status.description}</p>
           </div>
-          <Badge statusKey={status.key} variant={status.healthy ? 'success' : stale ? 'warning' : 'error'}>
-            {status.label}
-          </Badge>
         </div>
 
         <div className="rounded-[var(--radius-control)] border border-border bg-surface-tint p-3">
@@ -70,27 +59,6 @@ export function ProjectStatusSummary({
             </ul>
           ) : null}
         </div>
-
-        <dl className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-[var(--radius-control)] border border-border bg-surface-tint p-3">
-            <dt className="text-label-s text-text-secondary">Build</dt>
-            <dd className="mt-1">
-              <StatusDot tone={buildHealthy ? 'success' : 'warning'} label={buildHealthy ? 'Healthy' : 'Attention needed'} />
-            </dd>
-          </div>
-          <div className="rounded-[var(--radius-control)] border border-border bg-surface-tint p-3">
-            <dt className="text-label-s text-text-secondary">Preview</dt>
-            <dd className="mt-1">
-              <StatusDot tone={previewHealthy ? 'success' : 'warning'} label={previewHealthy ? 'Ready' : 'Not ready'} />
-            </dd>
-          </div>
-          <div className="rounded-[var(--radius-control)] border border-border bg-surface-tint p-3">
-            <dt className="text-label-s text-text-secondary">Verification</dt>
-            <dd className="mt-1">
-              <StatusDot tone={verificationHealthy ? 'success' : 'neutral'} label={verificationHealthy ? 'Passed' : 'Pending'} />
-            </dd>
-          </div>
-        </dl>
 
         <div className="flex flex-col items-start gap-2 sm:items-end">
           <Button

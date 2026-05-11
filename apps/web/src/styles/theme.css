@@ -100,58 +100,6 @@
   --color-action-secondary-hover: var(--color-surface-tint);
   --color-action-ghost-hover: var(--color-surface-tint);
 
-  /* Compatibility aliases for legacy DEVteam components */
-  --bg: var(--color-surface-canvas);
-  --bg-1: var(--color-surface-base);
-  --bg-2: var(--color-surface-raised);
-  --bg-3: var(--color-surface-tint);
-  --bg-void: var(--color-surface-canvas);
-  --bg-surface: var(--color-surface-raised);
-  --bg-elevated: var(--color-surface-tint);
-  --surface: color-mix(in srgb, var(--color-surface-raised) 84%, transparent);
-  --surface-hover: color-mix(in srgb, var(--color-surface-tint) 78%, transparent);
-  --surface-active: var(--color-surface-tint);
-  --surface-raised: var(--color-surface-raised);
-  --border: var(--color-border-default);
-  --border-subtle: var(--color-border-muted);
-  --border-strong: var(--color-border-strong);
-  --border-focus: var(--color-brand-primary);
-  --text: var(--color-text-primary);
-  --text-2: var(--color-text-secondary);
-  --muted: var(--color-text-muted);
-  --muted-2: color-mix(in srgb, var(--color-text-muted) 72%, var(--color-surface-canvas));
-  --brand-1: var(--color-brand-primary);
-  --brand-2: var(--color-brand-primary-hover);
-  --brand-3: var(--color-brand-secondary);
-  --brand-grad: linear-gradient(135deg, var(--color-brand-primary) 0%, var(--color-brand-primary-hover) 58%, var(--color-brand-secondary) 100%);
-  --brand-grad-soft: linear-gradient(135deg, color-mix(in srgb, var(--color-brand-primary) 14%, transparent), color-mix(in srgb, var(--color-brand-secondary) 12%, transparent));
-  --accent: var(--color-brand-primary);
-  --accent-dim: var(--color-brand-primary-subtle);
-  --accent-amber: var(--color-brand-secondary);
-  --accent-blue: var(--color-brand-primary);
-  --text-primary: var(--color-text-primary);
-  --text-secondary: var(--color-text-secondary);
-  --success: var(--color-status-success);
-  --info: var(--color-status-info);
-  --warning: var(--color-status-warning);
-  --error: var(--color-status-error);
-
-  --agent-planner: var(--color-brand-secondary);
-  --agent-architect: var(--color-status-info);
-  --agent-developer: var(--color-brand-primary);
-  --agent-reviewer: var(--color-text-secondary);
-  --agent-tester: var(--color-status-success);
-  --agent-debugger: var(--color-status-warning);
-  --agent-optimizer: var(--color-brand-secondary);
-  --agent-devops: var(--color-status-error);
-  --agent-planner-bg: var(--color-brand-secondary-subtle);
-  --agent-architect-bg: var(--color-status-info-subtle);
-  --agent-developer-bg: var(--color-brand-primary-subtle);
-  --agent-reviewer-bg: var(--color-surface-tint);
-  --agent-tester-bg: var(--color-status-success-subtle);
-  --agent-debugger-bg: var(--color-status-warning-subtle);
-  --agent-optimizer-bg: var(--color-brand-secondary-subtle);
-  --agent-devops-bg: var(--color-status-error-subtle);
 }
 
 .dark,
@@ -232,21 +180,6 @@ select {
 [data-mono='true'] {
   font-family: var(--font-mono);
   font-feature-settings: 'zero';
-}
-
-.devteam-root {
-  min-height: 100vh;
-  background: var(--color-surface-canvas);
-  color: var(--color-text-primary);
-}
-
-.devteam-root .devteam-glow {
-  box-shadow: none;
-}
-
-.devteam-root .devteam-focus-glow:focus-within {
-  box-shadow: var(--focus-ring);
-  border-color: var(--color-brand-primary);
 }
 
 @media (prefers-reduced-motion: reduce) {

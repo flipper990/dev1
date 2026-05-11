@@ -4,7 +4,7 @@ import { Tabs, type TabItem } from '../../../../components/ui';
 
 export const WORKSPACE_TABS: TabItem[] = [
   { id: 'overview', label: 'Overview' },
-  { id: 'preview', label: 'Preview' },
+  { id: 'preview', label: 'Preview details' },
   { id: 'build', label: 'Build' },
   { id: 'verify', label: 'Verify' },
   { id: 'activity', label: 'Activity' },

@@ -29,6 +29,7 @@ interface AppShellProps {
   defaultContextOpen?: boolean;
   workspaceName?: string;
   projectName?: string;
+  compactHeader?: boolean;
   className?: string;
 }
 
@@ -49,6 +50,7 @@ export function AppShell({
   defaultContextOpen = false,
   workspaceName,
   projectName,
+  compactHeader = false,
   className,
 }: AppShellProps) {
   const pathname = usePathname() ?? '/';
@@ -170,7 +172,7 @@ export function AppShell({
       { match: /^(workspace|builder|build|new project|create project)$/, href: '/workspace' },
       { match: /^(activity|agents|pipeline)$/, href: '/agents' },
       { match: /^(diagnostics|logs)$/, href: '/workspace?tab=logs' },
-      { match: /^(docs|documentation|how it works)$/, href: '/how-it-works' },
+      { match: /^(docs|documentation|how it works)$/, href: '/docs' },
       { match: /^(billing|usage|costs?)$/, href: '/billing' },
       { match: /^(settings|preferences)$/, href: '/settings' },
       { match: /^(security|admin|trust)$/, href: '/security' },
@@ -265,8 +267,9 @@ export function AppShell({
               actions={actions}
               secondaryActions={secondaryActions}
               breadcrumbs={breadcrumbs}
+              compact={compactHeader}
             />
-            <div className="min-w-0 pt-6 sm:pt-7">{children}</div>
+            <div className={cn('min-w-0', compactHeader ? 'pt-4' : 'pt-6 sm:pt-7')}>{children}</div>
           </section>
         </main>
       </div>

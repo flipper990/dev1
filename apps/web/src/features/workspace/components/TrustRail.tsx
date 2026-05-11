@@ -1,12 +1,9 @@
 import type { GeneratedProject } from '../../../../types/dashboard';
-import { Card, StatusDot } from '../../../../components/ui';
-import type { UnifiedProjectStatus } from '../../projects/model';
-import { derivePreviewTruth, previewToneToStatusDot } from '../../preview/model';
+import { Card } from '../../../../components/ui';
 
 interface TrustRailProps {
   project: GeneratedProject | null;
   selectedProjectId: string | null;
-  status: UnifiedProjectStatus;
 }
 
 function formatDate(value: string | undefined | null) {
@@ -16,9 +13,8 @@ function formatDate(value: string | undefined | null) {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date);
 }
 
-export function TrustRail({ project, selectedProjectId, status }: TrustRailProps) {
+export function TrustRail({ project, selectedProjectId }: TrustRailProps) {
   const syncedAt = project?.preview?.previewReadyAt ?? project?.completedAt ?? project?.createdAt;
-  const previewTruth = derivePreviewTruth(project);
   const exportReady = project?.status === 'completed';
 
   return (
@@ -26,12 +22,11 @@ export function TrustRail({ project, selectedProjectId, status }: TrustRailProps
       <Card>
         <p className="text-label-s uppercase tracking-[0.16em] text-text-muted">Trust and ownership</p>
         <h3 className="mt-2 text-title-s text-text-primary">You own the generated source.</h3>
-        <div className="mt-4 space-y-2">
-          <StatusDot tone={exportReady ? 'success' : project ? 'warning' : 'neutral'} label={exportReady ? 'Exportable source package' : 'Export waits for completed source'} />
-          <StatusDot tone="success" label="No proprietary runtime lock-in" />
-          <StatusDot tone={previewToneToStatusDot(previewTruth.tone)} label={`Preview evidence: ${previewTruth.label}`} />
-          <StatusDot tone={status.healthy ? 'success' : 'warning'} label={`Unified status: ${status.label}`} />
-        </div>
+        <ul className="mt-4 space-y-2 text-body-s text-text-secondary">
+          <li>{exportReady ? 'Source package can be exported from this project.' : 'Source export becomes available after completion evidence is present.'}</li>
+          <li>No proprietary runtime lock-in.</li>
+          <li>Preview and lifecycle statuses are summarized in the workspace header and preview frame.</li>
+        </ul>
       </Card>
 
       <Card>

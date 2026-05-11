@@ -17,6 +17,7 @@ interface PageHeaderProps {
   actions?: ReactNode;
   secondaryActions?: ReactNode;
   breadcrumbs?: BreadcrumbItem[];
+  compact?: boolean;
   className?: string;
 }
 
@@ -35,19 +36,20 @@ export function PageHeader({
   actions,
   secondaryActions,
   breadcrumbs,
+  compact = false,
   className,
 }: PageHeaderProps) {
   return (
-    <header className={cn('space-y-5 border-b border-border-muted pb-7 sm:pb-8', className)}>
+    <header className={cn(compact ? 'space-y-3 border-b border-border-muted pb-4' : 'space-y-5 border-b border-border-muted pb-7 sm:pb-8', className)}>
       {breadcrumbs ? <Breadcrumbs items={breadcrumbs} /> : null}
 
-      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0 space-y-2.5">
+      <div className={cn('flex flex-col xl:flex-row xl:items-start xl:justify-between', compact ? 'gap-3' : 'gap-5')}>
+        <div className={cn('min-w-0', compact ? 'space-y-1.5' : 'space-y-2.5')}>
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-title-l font-semibold text-text-primary">{title}</h1>
+            <h1 className={cn('font-semibold text-text-primary', compact ? 'text-title-s' : 'text-title-l')}>{title}</h1>
             {lifecycle ? <Badge variant={lifecycleToneVariant[lifecycle.tone ?? 'neutral']}>{lifecycle.label}</Badge> : null}
           </div>
-          {subtitle ? <p className="max-w-[88ch] text-body-s leading-6 text-text-secondary">{subtitle}</p> : null}
+          {subtitle ? <p className={cn('max-w-[88ch] text-body-s text-text-secondary', compact ? 'leading-5' : 'leading-6')}>{subtitle}</p> : null}
         </div>
 
         {(secondaryActions || actions) ? (

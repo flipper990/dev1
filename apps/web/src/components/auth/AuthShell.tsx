@@ -3,6 +3,7 @@ import { cloneElement, isValidElement } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { Factory, ShieldCheck } from 'lucide-react';
 import { cn } from '../../../lib/cn';
+import { SystemBanner } from '../feedback';
 
 interface AuthShellProps {
   eyebrow?: string;
@@ -130,21 +131,22 @@ export function AuthField({
 }
 
 export function AuthStatus({ state = 'unavailable' }: { state?: 'checking' | 'unavailable' | 'error' }) {
+  if (state === 'checking') {
+    return (
+      <SystemBanner
+        tone="info"
+        title="Checking auth availability"
+        description="Checking whether an authentication backend is connected."
+      />
+    );
+  }
+
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      className={cn(
-        'rounded-[var(--radius-panel)] border p-3 text-body-s',
-        state === 'checking' && 'border-status-info bg-status-info-subtle text-status-info',
-        state === 'unavailable' && 'border-status-warning bg-status-warning-subtle text-status-warning',
-        state === 'error' && 'border-status-error bg-status-error-subtle text-status-error',
-      )}
-    >
-      {state === 'checking'
-        ? 'Checking authentication service availability...'
-        : 'Authentication backend is not connected in this repository yet. Form submission is disabled until auth contracts are added.'}
-    </div>
+    <SystemBanner
+      tone={state === 'error' ? 'error' : 'warning'}
+      title="Authentication endpoint required"
+      description="Email auth, SSO, password reset, invite acceptance, and workspace session actions are intentionally disabled until real auth contracts are connected."
+    />
   );
 }
 

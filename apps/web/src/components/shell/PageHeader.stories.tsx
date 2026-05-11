@@ -7,8 +7,8 @@ const meta: Meta<typeof PageHeader> = {
   component: PageHeader,
   args: {
     title: 'Projects',
-    subtitle: 'Track delivery readiness and operational status.',
-    lifecycle: { label: 'Operational', tone: 'active' },
+    subtitle: 'Track delivery readiness and page-level availability.',
+    lifecycle: { label: 'Preview ready', tone: 'success' },
     breadcrumbs: [
       { label: 'Workspace', href: '/' },
       { label: 'Projects' },

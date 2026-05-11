@@ -1,7 +1,8 @@
+import Link from 'next/link';
 import { AppShell } from '../../src/components/shell';
 import { Button, Card, Input, Panel, Textarea } from '../../components/ui';
 import { SetupStepper } from '../../src/features/settings/components';
-import { SystemBanner } from '../../src/components/feedback';
+import { InlineStatusPanel, SystemBanner } from '../../src/components/feedback';
 
 export default function SettingsPage() {
   return (
@@ -10,8 +11,7 @@ export default function SettingsPage() {
       subtitle="Workspace-wide defaults and operating policies."
       lifecycle={{ label: 'Settings API missing', tone: 'warning' }}
       breadcrumbs={[{ label: 'Workspace', href: '/overview' }, { label: 'Settings' }]}
-      actions={<Button disabled title="Settings cannot be saved because no workspace settings endpoint exists">Save unavailable</Button>}
-      secondaryActions={<Button variant="secondary" disabled title="There is no persisted settings draft to discard">Discard unavailable</Button>}
+      actions={<Link href="/docs/getting-started"><Button variant="secondary">Open setup docs</Button></Link>}
       contextTitle="Settings contract"
       contextDescription="Administrative persistence is disabled until backend contracts exist."
       contextContent={
@@ -27,7 +27,17 @@ export default function SettingsPage() {
         <SystemBanner
           tone="warning"
           title="Settings are read-only"
-          description="Workspace settings require a backend persistence contract. Actions are disabled until that endpoint exists."
+          description="Workspace settings require a backend persistence contract. The form is shown as a planned shape only, and save/discard actions are intentionally unavailable."
+        />
+
+        <InlineStatusPanel
+          tone="warning"
+          title="Save and discard require settings persistence"
+          where="Workspace identity, defaults, approval policy, and region preferences"
+          whatWorked="The onboarding checklist and documentation links remain available without pretending changes are saved."
+          whatFailed="No workspace settings read/write endpoint is connected."
+          nextAction="Add a settings API contract before enabling mutable workspace policy controls."
+          actions={<Link href="/overview"><Button variant="secondary" size="sm">Return to overview</Button></Link>}
         />
 
         <div className="grid gap-4 xl:grid-cols-2">

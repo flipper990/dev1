@@ -15,36 +15,23 @@ type Story = StoryObj<typeof ProjectStatusSummary>;
 export const Loading: Story = {
   args: {
     status: deriveUnifiedProjectStatus({ ...sample, status: 'generating' } as GeneratedProject),
-    buildHealthy: true,
-    previewHealthy: false,
-    verificationHealthy: false,
   },
 };
 
 export const Success: Story = {
   args: {
     status: deriveUnifiedProjectStatus(sample),
-    buildHealthy: true,
-    previewHealthy: true,
-    verificationHealthy: true,
   },
 };
 
 export const Stale: Story = {
   args: {
     status: deriveUnifiedProjectStatus(sample, { forceStale: true }),
-    buildHealthy: true,
-    previewHealthy: false,
-    verificationHealthy: false,
-    stale: true,
   },
 };
 
 export const Failure: Story = {
   args: {
     status: deriveUnifiedProjectStatus({ ...sample, status: 'failed' } as GeneratedProject),
-    buildHealthy: false,
-    previewHealthy: false,
-    verificationHealthy: false,
   },
 };

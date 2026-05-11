@@ -47,6 +47,7 @@ export class ProjectRecordCorruptError extends Error {
 import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import type { Session, Task, AgentRole } from '../../../../packages/agent-core/src/types.js';
 import { auditAndLog } from '../pipeline/file-integrity.js';
+import type { PipelineRunLedger } from '../pipeline/pipeline-ledger.js';
 
 // â”€â”€ Version / Diff Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -253,6 +254,12 @@ export interface ProjectRecord {
    *  from a soft-deadline break). The project still finishes as 'completed'
    *  but consumers can surface these. */
   warnings?: Array<{ code: string; message: string; details?: Record<string, unknown> }>;
+  /** Durable project diagnostics collected during generation and validation. */
+  diagnostics?: {
+    /** Append-only generation-step ledger populated from pipeline events. */
+    pipelineLedger?: PipelineRunLedger;
+    [key: string]: unknown;
+  };
   /**
    * Live heartbeat used by external watchdogs to distinguish a *stuck*
    * pipeline from one that is genuinely making early-startup progress.

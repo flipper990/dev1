@@ -1,4 +1,4 @@
-import { Card, StatusDot } from '../../../../components/ui';
+import { Card } from '../../../../components/ui';
 
 interface BuildEvidencePanelProps {
   pipelineStep?: string;
@@ -21,11 +21,15 @@ export function BuildEvidencePanel({
     <Card>
       <h3 className="text-title-s text-text-primary">Build evidence</h3>
       <p className="mt-1 text-body-s text-text-secondary">Concrete proof of build quality and runtime behavior.</p>
-      <div className="mt-4 space-y-2">
-        <StatusDot tone={checksHealthy ? 'success' : 'warning'} label={`${checksPassed}/${checksTotal} checks passed`} />
-        <StatusDot tone="neutral" label={`Current step: ${pipelineStep}`} />
-      </div>
       <dl className="mt-4 grid gap-2 text-body-s text-text-secondary sm:grid-cols-2">
+        <div className="rounded-[var(--radius-control)] border border-border bg-surface-tint p-3">
+          <dt>Checks</dt>
+          <dd className="mt-1 text-text-primary">{checksPassed}/{checksTotal} passed{checksHealthy ? '' : ' so far'}</dd>
+        </div>
+        <div className="rounded-[var(--radius-control)] border border-border bg-surface-tint p-3">
+          <dt>Current step</dt>
+          <dd className="mt-1 text-text-primary">{pipelineStep}</dd>
+        </div>
         <div className="rounded-[var(--radius-control)] border border-border bg-surface-tint p-3">
           <dt>Runtime</dt>
           <dd className="mt-1 text-text-primary">{Math.round(runtimeMs / 1000)}s</dd>

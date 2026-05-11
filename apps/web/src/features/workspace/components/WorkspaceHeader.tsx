@@ -1,8 +1,7 @@
 import type { GeneratedProject } from '../../../../types/dashboard';
-import { Badge, Button, Card, Select, StatusDot } from '../../../../components/ui';
+import { Badge, Button, Card, Select } from '../../../../components/ui';
 import type { UnifiedProjectStatus } from '../../projects/model';
-import { deriveProjectPresentation, sortProjectsByUpdated } from '../../projects/model';
-import { derivePreviewTruth, previewToneToStatusDot } from '../../preview/model';
+import { sortProjectsByUpdated } from '../../projects/model';
 
 interface WorkspaceHeaderProps {
   project: GeneratedProject | null;
@@ -25,10 +24,6 @@ function formatStack(project: GeneratedProject | null) {
   return values.slice(0, 4).join(' + ') || 'Stack pending';
 }
 
-function previewLabel(project: GeneratedProject | null) {
-  return derivePreviewTruth(project).label;
-}
-
 export function WorkspaceHeader({
   project,
   projects,
@@ -39,53 +34,27 @@ export function WorkspaceHeader({
   onPrimaryAction,
 }: WorkspaceHeaderProps) {
   const sortedProjects = sortProjectsByUpdated(projects);
-  const presentation = project ? deriveProjectPresentation(project) : null;
-  const previewTruth = derivePreviewTruth(project);
 
   return (
-    <Card className="overflow-hidden" padded={false}>
-      <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="min-w-0 p-5 sm:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-label-s uppercase tracking-[0.16em] text-text-muted">Production workspace</p>
-              <h2 className="mt-2 truncate text-title-l text-text-primary">
-                {project?.name ?? (loading ? 'Loading project' : 'Select a project')}
-              </h2>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                {selectedProjectId ? (
-                  <span className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint px-2 py-1 font-mono text-mono-s text-text-secondary">
-                    {selectedProjectId}
-                  </span>
-                ) : null}
-                <Badge statusKey={status.key}>{status.label}</Badge>
-              </div>
-            </div>
-            <Button onClick={onPrimaryAction} disabled={!project}>
-              {status.nextActionLabel}
-            </Button>
+    <Card className="overflow-hidden bg-surface-base shadow-hairline" padded={false}>
+      <div className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h2 className="truncate text-title-s text-text-primary">
+              {project?.name ?? (loading ? 'Loading project' : 'Select a project')}
+            </h2>
+            <Badge statusKey={status.key}>{status.label}</Badge>
           </div>
-
-          <dl className="mt-6 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3">
-              <dt className="text-label-s text-text-muted">Stack</dt>
-              <dd className="mt-1 truncate text-body-s text-text-primary">{formatStack(project)}</dd>
-            </div>
-            <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3">
-              <dt className="text-label-s text-text-muted">Preview</dt>
-              <dd className="mt-1 text-body-s text-text-primary">{previewLabel(project)}</dd>
-            </div>
-            <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3">
-              <dt className="text-label-s text-text-muted">Export</dt>
-              <dd className="mt-1 text-body-s text-text-primary">{presentation?.export.label ?? 'Pending project'}</dd>
-            </div>
-          </dl>
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-label-s text-text-secondary">
+            {selectedProjectId ? <span className="max-w-[220px] truncate font-mono text-mono-s text-text-muted sm:max-w-[340px]">{selectedProjectId}</span> : null}
+            {selectedProjectId ? <span className="text-text-muted">/</span> : null}
+            <span className="max-w-[48ch] truncate">{formatStack(project)}</span>
+          </div>
         </div>
 
-        <aside className="border-t border-border-muted bg-surface-base p-5 lg:border-l lg:border-t-0 sm:p-6">
-          <label htmlFor="workspace-project" className="text-label-m text-text-primary">Project context</label>
-          <p className="mt-1 text-body-s text-text-secondary">Selection and actions are bound to projectId.</p>
-          <div className="mt-3">
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
+          <div className="min-w-0 flex-1 lg:w-[340px] lg:flex-none">
+            <label htmlFor="workspace-project" className="sr-only">Project context</label>
             <Select
               id="workspace-project"
               value={selectedProjectId ?? ''}
@@ -100,11 +69,10 @@ export function WorkspaceHeader({
               ))}
             </Select>
           </div>
-          <div className="mt-4 space-y-2">
-            <StatusDot tone={project?.status === 'failed' ? 'error' : project?.status === 'generating' ? 'active' : project ? 'success' : 'neutral'} label={`Build: ${project?.status ?? 'No project'}`} />
-            <StatusDot tone={previewToneToStatusDot(previewTruth.tone)} label={`Preview: ${previewTruth.label}`} />
-          </div>
-        </aside>
+          <Button onClick={onPrimaryAction} disabled={!project} variant="secondary">
+            {status.nextActionLabel}
+          </Button>
+        </div>
       </div>
     </Card>
   );

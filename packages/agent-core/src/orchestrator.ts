@@ -11,6 +11,7 @@ import {
   type PipelineEvent,
   type PipelineEventHandler,
   type CachedStepResult,
+  type PipelineArtifactSummary,
   PIPELINE_STEPS,
 } from './pipeline-types';
 import { executeStep, getStepCacheKey, writeStepCache } from './step-executor';
@@ -361,11 +362,12 @@ export class PipelineOrchestrator {
           totalTokens: tokensIn + tokensOut,
           costUsd,
         },
+        artifactSummary: summarizeStepOutput(task.output),
       });
     } else {
       stepState.status = 'failed';
       stepState.error = task.error?.message ?? 'Unknown error';
-      this.emit({ type: 'step:failed', sessionId: session.id, stepId: step.id, agent: step.agent, error: stepState.error, critical: step.critical });
+      this.emit({ type: 'step:failed', sessionId: session.id, stepId: step.id, agent: step.agent, error: stepState.error, critical: step.critical, errorCode: task.error?.code });
 
       if (step.critical) {
         state.status = 'failed';
@@ -385,5 +387,54 @@ export class PipelineOrchestrator {
       stepsFailed:    state.steps.filter(s => s.status === 'failed').length,
       stepsSkipped:   state.steps.filter(s => s.status === 'skipped').length,
     };
+  }
+}
+
+function summarizeStepOutput(output: Record<string, unknown> | undefined): PipelineArtifactSummary | null {
+  if (!output || typeof output !== 'object') return null;
+  const keys = Object.keys(output).sort();
+  const summary: PipelineArtifactSummary = {
+    kind: keys.length === 0 ? 'empty' : 'object',
+    keys,
+    outputSizeBytes: safeJson(output).length,
+  };
+
+  const files = pathList(output.files);
+  if (files) summary.files = { count: files.length, samplePaths: files.slice(0, 12) };
+
+  if (Array.isArray(output.patches)) summary.patches = { count: output.patches.length };
+
+  const newFiles = pathList(output.newFiles);
+  if (newFiles) summary.newFiles = { count: newFiles.length, samplePaths: newFiles.slice(0, 12) };
+
+  if (Array.isArray(output.issues)) summary.issues = { count: output.issues.length };
+  if (typeof output.productName === 'string') summary.productName = output.productName;
+  if (Array.isArray(output.featureSlices)) summary.featureSlices = { count: output.featureSlices.length };
+  if (Array.isArray(output.apiContracts)) summary.apiContracts = { count: output.apiContracts.length };
+  if (Array.isArray(output.frontendPages)) summary.frontendPages = { count: output.frontendPages.length };
+  if (Array.isArray(output.components)) summary.components = { count: output.components.length };
+  if (typeof output.verdict === 'string') summary.verdict = output.verdict;
+  if (typeof output.summary === 'string') summary.summary = output.summary.slice(0, 240);
+
+  return summary;
+}
+
+function pathList(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  return value
+    .map(item => {
+      if (item && typeof item === 'object' && typeof (item as { path?: unknown }).path === 'string') {
+        return (item as { path: string }).path;
+      }
+      return null;
+    })
+    .filter((path): path is string => path !== null);
+}
+
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '{}';
   }
 }

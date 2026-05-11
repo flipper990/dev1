@@ -1,7 +1,6 @@
 import type { GeneratedProject } from '../../../../types/dashboard';
-import { Badge, Button, Card, StatusDot } from '../../../../components/ui';
+import { Badge, Button, Card } from '../../../../components/ui';
 import type { UnifiedProjectStatus } from '../model/project-status';
-import { derivePreviewTruth, previewToneToStatusDot } from '../../preview/model';
 
 interface ProjectHeroProps {
   project: GeneratedProject | null;
@@ -11,7 +10,6 @@ interface ProjectHeroProps {
 
 export function ProjectHero({ project, status, onPrimaryAction }: ProjectHeroProps) {
   const projectName = project?.name ?? 'No project selected';
-  const previewTruth = derivePreviewTruth(project);
 
   return (
     <Card>
@@ -29,9 +27,8 @@ export function ProjectHero({ project, status, onPrimaryAction }: ProjectHeroPro
           </div>
         </div>
 
-        <div className="min-w-[260px] space-y-2 rounded-[var(--radius-panel)] border border-border bg-surface-tint p-4">
-          <StatusDot tone={status.healthy ? 'success' : 'warning'} label={status.healthy ? 'Healthy' : 'Needs attention'} />
-          <StatusDot tone={previewToneToStatusDot(previewTruth.tone)} label={previewTruth.label} />
+        <div className="min-w-[260px] rounded-[var(--radius-panel)] border border-border bg-surface-tint p-4">
+          <p className="text-label-s text-text-muted">Primary action</p>
           <Button className="mt-2 w-full" onClick={onPrimaryAction} disabled={!onPrimaryAction} title={!onPrimaryAction ? 'Open the project workspace to run this action.' : undefined}>
             {onPrimaryAction ? status.nextActionLabel : 'Action unavailable'}
           </Button>

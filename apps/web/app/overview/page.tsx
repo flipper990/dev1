@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { BookOpen, LifeBuoy } from 'lucide-react';
 import { AppShell } from '../../src/components/shell';
-import { Button, Card, Panel, Skeleton, StatusDot } from '../../components/ui';
+import { Button, Card, Panel, Skeleton } from '../../components/ui';
 import { listProjects } from '../../lib/api';
 import type { GeneratedProject } from '../../types/dashboard';
 import {
@@ -15,7 +15,6 @@ import {
   UsageSummary,
 } from '../../src/features/projects/components';
 import { buildWorkflowTimelineViewModel, deriveUnifiedProjectStatus, sortProjectsByUpdated } from '../../src/features/projects/model';
-import { derivePreviewTruth } from '../../src/features/preview/model';
 
 export default function DashboardPage() {
   const [projects, setProjects] = useState<GeneratedProject[]>([]);
@@ -45,7 +44,6 @@ export default function DashboardPage() {
 
   const activeProject = projects[0] ?? null;
   const status = deriveUnifiedProjectStatus(activeProject);
-  const previewTruth = derivePreviewTruth(activeProject);
   const timeline = buildWorkflowTimelineViewModel(activeProject, status);
 
   const recentActivity = useMemo(() => {
@@ -86,10 +84,6 @@ export default function DashboardPage() {
           <div className="grid min-w-0 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
             <ProjectStatusSummary
               status={status}
-              buildHealthy={activeProject?.status !== 'failed'}
-              previewHealthy={previewTruth.isHealthy}
-              verificationHealthy={activeProject?.runtimeValidation?.finalVerdict === 'pass'}
-              stale={status.key === 'stale'}
               timeline={timeline}
             />
             <UsageSummary projects={projects} />
@@ -117,7 +111,7 @@ export default function DashboardPage() {
 
               <Panel title="Support and docs" subtitle="Shortcuts for production work.">
                 <div className="space-y-3">
-                  <Link href="/how-it-works" className="flex items-start gap-3 rounded-[var(--radius-control)] border border-border bg-surface-base p-3 hover:bg-surface-tint">
+                  <Link href="/docs/project-lifecycle" className="flex items-start gap-3 rounded-[var(--radius-control)] border border-border bg-surface-base p-3 hover:bg-surface-tint">
                     <BookOpen className="mt-0.5 h-4 w-4 text-brand-primary" />
                     <span><span className="block text-label-m text-text-primary">Workflow docs</span><span className="block text-body-s text-text-secondary">Define, build, verify, preview, export, launch.</span></span>
                   </Link>
@@ -125,7 +119,7 @@ export default function DashboardPage() {
                     <LifeBuoy className="mt-0.5 h-4 w-4 text-brand-primary" />
                     <span><span className="block text-label-m text-text-primary">Support</span><span className="block text-body-s text-text-secondary">Get help with production workflow setup.</span></span>
                   </Link>
-                  <StatusDot tone={error ? 'error' : 'success'} label={error ? 'Project API unavailable' : 'Project API connected'} />
+                  <p className="text-body-s text-text-secondary">{error ? 'Project API unavailable.' : 'Project API connected.'}</p>
                 </div>
               </Panel>
             </div>

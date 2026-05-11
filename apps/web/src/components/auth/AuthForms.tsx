@@ -46,10 +46,22 @@ export function LoginForm() {
       <AuthField id="password" label="Password" error={touched ? errors.password : undefined}>
         <Input id="password" type="password" autoComplete="current-password" value={password} onBlur={() => setTouched(true)} onChange={(event) => setPassword(event.target.value)} invalid={touched && Boolean(errors.password)} />
       </AuthField>
-      {canSubmit ? <Button type="submit" className="w-full">Sign in</Button> : <DisabledAction label="Sign in disabled" />}
-      <button type="button" disabled className="inline-flex h-11 w-full cursor-not-allowed items-center justify-center gap-2 rounded-[var(--radius-control)] border border-border bg-surface-raised px-4 text-label-m text-text-muted">
-        <KeyRound className="h-4 w-4" /> Continue with SSO unavailable
+      {canSubmit ? <Button type="submit" className="w-full">Sign in</Button> : <DisabledAction label="Sign in requires auth endpoint" />}
+      <button
+        type="button"
+        disabled
+        title="SSO requires an identity-provider backend contract"
+        className="inline-flex h-11 w-full cursor-not-allowed items-center justify-center gap-2 rounded-[var(--radius-control)] border border-border bg-surface-raised px-4 text-label-m text-text-muted"
+      >
+        <KeyRound className="h-4 w-4" /> SSO coming soon
       </button>
+      <div className="rounded-[var(--radius-panel)] border border-border bg-surface-base p-3 text-body-s text-text-secondary">
+        <p>Available now: product overview, workflow docs, and workspace preview pages.</p>
+        <div className="mt-2 flex flex-wrap gap-3 text-label-s">
+          <Link href="/waitlist" className="text-brand-primary hover:text-brand-primary-hover">Join early access</Link>
+          <Link href="/docs" className="text-brand-primary hover:text-brand-primary-hover">Open docs</Link>
+        </div>
+      </div>
       <div className="flex flex-wrap justify-between gap-3 text-label-s text-text-secondary">
         <Link href="/forgot-password" className="hover:text-text-primary">Forgot password?</Link>
         <Link href="/signup" className="hover:text-text-primary">Create account</Link>
@@ -83,8 +95,14 @@ export function SignupForm() {
       <AuthField id="password" label="Password" hint="Use at least 10 characters." error={touched ? errors.password : undefined}>
         <Input id="password" type="password" autoComplete="new-password" value={password} onBlur={() => setTouched(true)} onChange={(event) => setPassword(event.target.value)} invalid={touched && Boolean(errors.password)} />
       </AuthField>
-      {canSubmit ? <Button type="submit" className="w-full">Create account</Button> : <DisabledAction label="Create account disabled" />}
-      <p className="text-label-s text-text-muted">SSO and email verification require backend auth contracts before account creation can be enabled.</p>
+      {canSubmit ? <Button type="submit" className="w-full">Create account</Button> : <DisabledAction label="Create account requires auth endpoint" />}
+      <div className="rounded-[var(--radius-panel)] border border-border bg-surface-base p-3 text-body-s text-text-secondary">
+        <p>Account creation is planned, but no signup, email verification, or session endpoint is connected yet.</p>
+        <div className="mt-2 flex flex-wrap gap-3 text-label-s">
+          <Link href="/waitlist" className="text-brand-primary hover:text-brand-primary-hover">Join early access</Link>
+          <Link href="/docs" className="text-brand-primary hover:text-brand-primary-hover">Open docs</Link>
+        </div>
+      </div>
       <p className="text-label-s text-text-secondary">Already have an account? <Link href="/login" className="text-brand-primary hover:text-brand-primary-hover">Sign in</Link></p>
     </form>
   );
@@ -103,7 +121,7 @@ export function ForgotPasswordForm() {
       <AuthField id="email" label="Account email" error={touched ? error : undefined}>
         <Input id="email" type="email" autoComplete="email" value={email} onBlur={() => setTouched(true)} onChange={(event) => setEmail(event.target.value)} invalid={touched && Boolean(error)} />
       </AuthField>
-      {canSubmit ? <Button type="submit" className="w-full">Send reset link</Button> : <DisabledAction label="Reset link disabled" />}
+      {canSubmit ? <Button type="submit" className="w-full">Send reset link</Button> : <DisabledAction label="Reset link requires email endpoint" />}
       <Link href="/login" className="block text-label-s text-text-secondary hover:text-text-primary">Return to sign in</Link>
     </form>
   );
@@ -127,7 +145,7 @@ export function ResetPasswordForm() {
       <AuthField id="confirm-password" label="Confirm password" error={touched ? confirmMessage : undefined}>
         <Input id="confirm-password" type="password" autoComplete="new-password" value={confirm} onBlur={() => setTouched(true)} onChange={(event) => setConfirm(event.target.value)} invalid={touched && Boolean(confirmMessage)} />
       </AuthField>
-      {canSubmit ? <Button type="submit" className="w-full">Reset password</Button> : <DisabledAction label="Reset password disabled" />}
+      {canSubmit ? <Button type="submit" className="w-full">Reset password</Button> : <DisabledAction label="Reset password requires auth endpoint" />}
     </form>
   );
 }
@@ -144,7 +162,7 @@ export function VerifyEmailPanel({ email }: { email?: string | null }) {
           {email ? `A verification link would be sent to ${email}.` : 'A verification link would be sent to the account email.'} Email verification requires backend email/auth contracts.
         </p>
       </div>
-      <DisabledAction label="Resend verification disabled" />
+      <DisabledAction label="Resend verification requires email endpoint" />
       <Link href="/login" className="block text-label-s text-text-secondary hover:text-text-primary">Back to sign in</Link>
     </div>
   );
@@ -164,7 +182,7 @@ export function AcceptInviteForm({ workspace, inviter, email }: { workspace?: st
           <div className="flex justify-between gap-3"><dt>Email</dt><dd className="text-text-primary">{email ?? 'Invite email'}</dd></div>
         </dl>
       </div>
-      <DisabledAction label="Accept invite disabled" />
+      <DisabledAction label="Accept invite requires invite endpoint" />
     </form>
   );
 }
@@ -207,7 +225,7 @@ export function CreateWorkspaceForm() {
           <option>Dashboards</option>
         </Select>
       </AuthField>
-      {canSubmit ? <Button type="submit" className="w-full">Create workspace</Button> : <DisabledAction label="Create workspace disabled" />}
+      {canSubmit ? <Button type="submit" className="w-full">Create workspace</Button> : <DisabledAction label="Create workspace requires auth endpoint" />}
     </form>
   );
 }
@@ -263,7 +281,7 @@ export function FirstProjectSetupForm() {
           <option value="accessibility">Accessibility and UI review</option>
         </Select>
       </AuthField>
-      <DisabledAction label="Create first project disabled" />
+      <DisabledAction label="Create first project requires workspace endpoint" />
       <p className="text-label-s text-text-muted">Project creation after onboarding requires authenticated workspace state.</p>
     </form>
   );

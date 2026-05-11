@@ -18,11 +18,8 @@ export const StatusSummaryVariants: Story = {
     <div className="grid gap-4 lg:grid-cols-2">
       <ProjectStatusSummary
         status={{ ...status, label: 'Preview ready', stage: 'verify', healthy: true, tone: 'success', key: 'preview-ready', nextActionLabel: 'Run verification', description: 'Preview is healthy.' }}
-        buildHealthy
-        previewHealthy
-        verificationHealthy={false}
       />
-      <Panel title="Legacy status row" subtitle="Control variant">
+      <Panel title="Previous status row" subtitle="Control variant">
         <div className="flex flex-wrap gap-2">
           <Badge variant="success">Build: completed</Badge>
           <Badge variant="warning">Preview: starting</Badge>
@@ -38,8 +35,8 @@ export const CommandSurfaceVariants: Story = {
     <div className="grid gap-4 lg:grid-cols-2">
       <ProjectCommandDock />
       <Card>
-        <h3 className="text-title-s text-ink">Legacy prompt composer</h3>
-        <p className="mt-2 text-body-s text-secondary">Experiment control for submission behavior.</p>
+        <h3 className="text-title-s text-text-primary">Prompt composer reference</h3>
+        <p className="mt-2 text-body-s text-text-secondary">Experiment control for submission behavior.</p>
         <div className="mt-4"><Button>Submit prompt</Button></div>
       </Card>
     </div>

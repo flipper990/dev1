@@ -1,5 +1,5 @@
 import type { GeneratedProject } from '../../../../types/dashboard';
-import { Badge, Button, Card, StatusDot } from '../../../../components/ui';
+import { Badge, Button, Card } from '../../../../components/ui';
 import { deriveProjectPresentation } from '../model/project-presentation';
 
 interface ProjectCardProps {
@@ -12,10 +12,6 @@ interface ProjectCardProps {
 }
 
 function badgeTone(tone: 'neutral' | 'active' | 'success' | 'warning' | 'error') {
-  return tone === 'active' ? 'active' : tone;
-}
-
-function dotTone(tone: 'neutral' | 'active' | 'success' | 'warning' | 'error') {
   return tone === 'active' ? 'active' : tone;
 }
 
@@ -45,13 +41,15 @@ export function ProjectCard({ project, owner, showDebugId = false, onOpen, onPre
             <dt className="text-label-s text-text-muted">Last updated</dt>
             <dd className="mt-1 truncate text-text-primary">{vm.lastUpdatedLabel}</dd>
           </div>
+          <div className="min-w-0">
+            <dt className="text-label-s text-text-muted">Tokens</dt>
+            <dd className="mt-1 truncate text-text-primary">{vm.usage.tokens.toLocaleString()}</dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-label-s text-text-muted">Cost</dt>
+            <dd className="mt-1 truncate text-text-primary">${vm.usage.costUsd.toFixed(2)}</dd>
+          </div>
         </dl>
-
-        <div className="grid gap-2">
-          <StatusDot tone={dotTone(vm.build.tone)} label={`Build: ${vm.build.label}`} />
-          <StatusDot tone={dotTone(vm.preview.tone)} label={`Preview: ${vm.preview.label}`} />
-          <StatusDot tone={dotTone(vm.export.tone)} label={`Export: ${vm.export.label}`} />
-        </div>
 
         <div className="grid gap-2 sm:grid-cols-3">
           <Button variant="secondary" size="sm" onClick={() => onOpen?.(vm.projectId)} disabled={!onOpen} title={!onOpen ? 'Open action is not available here.' : undefined}>Open</Button>

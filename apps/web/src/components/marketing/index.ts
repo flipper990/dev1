@@ -1,1 +1,15 @@
-export { CTAButton, FeatureCard, MarketingSection, MarketingShell, ProofVisual, TrustStrip } from './MarketingShell';
+export {
+  ComparisonTable,
+  CTAButton,
+  FeatureCard,
+  LifecycleDiagram,
+  MarketingSection,
+  MarketingShell,
+  OwnershipCallout,
+  ProofStrip,
+  ProofVisual,
+  StackedProductScreenshots,
+  TrustSecurityBand,
+  TrustStrip,
+  UseCaseGrid,
+} from './MarketingShell';

@@ -6,6 +6,7 @@ const meta: Meta<typeof TopBar> = {
   component: TopBar,
   args: {
     workspaceName: 'DEVteam Studio',
+    platformHealth: 'online',
   },
 };
 

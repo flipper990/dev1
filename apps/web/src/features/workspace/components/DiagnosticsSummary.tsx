@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import { Copy } from 'lucide-react';
 import type { GeneratedProject } from '../../../../types/dashboard';
-import { Badge, Button, Panel, StatusDot } from '../../../../components/ui';
+import { Button, Panel } from '../../../../components/ui';
 import type { UnifiedProjectStatus } from '../../projects/model';
-import { derivePreviewTruth, previewToneToBadge, previewToneToStatusDot, type PreviewTruthModel } from '../../preview/model';
+import { derivePreviewTruth, type PreviewTruthModel } from '../../preview/model';
 
 interface DiagnosticsSummaryProps {
   project: GeneratedProject | null;
@@ -115,39 +115,22 @@ export function DiagnosticsSummary({ project, status, previewTruth, onOpenLogs, 
 
   return (
     <Panel
-      title="Diagnostics summary"
-      subtitle="Evidence is available when you need it; it is not the primary workspace surface."
+      title="Diagnostics and runtime evidence"
+      subtitle="Technical evidence only. Lifecycle, transport, and health statuses are summarized above."
       actions={<Button variant="secondary" size="sm" onClick={onOpenLogs}>Open logs</Button>}
     >
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3">
-          <p className="text-label-s text-text-muted">Build</p>
-          <div className="mt-2"><StatusDot tone={project?.status === 'failed' ? 'error' : project?.status === 'generating' ? 'active' : project ? 'success' : 'neutral'} label={project?.status ?? 'No project'} /></div>
-        </div>
-        <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3">
-          <p className="text-label-s text-text-muted">Preview</p>
-          <div className="mt-2"><StatusDot tone={previewToneToStatusDot(truth.tone)} label={truth.label} /></div>
-        </div>
-        <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3">
-          <p className="text-label-s text-text-muted">Verification</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Badge variant={runtimeVerdict === 'Passed' ? 'success' : runtimeVerdict === 'Failed' ? 'error' : 'warning'}>Runtime: {runtimeVerdict}</Badge>
-            <Badge variant={executionVerdict === 'Passed' ? 'success' : executionVerdict === 'Failed' ? 'error' : 'warning'}>Execution: {executionVerdict}</Badge>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-2">
         <section className="rounded-[var(--radius-control)] border border-border-muted bg-surface-base p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-label-s text-text-muted">Truth model</p>
-            <Badge variant={previewToneToBadge(truth.tone)}>{truth.label}</Badge>
+            <p className="text-label-s text-text-muted">Runtime details</p>
           </div>
           <dl className="mt-3 grid gap-2 text-body-s sm:grid-cols-2">
             <div><dt className="text-text-muted">projectStatus</dt><dd className="font-mono text-mono-s text-text-primary">{truth.projectStatus}</dd></div>
             <div><dt className="text-text-muted">previewTransportStatus</dt><dd className="font-mono text-mono-s text-text-primary">{truth.previewTransportStatus}</dd></div>
             <div><dt className="text-text-muted">previewHealthStatus</dt><dd className="font-mono text-mono-s text-text-primary">{truth.previewHealthStatus}</dd></div>
             <div><dt className="text-text-muted">runtime</dt><dd className="font-mono text-mono-s text-text-primary">{truth.runtimeType ?? 'unknown'}</dd></div>
+            <div><dt className="text-text-muted">runtime verdict</dt><dd className="font-mono text-mono-s text-text-primary">{runtimeVerdict}</dd></div>
+            <div><dt className="text-text-muted">execution verdict</dt><dd className="font-mono text-mono-s text-text-primary">{executionVerdict}</dd></div>
           </dl>
           {truth.exactReason ? <p className="mt-3 rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-2 font-mono text-mono-s text-text-secondary">{truth.exactReason}</p> : null}
           {truth.contradictions.length ? (

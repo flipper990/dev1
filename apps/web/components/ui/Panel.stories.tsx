@@ -17,7 +17,7 @@ export const Default: Story = {
       subtitle="Current execution state from API."
       actions={<Button size="sm" variant="secondary">Refresh</Button>}
     >
-      <p className="text-body-s text-secondary">Spec and builder finished. QA is running.</p>
+      <p className="text-body-s text-text-secondary">Spec and builder finished. QA is running.</p>
     </Panel>
   ),
 };

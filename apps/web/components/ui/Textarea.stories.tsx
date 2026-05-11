@@ -17,7 +17,7 @@ export const Default: Story = {};
 
 export const Hover: Story = {
   args: {
-    className: '!border-secondary/60',
+    className: '!border-brand-secondary/60',
   },
 };
 

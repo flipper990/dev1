@@ -17,7 +17,7 @@ export const Default: Story = {};
 
 export const Hover: Story = {
   args: {
-    className: '!bg-primary-hover',
+    className: '!bg-brand-primary-hover',
   },
 };
 

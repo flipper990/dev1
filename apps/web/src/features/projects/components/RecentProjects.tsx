@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { GeneratedProject } from '../../../../types/dashboard';
-import { Badge, Button, Card, EmptyState, StatusDot } from '../../../../components/ui';
+import { Badge, Button, Card, EmptyState } from '../../../../components/ui';
 import { deriveProjectPresentation, sortProjectsByUpdated } from '../model';
 
 interface RecentProjectsProps {
@@ -46,9 +46,9 @@ export function RecentProjects({ projects, limit = 4 }: RecentProjectsProps) {
                 </div>
                 <Badge variant={vm.health.tone === 'active' ? 'active' : vm.health.tone}>{vm.health.label}</Badge>
               </div>
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                <StatusDot tone={vm.preview.tone === 'error' ? 'error' : vm.preview.tone === 'success' ? 'success' : vm.preview.tone === 'active' ? 'active' : 'neutral'} label={vm.preview.label} />
-                <span className="text-label-s text-text-secondary">Updated {vm.lastUpdatedLabel}</span>
+              <div className="mt-4 grid gap-2 text-label-s text-text-secondary sm:grid-cols-2">
+                <span>Stage: {vm.health.stage}</span>
+                <span>Updated {vm.lastUpdatedLabel}</span>
               </div>
             </Link>
           );

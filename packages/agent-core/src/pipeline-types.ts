@@ -11,6 +11,23 @@
 
 import type { AgentRole, Task } from './types';
 
+export interface PipelineArtifactSummary {
+  kind: 'empty' | 'object';
+  keys: string[];
+  outputSizeBytes: number;
+  files?: { count: number; samplePaths: string[] };
+  patches?: { count: number };
+  newFiles?: { count: number; samplePaths: string[] };
+  issues?: { count: number };
+  productName?: string;
+  featureSlices?: { count: number };
+  apiContracts?: { count: number };
+  frontendPages?: { count: number };
+  components?: { count: number };
+  verdict?: string;
+  summary?: string;
+}
+
 // ── Pipeline Step ───────────────────────────────────────────
 
 export interface PipelineStep {
@@ -90,11 +107,11 @@ export type PipelineEvent =
   | { type: 'wave:started';       sessionId: string; wave: number; agents: AgentRole[] }
   | { type: 'step:started';       sessionId: string; stepId: string; stepName: string; agent: AgentRole; description: string; stepIndex: number; totalSteps: number }
   | { type: 'step:retrying';      sessionId: string; stepId: string; agent: AgentRole; attempt: number; maxAttempts: number; error: string }
-  | { type: 'step:completed';     sessionId: string; stepId: string; agent: AgentRole; durationMs: number; stepIndex: number; totalSteps: number; usage?: { model?: string; provider?: string; tokensIn: number; tokensOut: number; totalTokens: number; costUsd: number } }
+  | { type: 'step:completed';     sessionId: string; stepId: string; agent: AgentRole; durationMs: number; stepIndex: number; totalSteps: number; usage?: { model?: string; provider?: string; tokensIn: number; tokensOut: number; totalTokens: number; costUsd: number }; artifactSummary?: PipelineArtifactSummary | null }
   | { type: 'step:validated';     sessionId: string; stepId: string; agent: AgentRole; verdict: 'ok' | 'repaired' | 'deferred' | 'blocked'; issueCount: number; repairCount: number; issues: { id: string; message: string; severity: 'info'|'warning'|'error'|'blocker'; category: string }[] }
   | { type: 'step:repaired';      sessionId: string; stepId: string; agent: AgentRole; changes: { path: string; action: string; detail: string }[] }
   | { type: 'step:blocked';       sessionId: string; stepId: string; agent: AgentRole; reason: string }
-  | { type: 'step:failed';        sessionId: string; stepId: string; agent: AgentRole; error: string; critical: boolean }
+  | { type: 'step:failed';        sessionId: string; stepId: string; agent: AgentRole; error: string; critical: boolean; errorCode?: string }
   | { type: 'step:skipped';       sessionId: string; stepId: string; agent: AgentRole; reason: string }
   | { type: 'qa:loop';            sessionId: string; iteration: number; reason: string }
   | { type: 'pipeline:completed'; sessionId: string; durationMs: number; stepsCompleted: number; stepsFailed: number; stepsSkipped: number }

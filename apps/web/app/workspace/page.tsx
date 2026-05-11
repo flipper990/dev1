@@ -3,9 +3,10 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { ChevronDown } from 'lucide-react';
 import { AppShell } from '../../src/components/shell';
-import { Badge, Button, EmptyState, Panel } from '../../components/ui';
-import { InlineStatusPanel, SystemBanner, Toast } from '../../src/components/feedback';
+import { Button, EmptyState, Panel } from '../../components/ui';
+import { SystemBanner, Toast } from '../../src/components/feedback';
 import {
   exportProject,
   generateProject,
@@ -228,6 +229,7 @@ function WorkspacePageContent() {
   const [retryingPreview, setRetryingPreview] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [previewResetKey, setPreviewResetKey] = useState(0);
+  const [evidenceOpen, setEvidenceOpen] = useState(() => rawTab !== null && normalizeWorkspaceTab(rawTab) !== 'overview');
   const [liveMessage, setLiveMessage] = useState('Workspace ready.');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -266,6 +268,18 @@ function WorkspacePageContent() {
 
   const logEntries = useMemo(() => buildLogEntries(selectedProject, selectedProjectId), [selectedProject, selectedProjectId]);
   const previewKey = `${selectedProjectId ?? 'none'}:${previewResetKey}:${selectedProject?.preview?.previewId ?? selectedProject?.preview?.previewReadyAt ?? selectedProject?.preview?.previewStatus ?? 'empty'}`;
+  const workspaceBanner = useMemo(() => {
+    if (errorMessage) {
+      return { tone: 'error' as const, title: 'Workspace action failed', description: errorMessage };
+    }
+    if (selectedProjectId && !selectedProject && !projectLoading) {
+      return { tone: 'warning' as const, title: 'Project not found', description: `No backend project record was found for projectId ${selectedProjectId}. Choose another project or create a new one.` };
+    }
+    if (projectLoading || projectsLoading) {
+      return { tone: 'info' as const, title: 'Loading project evidence', description: 'Fetching the latest project and preview state from the backend.' };
+    }
+    return null;
+  }, [errorMessage, projectLoading, projectsLoading, selectedProject, selectedProjectId]);
 
   const refreshProject = useCallback(async (projectId: string) => {
     const latest = await getProject(projectId);
@@ -296,6 +310,10 @@ function WorkspacePageContent() {
   useEffect(() => {
     setActiveTab(normalizeWorkspaceTab(rawTab));
   }, [rawTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'overview') setEvidenceOpen(true);
+  }, [activeTab]);
 
   useEffect(() => {
     setPreviewDevice('desktop');
@@ -508,7 +526,7 @@ function WorkspacePageContent() {
 
     if (activeTab === 'preview') {
       return (
-        <Panel title="Preview binding" subtitle="The preview frame is keyed by selectedProjectId to prevent old output from leaking between projects.">
+        <Panel title="Preview details" subtitle="Metadata for the generated application shown above. The iframe itself is rendered once and keyed by selectedProjectId.">
           <dl className="grid gap-3 text-body-s sm:grid-cols-3">
             <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3">
               <dt className="text-label-s text-text-muted">Bound projectId</dt>
@@ -556,20 +574,12 @@ function WorkspacePageContent() {
             securityStatus={status.key === 'launch-ready' ? 'passed' : 'pending'}
           />
           <Panel title="Verification gate" subtitle="Completion requires required coverage, flow checks, and no critical failures.">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Badge variant={completionReport.metrics.requiredSatisfiedPct === 100 ? 'success' : 'warning'}>
-                Required verified: {completionReport.metrics.requiredSatisfiedPct}%
-              </Badge>
-              <Badge variant={completionReport.metrics.flowPassRate === 100 ? 'success' : 'warning'}>
-                Flow pass rate: {completionReport.metrics.flowPassRate}%
-              </Badge>
-              <Badge variant={completionReport.metrics.criticalFailuresCount === 0 ? 'success' : 'error'}>
-                Critical failures: {completionReport.metrics.criticalFailuresCount}
-              </Badge>
-              <Badge variant={completionReport.canComplete ? 'success' : 'warning'}>
-                Completion gate: {completionReport.canComplete ? 'pass' : 'blocked'}
-              </Badge>
-            </div>
+            <dl className="grid gap-2 text-body-s text-text-secondary sm:grid-cols-2">
+              <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3"><dt>Required verified</dt><dd className="mt-1 text-text-primary">{completionReport.metrics.requiredSatisfiedPct}%</dd></div>
+              <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3"><dt>Flow pass rate</dt><dd className="mt-1 text-text-primary">{completionReport.metrics.flowPassRate}%</dd></div>
+              <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3"><dt>Critical failures</dt><dd className="mt-1 text-text-primary">{completionReport.metrics.criticalFailuresCount}</dd></div>
+              <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3"><dt>Completion gate</dt><dd className="mt-1 text-text-primary">{completionReport.canComplete ? 'Pass' : 'Blocked'}</dd></div>
+            </dl>
             {completionReport.unresolvedRequiredIds.length > 0 ? (
               <p className="mt-3 text-body-s text-text-secondary">Missing required items: {completionReport.unresolvedRequiredIds.join(', ')}</p>
             ) : null}
@@ -608,7 +618,6 @@ function WorkspacePageContent() {
           <div className="space-y-4">
             <ExportActionPanel
               project={selectedProject}
-              status={status}
               completionBlocked={!completionReport.canComplete}
               exporting={exporting}
               onExport={handleExport}
@@ -622,7 +631,7 @@ function WorkspacePageContent() {
               ]}
             />
           </div>
-          <TrustRail project={selectedProject} selectedProjectId={selectedProjectId} status={status} />
+          <TrustRail project={selectedProject} selectedProjectId={selectedProjectId} />
         </div>
       );
     }
@@ -633,16 +642,12 @@ function WorkspacePageContent() {
           {status.key === 'stale' ? <SyncWarningPanel retrying={retryingPreview} onRefresh={startOrRetryPreview} onInspect={() => setActiveTab('logs')} /> : null}
           <ProjectStatusSummary
             status={status}
-            buildHealthy={selectedProject.status !== 'failed'}
-            previewHealthy={previewTruth.isHealthy}
-            verificationHealthy={selectedProject.runtimeValidation?.finalVerdict === 'pass'}
-            stale={status.key === 'stale'}
             timeline={timeline}
             onPrimaryAction={handlePrimaryAction}
           />
           <DiagnosticsSummary project={selectedProject} status={status} previewTruth={previewTruth} onOpenLogs={() => setActiveTab('logs')} onRetryPreview={startOrRetryPreview} retrying={retryingPreview} />
         </div>
-        <TrustRail project={selectedProject} selectedProjectId={selectedProjectId} status={status} />
+        <TrustRail project={selectedProject} selectedProjectId={selectedProjectId} />
       </div>
     );
   }, [
@@ -664,37 +669,18 @@ function WorkspacePageContent() {
   return (
     <AppShell
       title="Workspace / Builder"
-      subtitle="Production surface for previewing, changing, verifying, and exporting generated applications."
-      lifecycle={{ label: status.label, tone: status.tone }}
+      subtitle="Preview, change, verify, and export generated applications."
       breadcrumbs={[{ label: 'Workspace', href: '/workspace' }, selectedProjectId ? { label: selectedProjectId } : { label: 'No project selected' }]}
       actions={<Button onClick={handlePrimaryAction} disabled={!selectedProject}>{status.nextActionLabel}</Button>}
       secondaryActions={<Link href="/projects"><Button variant="secondary">Projects</Button></Link>}
       workspaceName="DEVteam Studio"
       projectName={selectedProject?.name}
+      compactHeader
     >
       <section aria-live="polite" className="sr-only">{liveMessage}</section>
 
-      <div className="space-y-5">
-        {errorMessage ? <SystemBanner tone="error" title="Workspace action failed" description={errorMessage} /> : null}
-        {projectLoading || projectsLoading ? <SystemBanner tone="info" title="Loading project evidence" description="Fetching the latest project and preview state from the backend." /> : null}
-        {selectedProjectId && !selectedProject && !projectLoading ? (
-          <SystemBanner tone="warning" title="Project not found" description={`No backend project record was found for projectId ${selectedProjectId}. Choose another project or create a new one.`} />
-        ) : null}
-        {(previewTruth.isFailure || previewTruth.isBroken || previewTruth.isPlaceholder || previewTruth.contradictions.length > 0) && selectedProject ? (
-          <SystemBanner
-            tone={previewTruth.tone === 'error' ? 'error' : 'warning'}
-            title={previewTruth.label}
-            description={previewTruth.exactReason ?? previewTruth.description}
-            actions={<Button variant="secondary" loading={retryingPreview} onClick={previewTruth.isFailure ? startOrRetryPreview : () => setActiveTab('logs')}>{previewTruth.isFailure ? 'Retry preview' : 'Inspect diagnostics'}</Button>}
-          />
-        ) : null}
-        {!completionReport.canComplete && selectedProject ? (
-          <SystemBanner
-            tone="warning"
-            title="Completion gate blocked"
-            description={`Required coverage ${completionReport.metrics.requiredSatisfiedPct}% | flow pass ${completionReport.metrics.flowPassRate}% | critical failures ${completionReport.metrics.criticalFailuresCount}.`}
-          />
-        ) : null}
+      <div className="space-y-3">
+        {workspaceBanner ? <SystemBanner tone={workspaceBanner.tone} title={workspaceBanner.title} description={workspaceBanner.description} /> : null}
 
         <WorkspaceHeader
           project={selectedProject}
@@ -706,50 +692,20 @@ function WorkspacePageContent() {
           onPrimaryAction={handlePrimaryAction}
         />
 
-        <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <PreviewCanvasFrame
-            key={previewKey}
-            title="Artifact preview"
-            ready={Boolean(previewIsBound(selectedProject, selectedProjectId) && previewTruth.isHealthy)}
-            failed={Boolean(previewIsBound(selectedProject, selectedProjectId) && previewTruth.isFailure)}
-            loading={Boolean(previewIsBound(selectedProject, selectedProjectId) && previewTruth.isLoading)}
-            url={getPreviewUrl(selectedProject, selectedProjectId)}
-            message={selectedProject ? 'Preview output will appear here after the selected project runtime is healthy.' : 'Select or create a project to generate a preview.'}
-            device={previewDevice}
-            onDeviceChange={setPreviewDevice}
-            previewTruth={previewTruth}
-            runtimeType={previewTruth.runtimeType}
-            onRetry={selectedProject ? startOrRetryPreview : undefined}
-            retrying={retryingPreview}
-          />
-          <div className="space-y-4">
-            {selectedProject ? (
-              <>
-                <ProjectStatusSummary
-                  status={status}
-                  buildHealthy={selectedProject.status !== 'failed'}
-                  previewHealthy={previewTruth.isHealthy}
-                  verificationHealthy={selectedProject.runtimeValidation?.finalVerdict === 'pass'}
-                  stale={status.key === 'stale'}
-                  timeline={timeline}
-                  onPrimaryAction={handlePrimaryAction}
-                />
-                <DiagnosticsSummary
-                  project={selectedProject}
-                  status={status}
-                  previewTruth={previewTruth}
-                  onOpenLogs={() => setActiveTab('logs')}
-                  onRetryPreview={startOrRetryPreview}
-                  retrying={retryingPreview}
-                />
-              </>
-            ) : (
-              <Panel title="Workspace state" subtitle="No projectId is selected.">
-                <p className="text-body-s text-text-secondary">Use the project selector or create a project from the command dock. The preview will not render without a selected projectId.</p>
-              </Panel>
-            )}
-          </div>
-        </div>
+        <PreviewCanvasFrame
+          key={previewKey}
+          title="Generated application"
+          ready={Boolean(previewIsBound(selectedProject, selectedProjectId) && previewTruth.isHealthy)}
+          failed={Boolean(previewIsBound(selectedProject, selectedProjectId) && previewTruth.isFailure)}
+          loading={Boolean(previewIsBound(selectedProject, selectedProjectId) && previewTruth.isLoading)}
+          url={getPreviewUrl(selectedProject, selectedProjectId)}
+          message={selectedProject ? 'Preview output will appear here after the selected project runtime is healthy.' : 'Select or create a project to generate a preview.'}
+          device={previewDevice}
+          onDeviceChange={setPreviewDevice}
+          previewTruth={previewTruth}
+          onRetry={selectedProject ? startOrRetryPreview : undefined}
+          retrying={retryingPreview}
+        />
 
         <CommandDock
           projectId={selectedProjectId}
@@ -758,21 +714,34 @@ function WorkspacePageContent() {
           onSubmit={handleCommandSubmit}
         />
 
-        {(previewTruth.isFailure || previewTruth.isBroken) && selectedProject ? (
-          <InlineStatusPanel
-            tone="error"
-            title={previewTruth.label}
-            where="Preview runner"
-            whatWorked="The project artifact remains bound to its projectId and prior output has been cleared for the next run."
-            whatFailed={previewTruth.exactReason ?? 'The runtime did not become healthy. Logs contain the diagnostic evidence.'}
-            nextAction="Submit a scoped repair request or retry preview after reviewing logs."
-            actions={<Button variant="secondary" onClick={() => setActiveTab('logs')}>Inspect logs</Button>}
-          />
-        ) : null}
+        <section className="rounded-[var(--radius-panel)] border border-border-muted bg-surface-raised shadow-hairline">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none sm:px-5"
+            aria-expanded={evidenceOpen}
+            aria-controls="workspace-evidence-panel"
+            onClick={() => setEvidenceOpen((value) => !value)}
+          >
+            <span className="min-w-0">
+              <span className="block text-label-m text-text-primary">Project evidence, logs, and export</span>
+              <span className="mt-0.5 block text-body-s text-text-secondary">
+                Secondary details are collapsed by default so the generated app remains the main workspace artifact.
+              </span>
+            </span>
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 text-text-muted transition-transform duration-160 ease-ledger ${evidenceOpen ? 'rotate-180' : ''}`}
+              aria-hidden="true"
+            />
+          </button>
 
-        <WorkspaceTabs value={activeTab} onChange={setActiveTab} />
-        <section role="tabpanel" id={`${activeTab}-panel`} aria-labelledby={`${activeTab}-tab`} className="min-w-0">
-          {tabContent}
+          {evidenceOpen ? (
+            <div id="workspace-evidence-panel" className="space-y-4 border-t border-border-muted p-4 sm:p-5">
+              <WorkspaceTabs value={activeTab} onChange={setActiveTab} />
+              <section role="tabpanel" id={`${activeTab}-panel`} aria-labelledby={`${activeTab}-tab`} className="min-w-0">
+                {tabContent}
+              </section>
+            </div>
+          ) : null}
         </section>
 
         {retryingPreview ? <Toast tone="retrying" title="Preview in progress" message="Starting runtime and refreshing project evidence." /> : null}

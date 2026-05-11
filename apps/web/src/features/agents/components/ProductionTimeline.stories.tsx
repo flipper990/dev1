@@ -15,11 +15,11 @@ export const Empty: Story = { args: { events: [] } };
 export const Success: Story = { args: { events } };
 export const Failure: Story = { args: { events: [{ id: '3', title: 'Launch blocked', detail: 'Critical check failed.', owner: 'Release', tone: 'error' }] } };
 
-export const LegacyFeedVariant: Story = {
+export const TextFeedVariant: Story = {
   render: () => (
     <Card>
-      <h3 className="text-title-s text-ink">Legacy agent feed</h3>
-      <ul className="mt-3 space-y-2 text-body-s text-secondary">
+      <h3 className="text-title-s text-text-primary">Agent feed reference</h3>
+      <ul className="mt-3 space-y-2 text-body-s text-text-secondary">
         <li>Planner: Spec drafted</li>
         <li>Builder: Code generated</li>
         <li>QA: One check pending</li>

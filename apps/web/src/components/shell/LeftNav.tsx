@@ -41,7 +41,7 @@ export const DEFAULT_NAV_ITEMS: LeftNavItem[] = [
   { label: 'Workspace / Builder', href: '/workspace', icon: Wrench, section: 'studio' },
   { label: 'Activity', href: '/agents', icon: Activity, section: 'operations' },
   { label: 'Diagnostics', href: '/workspace?tab=logs', icon: FileWarning, section: 'operations' },
-  { label: 'Docs', href: '/how-it-works', icon: BookOpen, section: 'operations' },
+  { label: 'Docs', href: '/docs', icon: BookOpen, section: 'operations' },
   { label: 'Billing', href: '/billing', icon: CreditCard, section: 'administration' },
   { label: 'Settings', href: '/settings', icon: Settings, section: 'administration' },
   { label: 'Security / Admin', href: '/security', icon: ShieldCheck, section: 'administration' },

@@ -101,7 +101,12 @@ export function DiagnosticsSummary({ project, status, previewTruth, onOpenLogs, 
   const stderrTail = collectTail(project, 'stderr');
   const probeAttempts = preview?.probeAttempts ?? [];
   const executionProbes = project?.executionValidation?.httpProbes ?? [];
-  const hasFailure = truth.isFailure || truth.isBroken || status.key === 'preview-failed' || project?.status === 'failed';
+  const hasFailure =
+    truth.isFailure
+    || truth.isBroken
+    || status.key === 'preview-failed'
+    || project?.status === 'failed'
+    || project?.verificationStatus === 'failed';
 
   const copyReproduce = async () => {
     try {
@@ -125,7 +130,8 @@ export function DiagnosticsSummary({ project, status, previewTruth, onOpenLogs, 
             <p className="text-label-s text-text-muted">Runtime details</p>
           </div>
           <dl className="mt-3 grid gap-2 text-body-s sm:grid-cols-2">
-            <div><dt className="text-text-muted">projectStatus</dt><dd className="font-mono text-mono-s text-text-primary">{truth.projectStatus}</dd></div>
+            <div><dt className="text-text-muted">projectStatus</dt><dd className="font-mono text-mono-s text-text-primary">{project?.projectStatus ?? truth.projectStatus}</dd></div>
+            <div><dt className="text-text-muted">verificationStatus</dt><dd className="font-mono text-mono-s text-text-primary">{project?.verificationStatus ?? 'pending'}</dd></div>
             <div><dt className="text-text-muted">previewTransportStatus</dt><dd className="font-mono text-mono-s text-text-primary">{truth.previewTransportStatus}</dd></div>
             <div><dt className="text-text-muted">previewHealthStatus</dt><dd className="font-mono text-mono-s text-text-primary">{truth.previewHealthStatus}</dd></div>
             <div><dt className="text-text-muted">runtime</dt><dd className="font-mono text-mono-s text-text-primary">{truth.runtimeType ?? 'unknown'}</dd></div>

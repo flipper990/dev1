@@ -15,7 +15,8 @@ function formatDate(value: string | undefined | null) {
 
 export function TrustRail({ project, selectedProjectId }: TrustRailProps) {
   const syncedAt = project?.preview?.previewReadyAt ?? project?.completedAt ?? project?.createdAt;
-  const exportReady = project?.status === 'completed';
+  const exportReady = project?.status === 'generated';
+  const productionReady = project?.verificationStatus === 'passed';
 
   return (
     <div className="space-y-4">
@@ -23,7 +24,8 @@ export function TrustRail({ project, selectedProjectId }: TrustRailProps) {
         <p className="text-label-s uppercase tracking-[0.16em] text-text-muted">Trust and ownership</p>
         <h3 className="mt-2 text-title-s text-text-primary">You own the generated source.</h3>
         <ul className="mt-4 space-y-2 text-body-s text-text-secondary">
-          <li>{exportReady ? 'Source package can be exported from this project.' : 'Source export becomes available after completion evidence is present.'}</li>
+          <li>{exportReady ? 'Source package can be exported from this project.' : 'Source export becomes available after code generation finishes.'}</li>
+          <li>{productionReady ? 'Verification passed: readiness evidence is green.' : 'Verification has not fully passed yet; do not treat as production-ready.'}</li>
           <li>No proprietary runtime lock-in.</li>
           <li>Preview and lifecycle statuses are summarized in the workspace header and preview frame.</li>
         </ul>

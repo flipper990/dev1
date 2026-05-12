@@ -2,6 +2,8 @@
 // Preview runner types
 // ─────────────────────────────────────────────────────────────
 
+import type { PreviewHealthStatus, PreviewLifecycleStatus } from '@devteam/types';
+
 export type StackKind = 'nextjs' | 'vite-react' | 'plain-react' | 'node-express' | 'fullstack' | 'unknown';
 
 export interface StackInfo {
@@ -98,7 +100,7 @@ export interface PreviewTimelineEvent {
   /** Owning project. */
   projectId: string;
   /** Snapshot of the public preview status at the moment of the event. */
-  previewStatus: 'idle' | 'preparing' | 'installing' | 'building' | 'starting' | 'ready' | 'failed';
+  previewStatus: PreviewLifecycleStatus;
   /** For "-end" events: ms since the matching "-start". For url-published: ms since runner-start. */
   durationMs?: number;
   /** Free-form structured detail (port, imageTag, error message, etc.). */
@@ -496,7 +498,8 @@ export interface PreviewFixAttempt {
 
 export interface PreviewStatus {
   projectId: string;
-  state: PreviewState;
+  state: PreviewLifecycleStatus;
+  health: PreviewHealthStatus;
   stack: StackKind | null;
   url: string | null;
   hostPort: number | null;
@@ -505,7 +508,7 @@ export interface PreviewStatus {
   error: string | null;
   log: string;
   uptimeMs: number;
-  /** True when state === 'fallback' — caller should render frontend-only static preview. */
+  /** True when no preview backend is available and UI should render static fallback. */
   fallback?: boolean;
   /** Reason for fallback (e.g. 'docker-unavailable'). */
   fallbackReason?: 'docker-unavailable' | 'boot-failed' | null;

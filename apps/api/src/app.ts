@@ -26,6 +26,8 @@ import { createDockerRunner } from './preview/docker-runner.js';
 import { PortAllocator } from './preview/port-allocator.js';
 import { PreviewManager } from './preview/preview-manager.js';
 import { LocalPreviewRunner } from './preview/local-runner.js';
+import { appendBudgetDiagnostic } from './llm/generation-budget.js';
+import { createAuthGuards } from './security/auth.js';
 
 export async function buildApp() {
   const logger = createLogger('server');
@@ -65,6 +67,48 @@ export async function buildApp() {
   logActiveModels(modelLogger);
 
   const llm = createLLMRouter(createLogger('llm'));
+  llm.onGenerationBudgetEvent((event) => {
+    void projectStore.update(event.projectId, (project) => {
+      project.diagnostics = project.diagnostics ?? {};
+      project.diagnostics.generationBudget = appendBudgetDiagnostic(
+        project.diagnostics.generationBudget,
+        event,
+      );
+      const warning = {
+        code: event.action === 'stop'
+          ? 'generation.budget-hard-stop'
+          : event.level === 'critical'
+            ? 'generation.budget-critical'
+            : 'generation.budget-warning',
+        message: event.message,
+        details: {
+          spentUsd: Number(event.spentUsd.toFixed(6)),
+          budgetUsd: Number(event.budgetUsd.toFixed(6)),
+          percentUsed: Number((event.percentUsed * 100).toFixed(2)),
+          level: event.level,
+          action: event.action,
+          agentRole: event.agentRole,
+          model: event.model,
+        },
+      };
+      const existingWarnings = project.warnings ?? [];
+      if (!existingWarnings.some((w) => w.code === warning.code)) {
+        project.warnings = [...existingWarnings, warning];
+      }
+    }, {
+      phase: 'generation-budget',
+      caller: 'app:llm-budget-event',
+      reason: `${event.level}:${event.action}`,
+      allowStatusDowngrade: true,
+    }).catch((err) => {
+      logger.warn('Failed to persist generation budget diagnostic', {
+        projectId: event.projectId,
+        level: event.level,
+        action: event.action,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  });
 
   const agents = createAllAgents(
     llm,
@@ -134,26 +178,23 @@ export async function buildApp() {
   await app.register(fastifyCors, {
     origin: config.isDev ? true : allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: false,
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-devteam-user-id', 'x-devteam-user-email', 'x-devteam-workspace-id', 'x-devteam-role'],
+    credentials: true,
   });
 
-  await app.register(fastifyRateLimit, {
-    max: config.rateLimit.max,
-    timeWindow: config.rateLimit.windowMs,
-    keyGenerator: (req) => req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() ?? req.ip,
-    // In development, bypass the limit entirely. The dashboard polls
-    // /api/projects (8s) + preview status (5s) + WS reconnects + HMR
-    // double-mounts easily burst past 600/min from a single client and
-    // the false-positive 429s break the UX. Production keeps the limit.
-    skip: () => config.isDev,
-    errorResponseBuilder: (_req, context) => ({
-      error: 'Too Many Requests',
-      code: 'RATE_LIMIT',
-      statusCode: 429,
-      retryAfter: context.after,
-    }),
-  });
+  if (!config.isDev) {
+    await app.register(fastifyRateLimit, {
+      max: config.rateLimit.max,
+      timeWindow: config.rateLimit.windowMs,
+      keyGenerator: (req) => req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() ?? req.ip,
+      errorResponseBuilder: (_req, context) => ({
+        error: 'Too Many Requests',
+        code: 'RATE_LIMIT',
+        statusCode: 429,
+        retryAfter: context.after,
+      }),
+    });
+  }
 
   await app.register(fastifyWebSocket);
 
@@ -232,17 +273,20 @@ export async function buildApp() {
   // Wire the preview manager back into the generator so it can run
   // post-build runtime validation + auto-fix iterations.
   generator.setPreviewManager(previewManager, `http://127.0.0.1:${config.server.port}`);
+  const auth = createAuthGuards(projectStore);
+  app.addHook('onRequest', auth.authenticate);
 
   // ── Register routes ─────────────────────────────────
 
-  registerRoutes(app as unknown as import('fastify').FastifyInstance, { generator, projectStore, sessionManager, memoryStore, llm, logger, preview: previewManager });
-  registerWebSocket(app as unknown as import('fastify').FastifyInstance, { sessionManager, logger });
+  registerRoutes(app as unknown as import('fastify').FastifyInstance, { generator, projectStore, sessionManager, memoryStore, llm, logger, preview: previewManager, auth });
+  registerWebSocket(app as unknown as import('fastify').FastifyInstance, { sessionManager, projectStore, logger, auth });
   registerPreviewRoutes(app as unknown as import('fastify').FastifyInstance, {
     preview: previewManager,
     projectStore,
     updater: generator.getUpdater(),
     apiBaseUrl: `http://127.0.0.1:${config.server.port}`,
     logger: createLogger('preview-routes'),
+    auth,
   });
 
   // ── Cleanup interval ────────────────────────────────

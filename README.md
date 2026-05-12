@@ -80,7 +80,7 @@ npm run dev
 
 - Dashboard: `http://localhost:3000`
 - Backend API: `http://localhost:3003`
-- Health: `http://localhost:3003/api/health`
+- Health: `http://localhost:3003/health`
 
 ### Running a project
 
@@ -105,6 +105,7 @@ npm run dev
 | `MONTHLY_BUDGET_USD`         | No       | `100`                  | Spend guardrail                                   |
 | `ALLOWED_ORIGINS`            | Prod     | —                      | Comma-separated CORS origins                      |
 | `NEXT_PUBLIC_API_BASE`       | No       | `http://localhost:3003`| Web → API base URL                                |
+| `NEXT_PUBLIC_TELEMETRY_ENABLED` | No    | `0`                    | Enables frontend telemetry sender once backend ingestion exists |
 | `MODEL_<ROLE>`               | No       | see ARCHITECTURE.md    | Override model per agent role                     |
 
 \*At least one of OpenAI or Anthropic is required.
@@ -158,24 +159,57 @@ docker compose -f docker-compose.dev.yml up            # dev with hot reload
 
 ## API surface
 
-| Method | Path                                       | Purpose                                                    |
-| ------ | ------------------------------------------ | ---------------------------------------------------------- |
-| `GET`  | `/api/health`                              | Liveness probe                                             |
-| `POST` | `/api/projects`                            | Create project + start the 4-stage pipeline (202, async)   |
-| `GET`  | `/api/projects`                            | List projects                                              |
-| `GET`  | `/api/projects/:id`                        | Read project (status, files, spec, qaReport, qualityReport)|
-| `GET`  | `/api/projects/:id/files`                  | File tree                                                  |
-| `GET`  | `/api/projects/:id/file?path=`             | Single file contents                                       |
-| `POST` | `/api/projects/:id/prompts`                | Submit follow-up prompt (returns 409 if running)           |
-| `GET`  | `/api/projects/:id/prompts`                | Prompt history                                             |
-| `GET`  | `/api/projects/:id/preview`                | Preview status (host port, container state)                |
-| `GET`  | `/api/projects/:id/export`                 | Export ZIP                                                 |
-| `GET`  | `/api/sessions/:id/progress`               | Poll session progress                                      |
-| `GET`  | `/api/agents/models`                       | List available LLM models                                  |
-| `POST` | `/api/agents/models/:role`                 | Override model for an agent role                           |
-| `GET`  | `/api/agents/cost`                         | Per-provider cost summary                                  |
-| `GET`  | `/api/agents/circuit`                      | Circuit-breaker status                                     |
-| `WS`   | `/ws/session/:sessionId`                   | Realtime pipeline events                                   |
+All `/api/*`, `/preview/*`, and `/ws/*` project endpoints require authentication.
+
+- **Production auth**: `Authorization: Bearer <signed-token>` where token payload contains `sub`, `workspaceId`, `role`.
+- **Local dev options**:
+  - Set `DEV_AUTH_BYPASS=true` to run with a development mock session (`dev-user`, `dev@local.test`, `dev-workspace`, `owner` by default).
+  - Customize dev principal with `DEV_USER_ID`, `DEV_USER_EMAIL`, `DEV_WORKSPACE_ID`, and `DEV_USER_ROLE`.
+  - Or send `x-devteam-user-id`, `x-devteam-user-email`, `x-devteam-workspace-id`, and `x-devteam-role` headers in development.
+- In `NODE_ENV=production`, `DEV_AUTH_BYPASS` is ignored and unauthenticated requests return `401`.
+
+Workspace roles: `owner`, `admin`, `member`, `viewer`.  
+`viewer` is read-only and cannot mutate projects, preview runs, or LLM overrides.
+
+### Telemetry status
+
+- Frontend telemetry emitter: `apps/web/src/lib/telemetry/useTrackEvent.ts`.
+- Backend telemetry ingestion route `/api/telemetry/events` is currently not implemented.
+- Telemetry transport is disabled by default via `NEXT_PUBLIC_TELEMETRY_ENABLED=0`; events are kept in a local in-memory tracker only.
+
+| Method | Path                                               | Purpose                                                      |
+| ------ | -------------------------------------------------- | ------------------------------------------------------------ |
+| `GET`  | `/health`                                          | Liveness probe                                               |
+| `POST` | `/api/projects`                                    | Create project + start pipeline (202, async)                |
+| `POST` | `/api/projects/generate`                           | Alias for create project                                     |
+| `GET`  | `/api/projects`                                    | List projects                                                |
+| `GET`  | `/api/projects/:id`                                | Read full project record                                     |
+| `DELETE` | `/api/projects/:id`                              | Delete project                                               |
+| `GET`  | `/api/projects/:id/files`                          | File tree                                                    |
+| `GET`  | `/api/projects/:id/files/*`                        | Single file contents                                         |
+| `POST` | `/api/projects/:id/prompts`                        | Submit follow-up prompt                                      |
+| `POST` | `/api/projects/:id/update`                         | Alias for project update                                     |
+| `GET`  | `/api/projects/:id/prompts`                        | Prompt history                                               |
+| `GET`  | `/api/projects/:id/versions`                       | Version metadata history                                     |
+| `GET`  | `/api/projects/:id/versions/:version`              | Version snapshot                                             |
+| `GET`  | `/api/projects/:id/export`                         | Export ZIP                                                   |
+| `GET`  | `/api/projects/:id/diagnostics`                    | Full diagnostics block                                       |
+| `GET`  | `/api/projects/:id/diagnostics/pipeline-ledger`    | Per-step pipeline run ledger                                |
+| `GET`  | `/api/projects/:id/diagnostics/preview-validation-artifacts` | Preview validation artifacts                     |
+| `POST` | `/api/projects/:id/preview/start`                  | Start preview runtime                                        |
+| `POST` | `/api/projects/:id/preview/stop`                   | Stop preview runtime                                         |
+| `GET`  | `/api/projects/:id/preview/status`                 | Preview runtime status                                       |
+| `POST` | `/api/projects/:id/preview/validate`               | Preview validate + optional auto-fix                         |
+| `GET`  | `/api/preview/health`                              | Preview backend availability                                 |
+| `GET`  | `/api/sessions/:id/progress`                       | Poll session progress                                        |
+| `GET`  | `/api/sessions/active`                             | List active sessions                                         |
+| `GET`  | `/api/llm/costs`                                   | LLM cost summary                                             |
+| `GET`  | `/api/llm/costs/records`                           | Raw LLM cost records                                         |
+| `GET`  | `/api/llm/circuit-breaker`                         | Circuit-breaker states                                       |
+| `GET`  | `/api/llm/providers`                               | Registered providers                                         |
+| `GET`  | `/api/llm/providers/health`                        | Provider health checks                                       |
+| `GET`/`POST`/`DELETE` | `/api/llm/overrides` / `/api/llm/overrides/:target` | Model override management                     |
+| `WS`   | `/ws/sessions/:id/progress`                        | Realtime pipeline events                                     |
 
 ```bash
 curl -X POST http://localhost:3003/api/projects \

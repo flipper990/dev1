@@ -17,6 +17,7 @@ function badgeTone(tone: 'neutral' | 'active' | 'success' | 'warning' | 'error')
 
 export function ProjectCard({ project, owner, showDebugId = false, onOpen, onPreview, onExport }: ProjectCardProps) {
   const vm = deriveProjectPresentation(project, owner);
+  const canExport = project.status === 'generated';
 
   return (
     <Card className="min-w-0 overflow-hidden" padded={false}>
@@ -54,7 +55,7 @@ export function ProjectCard({ project, owner, showDebugId = false, onOpen, onPre
         <div className="grid gap-2 sm:grid-cols-3">
           <Button variant="secondary" size="sm" onClick={() => onOpen?.(vm.projectId)} disabled={!onOpen} title={!onOpen ? 'Open action is not available here.' : undefined}>Open</Button>
           <Button variant="secondary" size="sm" onClick={() => onPreview?.(vm.projectId)} disabled={!onPreview || vm.preview.tone === 'neutral'} title={!onPreview ? 'Preview action is not available here.' : vm.preview.tone === 'neutral' ? 'Preview is not available for this project yet.' : undefined}>Preview</Button>
-          <Button variant="secondary" size="sm" onClick={() => onExport?.(vm.projectId)} disabled={!onExport || vm.export.tone !== 'success'} title={!onExport ? 'Export action is not available here.' : vm.export.tone !== 'success' ? 'Export requires completed source and validation evidence.' : undefined}>Export</Button>
+          <Button variant="secondary" size="sm" onClick={() => onExport?.(vm.projectId)} disabled={!onExport || !canExport} title={!onExport ? 'Export action is not available here.' : !canExport ? 'Export is available after code generation finishes.' : undefined}>Export</Button>
         </div>
       </div>
     </Card>

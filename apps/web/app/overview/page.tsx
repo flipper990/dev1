@@ -1,12 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { BookOpen, LifeBuoy } from 'lucide-react';
 import { AppShell } from '../../src/components/shell';
-import { Button, Card, Panel, Skeleton } from '../../components/ui';
-import { listProjects } from '../../lib/api';
-import type { GeneratedProject } from '../../types/dashboard';
+import { Button, Panel, Skeleton } from '../../components/ui';
 import {
   DashboardHero,
   ProjectStageTimeline,
@@ -14,33 +12,17 @@ import {
   RecentProjects,
   UsageSummary,
 } from '../../src/features/projects/components';
-import { buildWorkflowTimelineViewModel, deriveUnifiedProjectStatus, sortProjectsByUpdated } from '../../src/features/projects/model';
+import { buildWorkflowTimelineViewModel, deriveUnifiedProjectStatus } from '../../src/features/projects/model';
+import { useProjects } from '../../hooks/useProjectData';
 
 export default function DashboardPage() {
-  const [projects, setProjects] = useState<GeneratedProject[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    listProjects()
-      .then((result) => {
-        if (!alive) return;
-        setProjects(sortProjectsByUpdated(result));
-        setError(null);
-      })
-      .catch((err) => {
-        if (!alive) return;
-        setError(err instanceof Error ? err.message : 'Unable to load projects.');
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const {
+    projects,
+    loading,
+    error,
+    stale,
+    reconnecting,
+  } = useProjects();
 
   const activeProject = projects[0] ?? null;
   const status = deriveUnifiedProjectStatus(activeProject);
@@ -119,7 +101,15 @@ export default function DashboardPage() {
                     <LifeBuoy className="mt-0.5 h-4 w-4 text-brand-primary" />
                     <span><span className="block text-label-m text-text-primary">Support</span><span className="block text-body-s text-text-secondary">Get help with production workflow setup.</span></span>
                   </Link>
-                  <p className="text-body-s text-text-secondary">{error ? 'Project API unavailable.' : 'Project API connected.'}</p>
+                  <p className="text-body-s text-text-secondary">
+                    {error
+                      ? 'Project API unavailable.'
+                      : reconnecting
+                        ? 'Reconnecting to project API…'
+                        : stale
+                          ? 'Project API stale snapshot.'
+                          : 'Project API connected.'}
+                  </p>
                 </div>
               </Panel>
             </div>

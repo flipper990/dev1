@@ -33,9 +33,9 @@ export const statusPresentation: Record<ProductStatusKey, StatusPresentation> = 
   },
   'build-complete': {
     key: 'build-complete',
-    label: 'Build complete',
+    label: 'Code generated',
     tone: 'success',
-    description: 'Build artifacts are complete.',
+    description: 'Code generation is complete; verification is separate.',
   },
   'preview-starting': {
     key: 'preview-starting',
@@ -71,6 +71,6 @@ export const statusPresentation: Record<ProductStatusKey, StatusPresentation> = 
     key: 'launch-ready',
     label: 'Launch ready',
     tone: 'success',
-    description: 'Project is ready to launch.',
+    description: 'Verification passed and preview health is confirmed.',
   },
 };

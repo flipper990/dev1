@@ -5,3 +5,7 @@ export { CommandDock } from './CommandDock';
 export { DiagnosticsSummary } from './DiagnosticsSummary';
 export { TrustRail } from './TrustRail';
 export { ExportActionPanel } from './ExportActionPanel';
+export { WorkspacePageShell } from './WorkspacePageShell';
+export { WorkspaceMainPanel } from './WorkspaceMainPanel';
+export { WorkspaceSidePanel } from './WorkspaceSidePanel';
+export { WorkspaceStatusArea } from './WorkspaceStatusArea';

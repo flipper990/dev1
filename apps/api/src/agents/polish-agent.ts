@@ -4,6 +4,7 @@
 
 import { BaseAgent } from '../../../../packages/agent-core/src/base-agent.js';
 import type { Task, MemoryEntry } from '../../../../packages/agent-core/src/types.js';
+import { renderSkillsForPrompt } from '../../../../packages/agent-core/src/skills/index.js';
 import { extractJSON } from './utils.js';
 import { UI_SYSTEM_PROMPT } from '../../../../packages/agent-core/src/ui-system.js';
 import { normalizeTechStack, buildStackContract } from '../../../../packages/agent-core/src/tech-stack.js';
@@ -39,7 +40,13 @@ export class PolishAgent extends BaseAgent {
   protected async buildPrompt(task: Task, memories: MemoryEntry[]): Promise<string> {
     const { spec, files, designAudit, sliceManifest } = task.input as unknown as PolishInput;
 
-    let prompt = `## Product Specification\n\n\`\`\`json\n${JSON.stringify(spec, null, 2)}\n\`\`\`\n\n`;
+    let prompt = '';
+    prompt += renderSkillsForPrompt({
+      role: 'polish',
+      spec,
+      files,
+    });
+    prompt += `## Product Specification\n\n\`\`\`json\n${JSON.stringify(spec, null, 2)}\n\`\`\`\n\n`;
 
     // Inject the per-task tech-stack contract so polish patches respect the
     // chosen backend / frontend / ORM rather than reverting to defaults.

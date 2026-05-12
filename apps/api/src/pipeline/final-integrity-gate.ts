@@ -3,7 +3,7 @@
 //
 // HARD GATE that runs after qa-gate but BEFORE the project is
 // scheduled for execution / runtime validation. Refuses to let a
-// project graduate to `status: 'completed'` if its generated code
+// project graduate to `status: 'generated'` if its generated code
 // has unresolvable imports.
 //
 // Two checks, both read-only:

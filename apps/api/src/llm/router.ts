@@ -64,5 +64,8 @@ export function createLLMRouter(logger: Logger, routerConfig?: Partial<RouterCon
     logger.info('Google API key detected but GoogleClient not yet implemented');
   }
 
-  return new SmartLLMRouter(registry, logger, routerConfig);
+  return new SmartLLMRouter(registry, logger, {
+    generationBudget: config.generationBudget,
+    ...(routerConfig ?? {}),
+  });
 }

@@ -30,10 +30,22 @@ const DEVICE_LAYOUT: Record<PreviewDevice, { maxWidth: string; viewportHeightCla
 };
 
 function transportTone(status: PreviewTransportStatus) {
-  if (status === 'failed') return 'error' as const;
-  if (status === 'building' || status === 'starting') return 'active' as const;
-  if (status === 'reachable') return 'success' as const;
-  return 'neutral' as const;
+  switch (status) {
+    case 'failed':
+      return 'error' as const;
+    case 'preparing':
+    case 'installing':
+    case 'building':
+    case 'starting':
+      return 'active' as const;
+    case 'reachable':
+    case 'ready':
+      return 'success' as const;
+    case 'idle':
+      return 'neutral' as const;
+    default:
+      return assertNever(status);
+  }
 }
 
 function healthTone(status: PreviewHealthStatus) {
@@ -45,8 +57,8 @@ function healthTone(status: PreviewHealthStatus) {
 
 function fallbackTruth(ready: boolean, failed: boolean, loading: boolean, url?: string | null): PreviewTruthModel {
   return {
-    projectStatus: loading ? 'generating' : failed ? 'failed' : 'completed',
-    previewTransportStatus: ready ? 'reachable' : failed ? 'failed' : loading ? 'starting' : 'idle',
+    projectStatus: loading ? 'generating' : failed ? 'failed' : 'generated',
+    previewTransportStatus: ready ? 'ready' : failed ? 'failed' : loading ? 'starting' : 'idle',
     previewHealthStatus: ready ? 'healthy' : 'unknown',
     label: ready ? 'Preview Ready' : failed ? 'Preview Failed' : loading ? 'Preview Starting' : 'Preview Idle',
     description: ready ? 'Transport is reachable and content health is healthy.' : failed ? 'Preview failed before becoming reachable.' : loading ? 'Runtime is starting.' : 'No preview runtime has been started.',
@@ -64,6 +76,10 @@ function fallbackTruth(ready: boolean, failed: boolean, loading: boolean, url?: 
     reproduceCommand: '',
     contradictions: [],
   };
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled preview transport status: ${String(value)}`);
 }
 
 function PreviewStateCard({ truth, message, onRetry, retrying }: { truth: PreviewTruthModel; message?: string; onRetry?: () => void; retrying?: boolean }) {

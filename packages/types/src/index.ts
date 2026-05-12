@@ -75,6 +75,7 @@ export interface RuntimeValidationResult {
   totalDurationMs: number;
   completedAt: string;
   reason?: string;
+  details?: Record<string, unknown>;
 }
 
 /**
@@ -105,11 +106,50 @@ export interface ExecutionValidationResult {
   details?: Record<string, unknown>;
 }
 
+/** Canonical preview lifecycle status shared by backend and frontend. */
+export type PreviewLifecycleStatus =
+  | 'idle'
+  | 'preparing'
+  | 'installing'
+  | 'building'
+  | 'starting'
+  | 'reachable'
+  | 'ready'
+  | 'failed';
+
+/** Canonical preview health model. */
+export type PreviewHealthStatus =
+  | 'unknown'
+  | 'healthy'
+  | 'placeholder'
+  | 'broken';
+
+/** Generation lifecycle (code creation only, not runtime verification). */
+export type ProjectLifecycleStatus =
+  | 'generating'
+  | 'generated'
+  | 'failed';
+
+/** Post-generation verification lifecycle. */
+export type VerificationStatus =
+  | 'pending'
+  | 'running'
+  | 'passed'
+  | 'failed'
+  | 'warning';
+
 export interface GeneratedProject {
   id: string;
   sessionId: string;
   name: string;
-  status: 'generating' | 'completed' | 'failed';
+  /** Legacy field kept for compatibility; mirrors `projectStatus`. */
+  status: ProjectLifecycleStatus;
+  /** Canonical generation lifecycle status. */
+  projectStatus?: ProjectLifecycleStatus;
+  /** Canonical verification lifecycle status (execution/runtime checks). */
+  verificationStatus?: VerificationStatus;
+  /** Canonical top-level preview health projection (mirrors preview.previewHealth). */
+  previewHealthStatus?: PreviewHealthStatus;
   /** Legacy single prompt (kept for compat) */
   prompts: string[];
   /** Full prompt history */
@@ -143,7 +183,9 @@ export interface GeneratedProject {
    *  PreviewManager on every state transition; independent of `status`
    *  (which is generation-only). */
   preview?: {
-    previewStatus: 'idle' | 'preparing' | 'installing' | 'building' | 'starting' | 'ready' | 'failed';
+    previewStatus: PreviewLifecycleStatus;
+    /** Canonical content-health verdict for the current preview evidence. */
+    previewHealth?: PreviewHealthStatus;
     previewReady: boolean;
     previewUrl?: string | null;
     previewStartedAt?: string | null;
@@ -314,14 +356,92 @@ export interface GeneratedProject {
         | 'iframe-ready' | 'failed';
       at: string;
       projectId: string;
-      previewStatus:
-        | 'idle' | 'preparing' | 'installing' | 'building'
-        | 'starting' | 'ready' | 'failed';
+      previewStatus: PreviewLifecycleStatus;
       durationMs?: number;
       details?: Record<string, unknown>;
       stdoutTail?: string;
       stderrTail?: string;
     }>;
+  };
+  diagnostics?: {
+    pipelineLedger?: Record<string, unknown>;
+    generationBudget?: Record<string, unknown>;
+    previewValidationArtifacts?: {
+      schemaVersion: 1;
+      updatedAt: string;
+      runtimeType: 'docker' | 'local' | 'local-fallback' | 'fullstack' | 'unknown' | null;
+      routeProbes: Array<{
+        source: 'preview-readiness' | 'execution-validator';
+        at: string | null;
+        method: 'HEAD' | 'GET';
+        path: string;
+        status: number | null;
+        ok: boolean;
+        durationMs: number;
+        error?: string;
+      }>;
+      httpStatusResults: {
+        total: number;
+        ok: number;
+        failed: number;
+        byStatus: Record<string, number>;
+      };
+      previewStatusTransitions: Array<{
+        at: string;
+        previewStatus: PreviewLifecycleStatus;
+        event: string;
+      }>;
+      sanitizedStreams: {
+        capturedAt: string | null;
+        stdoutSnippet: string | null;
+        stderrSnippet: string | null;
+      };
+      dependencyErrors: string[];
+      packageInstallResult: {
+        ran: boolean;
+        ok: boolean | null;
+        exitCode: number | null;
+        timedOut: boolean | null;
+        durationMs: number | null;
+        errors: string[];
+      };
+      buildResult: {
+        ran: boolean;
+        ok: boolean | null;
+        exitCode: number | null;
+        timedOut: boolean | null;
+        durationMs: number | null;
+        errors: string[];
+      };
+      devServerResult: {
+        ran: boolean;
+        ok: boolean | null;
+        exitCode: number | null;
+        timedOut: boolean | null;
+        durationMs: number | null;
+        errors: string[];
+      };
+      bodySampleSummary: {
+        source: 'runtime-validator' | 'execution-validator' | null;
+        sampleChars: number;
+        snippet: string | null;
+        looksPlaceholder: boolean;
+        hasFrameworkOverlaySignals: boolean;
+      };
+      placeholderDetection: {
+        detected: boolean;
+        source: 'qa-assurance' | 'runtime-sample' | 'unknown';
+        details: string[];
+      };
+      frameworkErrorOverlayDetection: {
+        detected: boolean;
+        detectedErrorType?: string;
+        detectedErrorMessage?: string;
+        affectedModule?: string;
+        detectedAt?: string;
+      };
+    };
+    [key: string]: unknown;
   };
 }
 

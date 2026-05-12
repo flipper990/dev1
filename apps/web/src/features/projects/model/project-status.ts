@@ -58,8 +58,8 @@ const STATUS_META: Record<UnifiedProjectStatusKey, Omit<UnifiedProjectStatus, 'k
     nextActionLabel: 'Monitor build',
   },
   'build-complete': {
-    label: 'Build complete',
-    description: 'Code generation finished and artifacts are available.',
+    label: 'Code generated',
+    description: 'Code generation finished. Verification still determines readiness.',
     tone: 'success',
     stage: 'build',
     healthy: true,
@@ -75,7 +75,7 @@ const STATUS_META: Record<UnifiedProjectStatusKey, Omit<UnifiedProjectStatus, 'k
   },
   'preview-ready': {
     label: 'Preview ready',
-    description: 'Preview is healthy and ready for product review.',
+    description: 'Preview is healthy. Production readiness still requires verification pass.',
     tone: 'success',
     stage: 'verify',
     healthy: true,
@@ -116,6 +116,7 @@ const STATUS_META: Record<UnifiedProjectStatusKey, Omit<UnifiedProjectStatus, 'k
 };
 
 function isVerificationPassed(project: GeneratedProject): boolean {
+  if (project.verificationStatus) return project.verificationStatus === 'passed';
   const runtime = project.runtimeValidation?.status;
   const execution = project.executionValidation?.status;
 
@@ -125,7 +126,7 @@ function isVerificationPassed(project: GeneratedProject): boolean {
 }
 
 function hasVerificationSignal(project: GeneratedProject): boolean {
-  return Boolean(project.runtimeValidation || project.executionValidation);
+  return Boolean(project.verificationStatus || project.runtimeValidation || project.executionValidation);
 }
 
 function formatTimestampLabel(value: string | number | Date | undefined): string | undefined {
@@ -210,6 +211,12 @@ export function deriveUnifiedProjectStatus(
   }
 
   if (previewTruth.isHealthy) {
+    if (project.verificationStatus === 'passed') {
+      return { key: 'launch-ready', ...STATUS_META['launch-ready'] };
+    }
+    if (project.verificationStatus === 'failed' || project.verificationStatus === 'warning') {
+      return { key: 'verification-pending', ...STATUS_META['verification-pending'] };
+    }
     if (!hasVerificationSignal(project)) {
       return { key: 'preview-ready', ...STATUS_META['preview-ready'] };
     }
@@ -219,7 +226,7 @@ export function deriveUnifiedProjectStatus(
     return { key: 'verification-pending', ...STATUS_META['verification-pending'] };
   }
 
-  if (project.status === 'completed') {
+  if (project.status === 'generated') {
     return { key: 'build-complete', ...STATUS_META['build-complete'] };
   }
 

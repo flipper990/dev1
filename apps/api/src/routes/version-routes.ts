@@ -2,6 +2,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { ProjectGenerator } from '../pipeline/project-generator.js';
 import type { ProjectStore } from '../storage/project-store.js';
+import type { createAuthGuards } from '../security/auth.js';
+import { getAuthPrincipal } from '../security/auth.js';
 
 const UpdateSchema = z.object({
   prompts: z.array(z.string().min(10).max(5000)).min(1).max(3),
@@ -14,25 +16,28 @@ export function registerVersionRoutes(
   app: FastifyInstance,
   generator: ProjectGenerator,
   projectStore: ProjectStore,
+  auth: ReturnType<typeof createAuthGuards>,
 ): void {
   // Accepts either { prompt: string } (frontend shape) or { prompts: string[] } (legacy).
   const PromptsOrPromptSchema = z.union([
     UpdateSchema,
     z.object({
       prompt: z.string().min(1).max(5000),
-      userId: z.string().optional(),
       preferences: z.record(z.unknown()).optional(),
       scope: z.enum(['code', 'design', 'full']).optional(),
     }),
   ]);
 
   const handleUpdate = async (request: FastifyRequest, reply: FastifyReply) => {
+    const principal = getAuthPrincipal(request);
     const { id } = request.params as { id: string };
+    const authorized = await auth.ensureProjectAccess(request, reply, id, { minRole: 'member' });
+    if (!authorized) return;
     const parsed = PromptsOrPromptSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid update request', details: parsed.error.issues });
     }
-    const data = parsed.data as { prompt?: string; prompts?: string[]; userId?: string; preferences?: Record<string, unknown>; scope?: 'code' | 'design' | 'full' };
+    const data = parsed.data as { prompt?: string; prompts?: string[]; preferences?: Record<string, unknown>; scope?: 'code' | 'design' | 'full' };
     const prompts = data.prompts ?? (data.prompt ? [data.prompt] : []);
     if (prompts.length === 0) {
       return reply.status(400).send({ error: 'At least one prompt is required' });
@@ -49,7 +54,7 @@ export function registerVersionRoutes(
     const reservation = generator.reserveUpdate({
       projectId: id,
       prompts,
-      userId: data.userId,
+      userId: principal.userId,
       preferences: data.preferences,
       scope: data.scope,
     });
@@ -65,10 +70,12 @@ export function registerVersionRoutes(
     await projectStore.update(id, (rec) => {
       rec.sessionId = reservation.sessionId;
       rec.status = 'generating';
+      rec.projectStatus = 'generating';
+      rec.verificationStatus = 'pending';
     }, {
       phase: 'update-route:reserve-session',
       caller: 'version-routes:update',
-      reason: 'user-initiated update flow flips completed→generating',
+      reason: 'user-initiated update flow flips generated→generating',
       allowStatusDowngrade: true,
     });
 
@@ -79,7 +86,7 @@ export function registerVersionRoutes(
     return reply.status(202).send({
       projectId: id,
       sessionId: reservation.sessionId,
-      project:  { id: existing.id, name: existing.name, sessionId: reservation.sessionId, status: 'generating', fileCount: existing.files.length, totalTokens: existing.totalTokens, totalCostUsd: existing.totalCostUsd, durationMs: existing.durationMs },
+      project:  { id: existing.id, name: existing.name, sessionId: reservation.sessionId, status: 'generating', projectStatus: 'generating', verificationStatus: 'pending', fileCount: existing.files.length, totalTokens: existing.totalTokens, totalCostUsd: existing.totalCostUsd, durationMs: existing.durationMs },
       pipeline: { sessionId: reservation.sessionId },
     });
   };
@@ -89,9 +96,9 @@ export function registerVersionRoutes(
   app.post('/api/projects/:id/prompts', handleUpdate);
 
   // Prompt history — used by frontend to render the prompt timeline.
-  app.get('/api/projects/:id/prompts', async (request, reply) => {
+  app.get('/api/projects/:id/prompts', { preHandler: [auth.requireProjectAccess('viewer')] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const project = await projectStore.get(id);
+    const project = request.project ?? await projectStore.get(id);
     if (!project) return reply.status(404).send({ error: 'Project not found' });
     const history = (project.versionHistory ?? []).flatMap((v) =>
       (v.prompts ?? []).map((text) => ({
@@ -122,14 +129,14 @@ export function registerVersionRoutes(
     return { prompts: history };
   });
 
-  app.get('/api/projects/:id/versions', async (request, reply) => {
+  app.get('/api/projects/:id/versions', { preHandler: [auth.requireProjectAccess('viewer')] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const project = await projectStore.get(id);
+    const project = request.project ?? await projectStore.get(id);
     if (!project) return reply.status(404).send({ error: 'Project not found' });
     return { projectId: id, currentVersion: project.version ?? 1, history: project.versionHistory ?? [] };
   });
 
-  app.get('/api/projects/:id/versions/:version', async (request, reply) => {
+  app.get('/api/projects/:id/versions/:version', { preHandler: [auth.requireProjectAccess('viewer')] }, async (request, reply) => {
     const { id, version } = request.params as { id: string; version: string };
     const v = parseInt(version, 10);
     if (isNaN(v) || v < 1) return reply.status(400).send({ error: 'Version must be a positive integer' });

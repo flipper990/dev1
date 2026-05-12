@@ -384,9 +384,9 @@ async function createProject(prompt: string): Promise<CreatedProject> {
 
 interface ProjectRecordLite {
   id: string;
-  status: 'generating' | 'completed' | 'failed' | string;
+  status: 'generating' | 'generated' | 'failed' | string;
   /** Stamped by ProjectGenerator the moment status flips to a terminal
-   *  value ('completed' or 'failed'). Independent of preview lifecycle. */
+   *  value ('generated' or 'failed'). Independent of preview lifecycle. */
   completedAt?: string | null;
   error?: string;
   files?: Array<{ path: string; content: string }>;
@@ -729,7 +729,7 @@ async function getPreviewLiveStatus(id: string): Promise<PreviewStatusEndpoint |
 /**
  * Preview-readiness gate.
  *
- * After project.status === 'completed' the generation pipeline is done,
+ * After project.status === 'generated' the generation pipeline is done,
  * but the preview backend (Docker container or local-runner) still has
  * to install dependencies, build, and serve the app. This function
  * blocks until ONE of three terminal conditions holds:
@@ -1795,7 +1795,7 @@ async function runOne(index: number, prompt: string): Promise<GenerationResult> 
     // can't even start the app, there's no point spawning yet another
     // local install/build/dev cycle in runValidation. Ready/failed/
     // timeout are all terminal — only 'ready' lets us proceed.
-    if (final.status === 'completed') {
+    if (final.status === 'generated') {
       previewOutcome = await waitForPreview(projectId);
       if (previewOutcome.outcome === 'failed') {
         status = 'fail-preview-failed';
@@ -2157,7 +2157,7 @@ async function collectDiagnostics(
   if (!project.failure) {
     // Successful runs still emit diagnostics so results.json shows
     // anyLlmCallMade for both passes and fails.
-    if (project.status === 'completed') {
+    if (project.status === 'generated') {
       return {
         failedPhase: 'none',
         lastSuccessfulPhase: project.progress?.phase,
@@ -2610,7 +2610,7 @@ async function runDiagnostic(): Promise<void> {
   log.info('');
   log.info('▶ Stage 4/6 — preview readiness gate');
   let previewOutcome: PreviewOutcome | null = null;
-  if (lastSeen?.status === 'completed') {
+  if (lastSeen?.status === 'generated') {
     previewOutcome = await waitForPreview(projectId);
     log.info(`  preview outcome     : ${previewOutcome.outcome}`);
     log.info(`  previewStatus       : ${previewOutcome.previewStatus}`);

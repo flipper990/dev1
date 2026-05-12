@@ -83,14 +83,21 @@ export class CostTracker {
     provider?: LLMProvider;
     model?: string;
     category?: TaskCategory;
+    projectId?: string;
     since?: Date;
   }): CostRecord[] {
     let result = this.records;
     if (filter?.provider) result = result.filter(r => r.provider === filter.provider);
     if (filter?.model)    result = result.filter(r => r.model === filter.model);
     if (filter?.category) result = result.filter(r => r.taskCategory === filter.category);
+    if (filter?.projectId) result = result.filter(r => r.projectId === filter.projectId);
     if (filter?.since)    result = result.filter(r => r.timestamp >= filter.since!);
     return result;
+  }
+
+  /** Current tracked spend for one project, based only on recorded LLM calls. */
+  getProjectCostUsd(projectId: string): number {
+    return this.records.reduce((sum, r) => r.projectId === projectId ? sum + r.costUsd : sum, 0);
   }
 
   /** Compute aggregate summary. */

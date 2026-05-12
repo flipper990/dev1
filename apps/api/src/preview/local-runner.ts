@@ -26,6 +26,7 @@ import type { StackInfo } from './types.js';
 import { detectStack } from './stack-detector.js';
 import { instrumentChild } from './spawn-logger.js';
 import { recordProbe, type ProbeAttempt } from './probe-recorder.js';
+import { resolvePathWithinRoot, UnsafeProjectPathError } from '../security/safe-path.js';
 import {
   parseEresolveAsync,
   buildEresolveHeadline,
@@ -116,6 +117,116 @@ const STOP_GRACE_MS = 5_000;
  *  the readiness wait the manager-side watchdog targets, with
  *  generous head-room for retries. */
 const MAX_PROBE_ATTEMPTS = 64;
+
+type PreviewSpawnPhase = 'install' | 'dev';
+
+export interface BuildLocalPreviewEnvOptions {
+  phase: PreviewSpawnPhase;
+  baseEnv?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+  port?: number;
+  host?: string;
+  nextPublicApiUrl?: string;
+}
+
+export interface LocalPreviewEnvBundle {
+  env: Record<string, string>;
+  safeLogEnv: Record<string, string>;
+}
+
+const PREVIEW_SYSTEM_ENV_ALIASES: ReadonlyArray<{ out: string; keys: readonly string[] }> = [
+  { out: 'PATH', keys: ['PATH', 'Path'] },
+  { out: 'PATHEXT', keys: ['PATHEXT'] },
+  { out: 'SystemRoot', keys: ['SystemRoot', 'SYSTEMROOT'] },
+  { out: 'WINDIR', keys: ['WINDIR'] },
+  { out: 'ComSpec', keys: ['ComSpec', 'COMSPEC'] },
+  { out: 'TMP', keys: ['TMP'] },
+  { out: 'TEMP', keys: ['TEMP'] },
+  { out: 'HOME', keys: ['HOME'] },
+  { out: 'USERPROFILE', keys: ['USERPROFILE'] },
+  { out: 'APPDATA', keys: ['APPDATA'] },
+  { out: 'LOCALAPPDATA', keys: ['LOCALAPPDATA'] },
+  { out: 'LANG', keys: ['LANG'] },
+  { out: 'LC_ALL', keys: ['LC_ALL'] },
+] as const;
+
+const SAFE_RUNTIME_ENV_KEYS = [
+  'NODE_ENV',
+  'PORT',
+  'HOST',
+  'HOSTNAME',
+  'NEXT_PUBLIC_API_URL',
+  'CI',
+  'BROWSER',
+  'FORCE_COLOR',
+  'NO_COLOR',
+  'NEXT_TELEMETRY_DISABLED',
+] as const;
+
+const FORBIDDEN_PREVIEW_ENV_PATTERNS: ReadonlyArray<RegExp> = [
+  /OPENAI.*(KEY|TOKEN|SECRET)/i,
+  /ANTHROPIC.*(KEY|TOKEN|SECRET)/i,
+  /AZURE.*(KEY|TOKEN|SECRET)/i,
+  /(DATABASE_URL|POSTGRES|MYSQL|MONGO).*(URL|KEY|TOKEN|SECRET|PASSWORD)?/i,
+  /(AUTH|JWT|SESSION|COOKIE).*(KEY|TOKEN|SECRET)/i,
+  /(BILLING|STRIPE|PAYPAL).*(KEY|TOKEN|SECRET)/i,
+  /(^|_)(API_KEY|SECRET|TOKEN|PASSWORD)$/i,
+] as const;
+
+function firstEnvValue(
+  env: NodeJS.ProcessEnv | Record<string, string | undefined>,
+  keys: readonly string[],
+): string | null {
+  for (const key of keys) {
+    const value = env[key];
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  return null;
+}
+
+export function assertNoForbiddenPreviewEnvKeys(env: Record<string, string>): void {
+  const forbiddenKeys = Object.keys(env).filter((key) => FORBIDDEN_PREVIEW_ENV_PATTERNS.some((pattern) => pattern.test(key)));
+  if (forbiddenKeys.length > 0) {
+    throw new Error(`Refusing to pass forbidden preview env keys: ${forbiddenKeys.join(', ')}`);
+  }
+}
+
+export function buildLocalPreviewEnv(options: BuildLocalPreviewEnvOptions): LocalPreviewEnvBundle {
+  const baseEnv = options.baseEnv ?? process.env;
+  const out: Record<string, string> = {};
+
+  for (const alias of PREVIEW_SYSTEM_ENV_ALIASES) {
+    const value = firstEnvValue(baseEnv, alias.keys);
+    if (value) out[alias.out] = value;
+  }
+
+  out.NODE_ENV = firstEnvValue(baseEnv, ['NODE_ENV']) ?? 'development';
+  out.CI = '1';
+  out.FORCE_COLOR = '0';
+  out.NO_COLOR = '1';
+
+  if (options.phase === 'dev') {
+    const host = options.host ?? '127.0.0.1';
+    const port = options.port;
+    if (typeof port === 'number' && Number.isFinite(port)) {
+      out.PORT = String(port);
+    }
+    out.HOST = host;
+    out.HOSTNAME = host;
+    out.BROWSER = 'none';
+    out.NEXT_TELEMETRY_DISABLED = '1';
+    const nextPublicApiUrl = options.nextPublicApiUrl ?? firstEnvValue(baseEnv, ['NEXT_PUBLIC_API_URL']);
+    if (nextPublicApiUrl) out.NEXT_PUBLIC_API_URL = nextPublicApiUrl;
+  }
+
+  assertNoForbiddenPreviewEnvKeys(out);
+
+  const safeLogEnv: Record<string, string> = {};
+  for (const key of SAFE_RUNTIME_ENV_KEYS) {
+    const value = out[key];
+    if (typeof value === 'string' && value.length > 0) safeLogEnv[key] = value;
+  }
+  return { env: out, safeLogEnv };
+}
 
 /** Pick a package manager based on lockfiles in the project. */
 function detectPackageManager(files: LocalPreviewFile[]): 'pnpm' | 'npm' | 'yarn' {
@@ -458,20 +569,15 @@ export class LocalPreviewRunner {
 
     // ── Spawn dev ──────────────────────────────────────────
     // Verbose startup log: every field a future post-mortem might need
-    // (cmd, args, cwd, port, env subset). Secrets are NEVER included —
-    // we explicitly enumerate the non-secret keys to forward.
+    // (cmd, args, cwd, port, env key subset). Secrets are NEVER included —
+    // spawn env is built from an explicit allowlist and we only log keys.
     const devCmd = pmExe(pm);
     const devArgs = ['run', 'dev'];
-    const devEnvSafe: Record<string, string> = {
-      PORT: String(port),
-      HOST: '127.0.0.1',
-      HOSTNAME: '127.0.0.1',
-      BROWSER: 'none',
-      CI: '1',
-      FORCE_COLOR: '0',
-      NO_COLOR: '1',
-      NEXT_TELEMETRY_DISABLED: '1',
-    };
+    const devEnv = buildLocalPreviewEnv({
+      phase: 'dev',
+      port,
+      host: '127.0.0.1',
+    });
     this.opts.logger.info('local-runner: starting dev server', {
       event: 'preview:runtime-start',
       runtime: 'local',
@@ -481,7 +587,7 @@ export class LocalPreviewRunner {
       args: devArgs,
       cwd: stagingDir,
       port,
-      env: devEnvSafe,
+      envKeys: Object.keys(devEnv.safeLogEnv),
     });
     // Phase boundary: about to spawn the dev process. The PreviewManager
     // uses this signal to flip `previewStep` from `preview:installing`
@@ -495,17 +601,14 @@ export class LocalPreviewRunner {
         cmd: devCmd,
         args: devArgs,
         cwd: stagingDir,
-        envSafe: devEnvSafe,
+        envSafe: devEnv.safeLogEnv,
       });
     } catch { /* progress callbacks must never abort boot */ }
     const child = spawn(devCmd, devArgs, {
       cwd: stagingDir,
       shell: IS_WIN,
       windowsHide: true,
-      env: {
-        ...process.env,
-        ...devEnvSafe,
-      },
+      env: devEnv.env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     const devLifecycle = instrumentChild(child, {
@@ -606,7 +709,7 @@ export class LocalPreviewRunner {
         cmd: devCmd,
         args: devArgs,
         cwd: stagingDir,
-        envSafe: devEnvSafe,
+        envSafe: devEnv.safeLogEnv,
       });
     } catch { /* progress callbacks must never abort boot */ }
     try {
@@ -675,9 +778,6 @@ export class LocalPreviewRunner {
     }));
 
     for (const file of files) {
-      // Defence-in-depth: never let a project file escape the staging root via "..".
-      if (file.path.includes('..')) continue;
-      if (file.path.startsWith('/') || file.path.startsWith('\\')) continue;
       // Type-guard: writing `undefined` would throw the cryptic
       // "The 'data' argument must be of type string …" message,
       // which the user/UI surfaces as a generic preview failure.
@@ -690,7 +790,20 @@ export class LocalPreviewRunner {
         });
         continue;
       }
-      const dest = join(rootDir, file.path);
+      let dest: string;
+      try {
+        dest = resolvePathWithinRoot(rootDir, file.path).absolutePath;
+      } catch (err) {
+        const pathErr = err as UnsafeProjectPathError;
+        this.opts.logger.error('local-runner: unsafe staged file path detected', {
+          event: 'preview:unsafe-staged-path',
+          path: file.path,
+          reason: pathErr.reason ?? 'invalid-path',
+          error: pathErr.message,
+          rootDir,
+        });
+        throw pathErr;
+      }
       await mkdir(dirname(dest), { recursive: true });
       this.opts.logger.debug('local-runner: write file', {
         path: file.path,
@@ -710,7 +823,7 @@ export class LocalPreviewRunner {
       const baseArgs = pm === 'yarn' ? ['install'] : ['install', '--no-audit', '--no-fund'];
       const args = [...baseArgs, ...(options.extraArgs ?? [])];
       const installCmd = pmExe(pm);
-      const installEnvSafe = { CI: '1', FORCE_COLOR: '0', NO_COLOR: '1' };
+      const installEnv = buildLocalPreviewEnv({ phase: 'install' });
       this.opts.logger.info('local-runner: starting install process', {
         event: 'preview:runtime-start',
         runtime: 'local',
@@ -720,13 +833,13 @@ export class LocalPreviewRunner {
         cmd: installCmd,
         args,
         cwd: stagingDir,
-        env: installEnvSafe,
+        envKeys: Object.keys(installEnv.safeLogEnv),
       });
       const child = spawn(installCmd, args, {
         cwd: stagingDir,
         shell: IS_WIN,
         windowsHide: true,
-        env: { ...process.env, ...installEnvSafe },
+        env: installEnv.env,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       instrumentChild(child, {

@@ -131,6 +131,14 @@ export abstract class BaseAgent {
         model,
         system: systemPrompt,
         messages: [{ role: 'user', content: prompt }],
+        metadata: {
+          projectId: typeof ctx.variables?.projectId === 'string' ? ctx.variables.projectId : undefined,
+          sessionId: ctx.sessionId,
+          traceId: ctx.traceId,
+          agentRole: this.definition.role,
+          phase: typeof ctx.variables?.generationPhase === 'string' ? ctx.variables.generationPhase : undefined,
+          step: typeof ctx.variables?.generationStep === 'string' ? ctx.variables.generationStep : undefined,
+        },
       });
 
       this.logger.debug(`[${this.definition.role}] LLM responded`, {
@@ -144,12 +152,14 @@ export abstract class BaseAgent {
       await saveMemories(task, output, this.definition, this.memory, this.logger, this.extractLearnings.bind(this));
 
       const latencyMs = Date.now() - start;
-      const costUsd   = estimateCost(model, result.tokensIn, result.tokensOut);
+      const costUsd   = typeof result.costUsd === 'number'
+        ? result.costUsd
+        : estimateCost(model, result.tokensIn, result.tokensOut);
       task.output    = output;
       task.status    = 'completed';
       task.completedAt = new Date();
       task.metadata  = {
-        model: model.model, provider: model.provider,
+        model: result.model ?? model.model, provider: result.provider ?? model.provider,
         tokensIn: result.tokensIn, tokensOut: result.tokensOut,
         latencyMs, costUsd, memoryEntriesUsed: memories.length,
       };

@@ -3,32 +3,33 @@
 import { useCallback } from 'react';
 import {
   TELEMETRY_ENDPOINT,
+  TELEMETRY_ENABLED,
   buildTelemetryEvent,
   sanitizeTelemetryPayload,
+  telemetryOptOutInLocalStorage,
   type TelemetryEventName,
   type TelemetryEventPayloadMap,
 } from './events';
+import { recordTelemetryLocally } from './localTracker';
+
+let telemetryTransportDisabled = false;
 
 function canTrackTelemetry(): boolean {
-  return typeof window !== 'undefined' && (window.localStorage.getItem('telemetry:disable') !== '1');
+  if (!TELEMETRY_ENABLED) return false;
+  if (telemetryTransportDisabled) return false;
+  if (telemetryOptOutInLocalStorage()) return false;
+  return true;
 }
 
 export function useTrackEvent() {
   return useCallback(<K extends TelemetryEventName>(name: K, payload: TelemetryEventPayloadMap[K]) => {
-    if (!canTrackTelemetry()) return;
-
     const sanitizedPayload = sanitizeTelemetryPayload(payload) as TelemetryEventPayloadMap[K];
     const event = buildTelemetryEvent(name, sanitizedPayload);
-    const body = JSON.stringify(event);
+    recordTelemetryLocally(event);
 
-    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-      try {
-        navigator.sendBeacon(TELEMETRY_ENDPOINT, body);
-        return;
-      } catch {
-        // fallback below
-      }
-    }
+    if (!canTrackTelemetry()) return;
+
+    const body = JSON.stringify(event);
 
     void fetch(TELEMETRY_ENDPOINT, {
       method: 'POST',
@@ -36,6 +37,12 @@ export function useTrackEvent() {
       body,
       keepalive: true,
       cache: 'no-store',
-    }).catch(() => {});
+    }).then((response) => {
+      if (!response.ok && (response.status === 404 || response.status === 405 || response.status === 501)) {
+        telemetryTransportDisabled = true;
+      }
+    }).catch(() => {
+      telemetryTransportDisabled = true;
+    });
   }, []);
 }

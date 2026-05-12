@@ -233,6 +233,7 @@ function categorise(line: string): string {
     logs: '',
     steps: [],
     projectDir: '',
+    failureReasons: [],
   })[0]?.tag ?? 'unknown';
 }
 
@@ -350,7 +351,7 @@ export async function runExecutionFeedbackLoop(
       iterations,
       lastResult: {
         success: false, buildErrors: ['project has no files'], runtimeErrors: [],
-        logs: '', steps: [], httpProbes: [], projectDir: '',
+        logs: '', steps: [], httpProbes: [], projectDir: '', failureReasons: ['project has no files'],
       },
       totalDurationMs: Date.now() - t0,
       reason: 'no-files',
@@ -376,7 +377,7 @@ export async function runExecutionFeedbackLoop(
         success: false,
         buildErrors: [`execution-runner crashed: ${err instanceof Error ? err.message : String(err)}`],
         runtimeErrors: [],
-        logs: '', steps: [], httpProbes: [], projectDir: '',
+        logs: '', steps: [], httpProbes: [], projectDir: '', failureReasons: ['execution-runner crashed'],
       },
       totalDurationMs: Date.now() - t0,
       reason: 'crashed',
@@ -484,7 +485,7 @@ export async function runExecutionFeedbackLoop(
         success: false,
         buildErrors: [`execution-runner crashed: ${err instanceof Error ? err.message : String(err)}`],
         runtimeErrors: [],
-        logs: '', steps: [], httpProbes: [], projectDir: '',
+        logs: '', steps: [], httpProbes: [], projectDir: '', failureReasons: ['execution-runner crashed'],
       };
       iterations.push({ index: i, kind: 'execute', result: lastResult, durationMs: Date.now() - execT0 });
       reason = 'crashed';

@@ -9,6 +9,8 @@
     "start": "node dist/server.js",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
+    "test:auth": "tsx --test src/security/auth.test.ts",
+    "test:contracts": "tsx --test src/routes/api-contract.test.ts",
     "test:generations": "tsx src/testing/generation-runner.ts"
   },
   "dependencies": {

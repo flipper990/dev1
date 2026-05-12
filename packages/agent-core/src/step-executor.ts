@@ -89,6 +89,15 @@ export async function executeStep(
     const execCtx = createExecutionContext(session.id, step.agent, {
       traceId,
       parentSpanId: task.parentTaskId,
+      variables: {
+        projectId: typeof session.artifacts.get('projectId') === 'string'
+          ? session.artifacts.get('projectId')
+          : undefined,
+        generationPhase: typeof session.artifacts.get('generationPhase') === 'string'
+          ? session.artifacts.get('generationPhase')
+          : undefined,
+        generationStep: step.id,
+      },
     });
     execCtx.attempt = attempt;
 

@@ -24,6 +24,7 @@ import type {
 import { extractJSONTolerant, looksTruncated } from './utils.js';
 import { UI_SYSTEM_PROMPT } from '../../../../packages/agent-core/src/ui-system.js';
 import { normalizeTechStack, buildStackContract } from '../../../../packages/agent-core/src/tech-stack.js';
+import { renderSkillsForPrompt } from '../../../../packages/agent-core/src/skills/index.js';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -232,6 +233,16 @@ export class BuilderAgent extends BaseAgent {
     const iter = iteration ?? 1;
 
     let prompt = `## Build Iteration: ${iter}\n\n`;
+    const skillPrompt = renderSkillsForPrompt({
+      role: 'builder',
+      spec,
+      files: existingFiles,
+      filesManifest: input.existingFilesManifest,
+      qaFeedback,
+      phase,
+      currentSlice,
+    });
+    if (skillPrompt) prompt += skillPrompt;
 
     // ── Reduced-prompt fallback preamble (HIGHEST PRIORITY) ────────
     // When all normal retries have produced zero usable files, this last

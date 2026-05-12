@@ -7,12 +7,13 @@
 // ─────────────────────────────────────────────────────────────
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { request as httpRequest } from 'node:http';
 import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import { instrumentChild } from './spawn-logger.js';
 import { recordProbe, type ProbeAttempt } from './probe-recorder.js';
+import { resolvePathWithinRoot, UnsafeProjectPathError } from '../security/safe-path.js';
 
 export interface SpawnResult {
   code: number;
@@ -187,15 +188,24 @@ export function createDockerRunner(logger: Logger, dockerBin = 'docker'): Docker
 
     async build(opts) {
       // Write Dockerfile + ensureFiles into contextDir, then docker build.
-      const dockerfilePath = join(opts.contextDir, 'Dockerfile.preview');
+      const dockerfilePath = resolvePathWithinRoot(opts.contextDir, 'Dockerfile.preview').absolutePath;
       try {
         await writeFile(dockerfilePath, opts.dockerfileContents, 'utf8');
         if (opts.ensureFiles) {
           for (const [rel, contents] of Object.entries(opts.ensureFiles)) {
-            await writeFile(join(opts.contextDir, rel), contents, 'utf8');
+            const safePath = resolvePathWithinRoot(opts.contextDir, rel).absolutePath;
+            await mkdir(dirname(safePath), { recursive: true });
+            await writeFile(safePath, contents, 'utf8');
           }
         }
       } catch (err) {
+        const pathErr = err as UnsafeProjectPathError;
+        if (pathErr?.code === 'UNSAFE_PROJECT_PATH') {
+          return {
+            ok: false,
+            log: `[runner] unsafe build-context path "${pathErr.inputPath}" (${pathErr.reason})`,
+          };
+        }
         return { ok: false, log: `[runner] failed to stage build context: ${(err as Error).message}` };
       }
 
@@ -345,7 +355,7 @@ export function createDockerRunner(logger: Logger, dockerBin = 'docker'): Docker
 
     async composeUp(opts) {
       // Stage override file, if provided.
-      const overridePath = join(opts.contextDir, 'docker-compose.preview.override.yml');
+      const overridePath = resolvePathWithinRoot(opts.contextDir, 'docker-compose.preview.override.yml').absolutePath;
       try {
         if (opts.overrideContents) {
           await writeFile(overridePath, opts.overrideContents, 'utf8');

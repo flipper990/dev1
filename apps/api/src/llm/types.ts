@@ -24,6 +24,7 @@ export interface LLMRequestParams {
   model: ModelConfig;
   system: string;
   messages: ChatMessage[];
+  metadata?: LLMRequestMetadata;
 }
 
 export interface ChatMessage {
@@ -31,10 +32,24 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface LLMRequestMetadata {
+  projectId?: string;
+  sessionId?: string;
+  traceId?: string;
+  agentRole?: AgentRole;
+  taskCategory?: TaskCategory;
+  phase?: string;
+  step?: string;
+}
+
 export interface LLMResponse {
   content: string;
   tokensIn: number;
   tokensOut: number;
+  costUsd?: number;
+  provider?: LLMProvider;
+  model?: string;
+  requestId?: string;
 }
 
 // â”€â”€ Enriched Response (from router) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -102,6 +117,13 @@ export interface RouterConfig {
   maxRetries?: number;
   /** Base delay for retry backoff in ms (default 1000). */
   retryBaseDelayMs?: number;
+  /** Per-project generation cost guard. Disabled when softLimitUsd is null. */
+  generationBudget?: {
+    softLimitUsd: number | null;
+    warningThreshold: number;
+    criticalThreshold: number;
+    hardStopEnabled: boolean;
+  };
 }
 
 // â”€â”€ Cost Tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -109,6 +131,8 @@ export interface RouterConfig {
 export interface CostRecord {
   requestId: string;
   timestamp: Date;
+  projectId?: string;
+  sessionId?: string;
   provider: LLMProvider;
   model: string;
   tokensIn: number;

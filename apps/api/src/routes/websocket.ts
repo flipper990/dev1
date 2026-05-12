@@ -5,6 +5,8 @@
 import type { FastifyInstance } from 'fastify';
 import type { SessionManager, SessionProgress } from '../pipeline/session-manager.js';
 import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
+import type { ProjectStore } from '../storage/project-store.js';
+import type { createAuthGuards } from '../security/auth.js';
 
 /** Serialise progress for the wire. */
 function serializeProgress(p: SessionProgress) {
@@ -40,16 +42,35 @@ const SESSION_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
 
 export function registerWebSocket(
   app: FastifyInstance,
-  deps: { sessionManager: SessionManager; logger: Logger },
+  deps: { sessionManager: SessionManager; projectStore: ProjectStore; logger: Logger; auth: ReturnType<typeof createAuthGuards> },
 ): void {
-  const { sessionManager, logger } = deps;
+  const { sessionManager, projectStore, logger, auth } = deps;
 
-  app.get('/ws/sessions/:id/progress', { websocket: true }, (socket, request) => {
+  app.get('/ws/sessions/:id/progress', { websocket: true }, async (socket, request) => {
     const { id } = request.params as { id: string };
 
     if (!SESSION_ID_RE.test(id)) {
       socket.send(JSON.stringify({ type: 'error', message: 'Invalid session ID' }));
       socket.close(1008, 'Invalid session ID');
+      return;
+    }
+
+    const principal = request.auth;
+    if (!principal) {
+      socket.send(JSON.stringify({ type: 'error', message: 'Authentication required' }));
+      socket.close(1008, 'Authentication required');
+      return;
+    }
+    const projects = await projectStore.list();
+    const allowedSessionIds = new Set(
+      projects
+        .filter((project) => auth.canAccessProject(principal, project))
+        .map((project) => project.sessionId)
+        .filter((sessionId): sessionId is string => typeof sessionId === 'string' && sessionId.length > 0),
+    );
+    if (!allowedSessionIds.has(id)) {
+      socket.send(JSON.stringify({ type: 'error', message: 'Forbidden' }));
+      socket.close(1008, 'Forbidden');
       return;
     }
 

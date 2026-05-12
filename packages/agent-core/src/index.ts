@@ -44,6 +44,24 @@ export { AGENT_DEFINITIONS, getAgentDefinition, getExecutionOrder } from './agen
 // Prompts
 export { PROMPTS } from './prompts';
 
+// Internal skill/playbook registry
+export {
+  DEVTEAM_SKILL_REGISTRY,
+  DEVTEAM_SKILLS,
+  getSkill,
+  getSkillsForRole,
+  renderSkillsForPrompt,
+  selectSkillsForPrompt,
+  validateSkillRegistry,
+} from './skills';
+export type {
+  DevteamSkill,
+  SkillId,
+  SkillRegistryEntry,
+  SkillSelectionContext,
+  SkillValidatorId,
+} from './skills';
+
 // Prompt Manager
 export { PromptManager } from './prompt-manager';
 

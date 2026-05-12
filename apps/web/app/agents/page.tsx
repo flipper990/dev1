@@ -1,15 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppShell } from '../../src/components/shell';
 import { Button, Card, EmptyState, Panel, Skeleton, StatusDot } from '../../components/ui';
-import { ApiError, getSessionProgress, listActiveSessions, listProjects } from '../../lib/api';
+import { listActiveSessions } from '../../lib/api';
 import type { GeneratedProject, PipelineStep, SessionProgress } from '../../types/dashboard';
 import { useTrackEvent } from '../../src/lib/telemetry/useTrackEvent';
 import { ProductionTimeline, type AgentStepState, type TimelineEvent } from '../../src/features/agents/components';
-import { deriveProjectPresentation, deriveUnifiedProjectStatus, sortProjectsByUpdated } from '../../src/features/projects/model';
+import { deriveProjectPresentation, deriveUnifiedProjectStatus } from '../../src/features/projects/model';
 import { derivePreviewTruth, previewToneToStatusDot } from '../../src/features/preview/model';
+import { useProjectActivity, useProjects } from '../../hooks/useProjectData';
 
 type EvidenceSource = 'session-progress' | 'preview-timeline' | 'project-history' | 'none';
 
@@ -133,69 +134,87 @@ function sourceLabel(source: EvidenceSource) {
 export default function AgentsPage() {
   const router = useRouter();
   const trackEvent = useTrackEvent();
-  const [rows, setRows] = useState<ProjectActivityEvidence[]>([]);
+  const projectsState = useProjects();
+  const { projects, loading, error, stale, reconnecting } = projectsState;
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [activeSessionCount, setActiveSessionCount] = useState(0);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionsStale, setSessionsStale] = useState(false);
+  const [sessionsReconnecting, setSessionsReconnecting] = useState(false);
   const [activeSessionsError, setActiveSessionsError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const activityState = useProjectActivity(activeProjectId);
 
   useEffect(() => {
-    let alive = true;
-
-    async function loadActivity() {
-      setLoading(true);
-      setError(null);
-      setActiveSessionsError(null);
-
-      try {
-        let sessionsError: string | null = null;
-        const [projects, activeSessions] = await Promise.all([
-          listProjects(),
-          listActiveSessions().catch((err) => {
-            sessionsError = err instanceof Error ? err.message : 'Unable to load active sessions.';
-            return [];
-          }),
-        ]);
-
-        const sortedProjects = sortProjectsByUpdated(projects);
-        const evidence = await Promise.all(sortedProjects.map(async (project) => {
-          if (!project.sessionId) return buildEvidence(project, null, 'Project has no sessionId in the backend record.');
-
-          try {
-            const progress = await getSessionProgress(project.sessionId);
-            return buildEvidence(project, progress, null);
-          } catch (err) {
-            const progressError = err instanceof ApiError && err.status === 404
-              ? 'Live session progress is no longer retained by /api/sessions/:id/progress.'
-              : err instanceof Error ? err.message : 'Unable to load session progress.';
-            return buildEvidence(project, null, progressError);
-          }
-        }));
-
-        if (!alive) return;
-        setRows(evidence);
-        setActiveSessionCount(activeSessions.length);
-        setActiveSessionsError(sessionsError);
-      } catch (err) {
-        if (!alive) return;
-        setError(err instanceof Error ? err.message : 'Unable to load project activity.');
-      } finally {
-        if (alive) setLoading(false);
-      }
+    if (projects.length === 0) {
+      setActiveProjectId(null);
+      return;
     }
+    if (activeProjectId && projects.some((project) => project.id === activeProjectId)) {
+      return;
+    }
+    const withSession = projects.find((project) => Boolean(project.sessionId));
+    setActiveProjectId(withSession?.id ?? projects[0].id);
+  }, [activeProjectId, projects]);
 
-    void loadActivity();
-    return () => {
-      alive = false;
+  const refreshSessions = useCallback(async () => {
+    try {
+      const activeSessions = await listActiveSessions();
+      setActiveSessionCount(activeSessions.length);
+      setActiveSessionsError(null);
+      setSessionsStale(false);
+      setSessionsReconnecting(false);
+    } catch (err) {
+      setActiveSessionsError(err instanceof Error ? err.message : 'Unable to load active sessions.');
+      setSessionsReconnecting(true);
+      if (!sessionsLoading) {
+        setSessionsStale(true);
+      }
+    } finally {
+      setSessionsLoading(false);
+    }
+  }, [sessionsLoading]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (cancelled) return;
+      await refreshSessions();
     };
-  }, []);
+    void run();
+    const interval = window.setInterval(() => { void run(); }, 8_000);
+    const onFocus = () => { void run(); };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void run();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [refreshSessions]);
+
+  const rows = useMemo<ProjectActivityEvidence[]>(() => {
+    return projects.map((project) => {
+      if (project.id === activeProjectId) {
+        return buildEvidence(project, activityState.progress, activityState.error);
+      }
+      return buildEvidence(project, null, null);
+    });
+  }, [activeProjectId, activityState.error, activityState.progress, projects]);
 
   const activeRow = useMemo(() => {
+    if (activeProjectId) {
+      const byId = rows.find((row) => row.project.id === activeProjectId);
+      if (byId) return byId;
+    }
     return rows.find((row) => row.progress?.status === 'active')
       ?? rows.find((row) => row.events.length > 0)
       ?? rows[0]
       ?? null;
-  }, [rows]);
+  }, [activeProjectId, rows]);
 
   const activeProject = activeRow?.project ?? null;
   const activeStatus = deriveUnifiedProjectStatus(activeProject);
@@ -205,21 +224,28 @@ export default function AgentsPage() {
   const visibleEvents = activeRow?.events ?? [];
   const totalCost = rows.reduce((sum, row) => sum + (row.project.totalCostUsd ?? 0), 0);
   const totalTokens = rows.reduce((sum, row) => sum + (row.project.totalTokens ?? 0), 0);
+  const pageLoading = loading || sessionsLoading;
+  const hasStaleData = stale || sessionsStale || activityState.stale;
+  const isReconnecting = reconnecting || sessionsReconnecting || activityState.reconnecting;
+
+  const refreshAll = useCallback(async () => {
+    await Promise.all([projectsState.refresh(), refreshSessions(), activityState.refresh()]);
+  }, [activityState, projectsState, refreshSessions]);
 
   useEffect(() => {
     trackEvent('build_timeline_opened', {
       route: '/agents',
       project_stage: activeStatus.stage,
       health_state: activeStatus.healthy ? 'healthy' : 'degraded',
-      action_source: activeRow?.source ?? 'none',
+      action_source: activityState.source === 'none' ? (activeRow?.source ?? 'none') : activityState.source,
     });
-  }, [activeRow?.source, activeStatus.healthy, activeStatus.stage, trackEvent]);
+  }, [activeRow?.source, activeStatus.healthy, activeStatus.stage, activityState.source, trackEvent]);
 
   return (
     <AppShell
       title="Activity"
       subtitle="Real production evidence from projects, live sessions, preview timelines, and retained project history."
-      lifecycle={{ label: loading ? 'Loading' : activeStatus.label, tone: loading ? 'neutral' : activeStatus.tone }}
+      lifecycle={{ label: pageLoading ? 'Loading' : activeStatus.label, tone: pageLoading ? 'neutral' : activeStatus.tone }}
       breadcrumbs={[{ label: 'Workspace', href: '/overview' }, { label: 'Activity' }]}
       actions={
         <Button
@@ -238,8 +264,8 @@ export default function AgentsPage() {
           <Panel title="API bindings" subtitle="Sources used by this page">
             <div className="space-y-3">
               <StatusDot tone={error ? 'error' : 'success'} label={error ? 'Unable to load /api/projects' : 'Using /api/projects'} />
-              <StatusDot tone={activeSessionsError ? 'warning' : 'success'} label={activeSessionsError ? 'Active sessions unavailable' : 'Using /api/sessions/active'} />
-              <StatusDot tone="warning" label="No historical agent-event endpoint" />
+              <StatusDot tone={activeSessionsError ? 'warning' : sessionsReconnecting ? 'warning' : 'success'} label={activeSessionsError ? 'Active sessions unavailable' : sessionsReconnecting ? 'Reconnecting /api/sessions/active' : 'Using /api/sessions/active'} />
+              <StatusDot tone={activityState.error ? 'warning' : activityState.reconnecting ? 'warning' : 'success'} label={activityState.error ? 'Live session progress unavailable' : activityState.reconnecting ? 'Reconnecting live progress feed' : 'Using live session progress feed'} />
               <p className="text-body-s text-text-secondary">
                 Completed session step history is only shown when retained by the session API. Otherwise this page uses persisted preview and project history from real project records.
               </p>
@@ -256,8 +282,17 @@ export default function AgentsPage() {
                 <dd className="text-text-primary">{activeRow ? sourceLabel(activeRow.source) : 'Not available'}</dd>
               </div>
               <div className="flex items-center justify-between gap-3">
+                <dt>Live feed</dt>
+                <dd className="text-text-primary">{activityState.source === 'none' ? 'Not connected' : activityState.source}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
                 <dt>Active sessions</dt>
                 <dd className="text-text-primary">{activeSessionCount}</dd>
+              </div>
+              <div className="pt-1">
+                <Button variant="secondary" onClick={() => { void refreshAll(); }}>
+                  Refresh now
+                </Button>
               </div>
             </dl>
           </Panel>
@@ -272,8 +307,18 @@ export default function AgentsPage() {
             {error}
           </div>
         ) : null}
+        {!error && isReconnecting ? (
+          <div className="rounded-[var(--radius-panel)] border border-status-warning bg-status-warning-subtle p-4 text-body-s text-status-warning" role="status">
+            Reconnecting live project activity feeds. Showing last known state.
+          </div>
+        ) : null}
+        {!error && !isReconnecting && hasStaleData ? (
+          <div className="rounded-[var(--radius-panel)] border border-status-warning bg-status-warning-subtle p-4 text-body-s text-status-warning" role="status">
+            Showing stale activity evidence until backend refresh succeeds.
+          </div>
+        ) : null}
 
-        {loading ? (
+        {pageLoading ? (
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
             <Skeleton lines={12} />
             <Skeleton lines={10} />

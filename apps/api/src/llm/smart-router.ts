@@ -9,7 +9,8 @@ import { CircuitBreaker } from '../../../../packages/agent-core/src/resilience.j
 import type { CircuitBreakerConfig } from '../../../../packages/agent-core/src/resilience.js';
 import { ProviderRegistry } from './provider-registry.js';
 import { CostTracker } from './cost-tracker.js';
-import type { ChatMessage, CostSummary, LLMProviderClient, ModelOverride, RoutedLLMResponse, RouterConfig, RoutingRule, TaskCategory } from './types.js';
+import { GenerationBudgetGuard, type GenerationBudgetEventHandler } from './generation-budget.js';
+import type { ChatMessage, CostSummary, LLMProviderClient, LLMRequestMetadata, ModelOverride, RoutedLLMResponse, RouterConfig, RoutingRule, TaskCategory } from './types.js';
 import { ROLE_TO_CATEGORY as roleToCategory } from './types.js';
 import { buildRoutingRulesFromConfig, buildFallbackByModelMap, classifyRouterError, isRetryable, sleep } from './router-config.js';
 
@@ -26,6 +27,7 @@ export class SmartLLMRouter implements LLMClient {
   private defaultModel?: ModelConfig;
   private maxRetries: number;
   private retryBaseDelayMs: number;
+  private budgetGuard?: GenerationBudgetGuard;
 
   constructor(
     registry: ProviderRegistry,
@@ -45,14 +47,28 @@ export class SmartLLMRouter implements LLMClient {
     this.defaultModel    = config?.defaultModel;
     this.maxRetries          = config?.maxRetries          ?? 3;
     this.retryBaseDelayMs    = config?.retryBaseDelayMs    ?? 1000;
+    if (config?.generationBudget) {
+      this.budgetGuard = new GenerationBudgetGuard(
+        config.generationBudget,
+        (projectId) => this.costTracker.getProjectCostUsd(projectId),
+      );
+    }
   }
 
-  async chatSync(params: { model: ModelConfig; system: string; messages: { role: 'user' | 'assistant'; content: string }[] }): Promise<{ content: string; tokensIn: number; tokensOut: number }> {
-    const result = await this.routedCall(params.model, params.system, params.messages);
-    return { content: result.content, tokensIn: result.tokensIn, tokensOut: result.tokensOut };
+  async chatSync(params: { model: ModelConfig; system: string; messages: { role: 'user' | 'assistant'; content: string }[]; metadata?: LLMRequestMetadata }): Promise<{ content: string; tokensIn: number; tokensOut: number; costUsd?: number; provider?: LLMProvider; model?: string; requestId?: string }> {
+    const result = await this.routedCall(params.model, params.system, params.messages, params.metadata);
+    return {
+      content: result.content,
+      tokensIn: result.tokensIn,
+      tokensOut: result.tokensOut,
+      costUsd: result.costUsd,
+      provider: result.provider,
+      model: result.model,
+      requestId: result.requestId,
+    };
   }
 
-  async *chat(params: { model: ModelConfig; system: string; messages: { role: 'user' | 'assistant'; content: string }[]; stream?: boolean }): AsyncGenerator<string, void, unknown> {
+  async *chat(params: { model: ModelConfig; system: string; messages: { role: 'user' | 'assistant'; content: string }[]; stream?: boolean; metadata?: LLMRequestMetadata }): AsyncGenerator<string, void, unknown> {
     if (!this.circuitBreaker.canUse(params.model.provider)) {
       const fallback = this.fallbackByModel.get(params.model.model);
       if (fallback && fallback.model !== params.model.model && this.circuitBreaker.canUse(fallback.provider) && this.registry.has(fallback.provider)) {
@@ -86,11 +102,14 @@ export class SmartLLMRouter implements LLMClient {
     return this.executeWithFallbackChain(primary, fallbacks, system, messages, { agentRole, taskCategory: category });
   }
 
-  async routedCall(model: ModelConfig, system: string, messages: ChatMessage[], meta?: { agentRole?: AgentRole; taskCategory?: TaskCategory }): Promise<RoutedLLMResponse> {
+  async routedCall(model: ModelConfig, system: string, messages: ChatMessage[], meta?: LLMRequestMetadata): Promise<RoutedLLMResponse> {
     // Explicit fallback only — must be configured in .env via MODEL_<ROLE>_FALLBACK.
     const explicit = this.fallbackByModel.get(model.model);
     const fallbacks = explicit && explicit.model !== model.model ? [explicit] : [];
-    return this.executeWithFallbackChain(model, fallbacks, system, messages, meta);
+    const enrichedMeta = meta?.agentRole && !meta.taskCategory
+      ? { ...meta, taskCategory: roleToCategory[meta.agentRole] }
+      : meta;
+    return this.executeWithFallbackChain(model, fallbacks, system, messages, enrichedMeta);
   }
 
   addOverride(override: ModelOverride): void {
@@ -115,6 +134,10 @@ export class SmartLLMRouter implements LLMClient {
 
   getCostTracker(): CostTracker    { return this.costTracker; }
   getCostSummary(since?: Date): CostSummary { return this.costTracker.getSummary(since); }
+  getGenerationBudgetGuard(): GenerationBudgetGuard | undefined { return this.budgetGuard; }
+  onGenerationBudgetEvent(handler: GenerationBudgetEventHandler): void {
+    this.budgetGuard?.onEvent(handler);
+  }
   getCircuitBreakerStates(): Record<LLMProvider, string> {
     const states: Record<string, string> = {};
     for (const id of this.registry.listIds()) states[id] = this.circuitBreaker.getState(id).state;
@@ -127,7 +150,7 @@ export class SmartLLMRouter implements LLMClient {
     fallbacks: ModelConfig[],
     system: string,
     messages: ChatMessage[],
-    meta?: { agentRole?: AgentRole; taskCategory?: TaskCategory },
+    meta?: LLMRequestMetadata,
   ): Promise<RoutedLLMResponse> {
     const requestId = randomUUID();
     const overallStart = Date.now();
@@ -148,19 +171,42 @@ export class SmartLLMRouter implements LLMClient {
           if (isFallback && attempt === 1) this.logger.info(`Falling back to ${provider}/${model.model}`, { requestId });
           if (attempt > 1)                 this.logger.info(`Retry ${attempt}/${this.maxRetries} for ${provider}/${model.model}`, { requestId });
 
+          this.budgetGuard?.checkBeforeCall({
+            ...meta,
+            requestId,
+            provider,
+            model: model.model,
+          });
+
           const response  = await this.getProviderClient(provider).chatSync({ model, system, messages });
           const latencyMs = Date.now() - start;
           const costUsd   = CostTracker.estimateCost(model.model, response.tokensIn, response.tokensOut);
           this.circuitBreaker.recordSuccess(provider);
-          this.costTracker.record({ requestId, timestamp: new Date(), provider, model: model.model, tokensIn: response.tokensIn, tokensOut: response.tokensOut, costUsd, latencyMs, agentRole: meta?.agentRole, taskCategory: meta?.taskCategory, usedFallback: isFallback, success: true });
+          this.costTracker.record({ requestId, timestamp: new Date(), projectId: meta?.projectId, sessionId: meta?.sessionId, provider, model: model.model, tokensIn: response.tokensIn, tokensOut: response.tokensOut, costUsd, latencyMs, agentRole: meta?.agentRole, taskCategory: meta?.taskCategory, usedFallback: isFallback, success: true });
+          this.budgetGuard?.checkAfterRecord({
+            ...meta,
+            requestId,
+            provider,
+            model: model.model,
+          });
           this.logger.debug(`LLM call completed`, { requestId, provider, model: model.model, tokensIn: response.tokensIn, tokensOut: response.tokensOut, costUsd: costUsd.toFixed(6), latencyMs, isFallback });
           return { ...response, model: model.model, provider, usedFallback: isFallback, latencyMs: Date.now() - overallStart, costUsd, requestId };
         } catch (err) {
           lastError = err as Error;
+          if ((lastError as Error & { code?: string }).code === 'COST_LIMIT_EXCEEDED') {
+            this.logger.warn('LLM call blocked by generation budget guard', {
+              requestId,
+              provider,
+              model: model.model,
+              projectId: meta?.projectId,
+              agentRole: meta?.agentRole,
+            });
+            throw lastError;
+          }
           const latencyMs = Date.now() - start;
           const errorCode = classifyRouterError(lastError);
           this.logger.warn(`LLM call failed: ${provider}/${model.model}`, { requestId, attempt, error: lastError.message, errorCode });
-          this.costTracker.record({ requestId, timestamp: new Date(), provider, model: model.model, tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs, agentRole: meta?.agentRole, taskCategory: meta?.taskCategory, usedFallback: isFallback, success: false, error: lastError.message });
+          this.costTracker.record({ requestId, timestamp: new Date(), projectId: meta?.projectId, sessionId: meta?.sessionId, provider, model: model.model, tokensIn: 0, tokensOut: 0, costUsd: 0, latencyMs, agentRole: meta?.agentRole, taskCategory: meta?.taskCategory, usedFallback: isFallback, success: false, error: lastError.message });
           // Rate-limit (429) is throttling, not a provider outage.
           // Tripping the breaker on 429 punishes the whole provider for a
           // legitimate per-minute quota event and prevents the fallback

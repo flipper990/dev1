@@ -9,7 +9,6 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import * as ts from 'typescript';
 import type { AgentRole, Session } from '../../../../packages/agent-core/src/types.js';
 import type { BaseAgent, Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import {
@@ -18,11 +17,8 @@ import {
 } from '../../../../packages/agent-core/src/orchestrator.js';
 import { InMemoryMessageBus } from '../../../../packages/agent-core/src/message-bus.js';
 import { getMergedFiles } from '../../../../packages/agent-core/src/agent-input-builder.js';
-import { validateImportIntegrity, missingImportsAsIssues } from '../../../../packages/agent-core/src/import-integrity.js';
 import { validateAndFixDependencies } from '../../../../packages/agent-core/src/dependency-validator.js';
 import { runFinalIntegrityGate, describeIntegrityFailure } from './final-integrity-gate.js';
-import { validateUiSystemCompliance, uiSystemViolationsAsIssues } from '../../../../packages/agent-core/src/ui-system.js';
-import { normalizeTechStack, validateStackCompliance, stackViolationsAsIssues } from '../../../../packages/agent-core/src/tech-stack.js';
 import { setBuilderProjectContext } from '../agents/builder-agent.js';
 import {
   setActiveGeneration,
@@ -30,11 +26,6 @@ import {
   clearActiveGeneration,
 } from '../crash-logger.js';
 import { planSlices, buildSliceManifest, type PlannedSlice } from '../../../../packages/agent-core/src/slice-planner.js';
-import {
-  validateImplementationCompleteness,
-  completenessViolationsAsIssues,
-  extractApiDomains,
-} from '../../../../packages/agent-core/src/implementation-completeness.js';
 import { SessionManager } from './session-manager.js';
 import { ProjectStore, type ProjectRecord } from '../storage/project-store.js';
 import { FileMemoryStore } from '../storage/memory-store.js';
@@ -43,9 +34,29 @@ import { auditAndLog, describeIntegrityIssue } from './file-integrity.js';
 import { runQualityAssurance } from './quality-assurance.js';
 import { ProjectUpdater } from './project-updater.js';
 import type { PreviewManager } from '../preview/preview-manager.js';
-import { validateAndAutoFix } from './auto-fix.js';
-import { runExecutionFeedbackLoop } from './execution-feedback-loop.js';
 import { applyPipelineLedgerEvent, createPipelineRunLedger } from './pipeline-ledger.js';
+import { config } from '../config.js';
+import { createInitialBudgetDiagnostics } from '../llm/generation-budget.js';
+import { runSpecRunner } from './spec-runner.js';
+import { runFinalizationRunner } from './finalization-runner.js';
+import { runWithProgressHeartbeat } from './progress-heartbeat.js';
+import { formatFailureSummary } from './failure-persistence.js';
+import {
+  applyDependencyAutoFix as applyDependencyAutoFixForSlice,
+  applySimplifiedFallback as applySimplifiedFallbackForSlice,
+  assertBuilderProducedFiles as assertBuilderProducedFilesForSlice,
+  enforceImplementationCompleteness as enforceImplementationCompletenessForSlice,
+  enforceTechStack as enforceTechStackForSlice,
+  enforceUiSystem as enforceUiSystemForSlice,
+  injectImportIntegrityIssues as injectImportIntegrityIssuesForSlice,
+  runPostSliceBuildCheck as runPostSliceBuildCheckForSlice,
+  runPostSliceQuickValidation as runPostSliceQuickValidationForSlice,
+} from './slice-runner.js';
+import {
+  buildPreviewValidationArtifacts as buildPreviewValidationArtifactsForScheduler,
+  scheduleRuntimeValidation as scheduleRuntimeValidationForScheduler,
+} from './preview-scheduler.js';
+import { scheduleExecutionValidation as scheduleExecutionValidationForScheduler } from './execution-validation-scheduler.js';
 
 export type {
   GenerateRequest, UpdateRequest, GenerateResult, UpdateResult, StepSummary,
@@ -97,6 +108,109 @@ interface ProjectDiagnosticContext {
   startedAt: string;
   usageLog: DiagUsageEntry[];
   postPersistStatuses: DiagPostPersistEntry[];
+}
+
+type PreviewValidationArtifactRuntime =
+  | 'docker'
+  | 'local'
+  | 'local-fallback'
+  | 'fullstack'
+  | 'unknown';
+
+interface PreviewValidationArtifacts {
+  schemaVersion: 1;
+  updatedAt: string;
+  runtimeType: PreviewValidationArtifactRuntime | null;
+  routeProbes: Array<{
+    source: 'preview-readiness' | 'execution-validator';
+    at: string | null;
+    method: 'HEAD' | 'GET';
+    path: string;
+    status: number | null;
+    ok: boolean;
+    durationMs: number;
+    error?: string;
+  }>;
+  httpStatusResults: {
+    total: number;
+    ok: number;
+    failed: number;
+    byStatus: Record<string, number>;
+  };
+  previewStatusTransitions: Array<{
+    at: string;
+    previewStatus: string;
+    event: string;
+  }>;
+  sanitizedStreams: {
+    capturedAt: string | null;
+    stdoutSnippet: string | null;
+    stderrSnippet: string | null;
+  };
+  dependencyErrors: string[];
+  packageInstallResult: {
+    ran: boolean;
+    ok: boolean | null;
+    exitCode: number | null;
+    timedOut: boolean | null;
+    durationMs: number | null;
+    errors: string[];
+  };
+  buildResult: {
+    ran: boolean;
+    ok: boolean | null;
+    exitCode: number | null;
+    timedOut: boolean | null;
+    durationMs: number | null;
+    errors: string[];
+  };
+  devServerResult: {
+    ran: boolean;
+    ok: boolean | null;
+    exitCode: number | null;
+    timedOut: boolean | null;
+    durationMs: number | null;
+    errors: string[];
+  };
+  bodySampleSummary: {
+    source: 'runtime-validator' | 'execution-validator' | null;
+    sampleChars: number;
+    snippet: string | null;
+    looksPlaceholder: boolean;
+    hasFrameworkOverlaySignals: boolean;
+  };
+  placeholderDetection: {
+    detected: boolean;
+    source: 'qa-assurance' | 'runtime-sample' | 'unknown';
+    details: string[];
+  };
+  frameworkErrorOverlayDetection: {
+    detected: boolean;
+    detectedErrorType?: string;
+    detectedErrorMessage?: string;
+    affectedModule?: string;
+    detectedAt?: string;
+  };
+}
+
+function stripAnsi(input: string): string {
+  return input.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
+}
+
+function sanitizeSnippet(input: string | null | undefined, maxChars = 800): string | null {
+  if (!input) return null;
+  const text = stripAnsi(input).replace(/\s+/g, ' ').trim();
+  return text.length > maxChars ? text.slice(0, maxChars) : text;
+}
+
+function looksPlaceholderText(input: string | null | undefined): boolean {
+  if (!input) return false;
+  return /\b(lorem ipsum|placeholder|coming soon|under construction|todo)\b/i.test(input);
+}
+
+function hasFrameworkOverlaySignals(input: string | null | undefined): boolean {
+  if (!input) return false;
+  return /(__nextjs_original-stack-frame|Build Error|Unhandled Runtime Error|Module not found|Can'?t resolve|Application error)/i.test(input);
 }
 
 /** Read the QA artifact's verdict, defaulting to 'unknown'. */
@@ -325,7 +439,19 @@ export class ProjectGenerator {
       id: projectId, sessionId,
       name: projectName,
       prompts: request.prompts,
+      ...(request.workspaceId && request.userId ? {
+        ownership: {
+          workspaceId: request.workspaceId,
+          ownerUserId: request.userId,
+          createdByUserId: request.userId,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      } : {}),
       status: 'generating',
+      projectStatus: 'generating',
+      verificationStatus: 'pending',
+      previewHealthStatus: 'unknown',
       files: [], tasks: [],
       totalTokens: 0, totalCostUsd: 0, durationMs: 0,
       version: 1, versionHistory: [],
@@ -341,6 +467,7 @@ export class ProjectGenerator {
       },
       diagnostics: {
         pipelineLedger: createPipelineRunLedger(projectId, sessionId),
+        generationBudget: createInitialBudgetDiagnostics(config.generationBudget),
       },
     };
     this.logger.info('[gen:reserve] placeholder created', {
@@ -493,7 +620,12 @@ export class ProjectGenerator {
     }
     const stack = isErr ? err.stack : undefined;
     const failedAt = new Date().toISOString();
-    const summary = `[phase=${failedPhase} step=${failedStep}] ${name}: ${message}`;
+    const summary = formatFailureSummary({
+      failedPhase,
+      failedStep,
+      errorName: name,
+      errorMessage: message,
+    });
 
     // ── Load / build the record we'll persist ────────────
     let base: ProjectRecord;
@@ -509,6 +641,9 @@ export class ProjectGenerator {
       id: projectId, sessionId,
       name: 'Untitled Project',
       prompts: [], status: 'generating',
+      projectStatus: 'generating',
+      verificationStatus: 'pending',
+      previewHealthStatus: 'unknown',
       files: [], tasks: [],
       totalTokens: 0, totalCostUsd: 0, durationMs: 0,
       version: 1, versionHistory: [],
@@ -540,6 +675,9 @@ export class ProjectGenerator {
       persisted?.failure?.lastSuccessfulStep ?? lastSuccessfulPhase;
 
     base.status = 'failed';
+    base.projectStatus = 'failed';
+    base.verificationStatus = 'failed';
+    base.previewHealthStatus = base.preview?.previewHealth ?? (base.preview?.previewStatus === 'ready' ? 'healthy' : 'unknown');
     base.error = summary;
     base.completedAt = failedAt;
     base.totalTokens = totalTokens;
@@ -562,9 +700,9 @@ export class ProjectGenerator {
         caller: 'persistProjectFailure',
         reason: `${failedPhase}/${failedStep}`,
         // A late failure (e.g. runtime-validation crashing AFTER
-        // execution-validation flipped status='completed') legitimately
+        // execution-validation flipped status='generated') legitimately
         // needs to demote the record to 'failed'. Without this opt-in
-        // the stale-write detector preserves on-disk 'completed' and
+        // the stale-write detector preserves on-disk 'generated' and
         // the failure goes silent.
         allowStatusDowngrade: true,
       });
@@ -1547,6 +1685,7 @@ export class ProjectGenerator {
       // Register so BuilderAgent.validateOutput can include projectId in
       // the canonical last-failure dump.
       setBuilderProjectContext(sessionId, { projectId });
+      session.artifacts.set('projectId', projectId);
       if (request.preferences) session.artifacts.set('userPreferences', request.preferences);
 
       const reusable = await this.memoryStore.getGlobal({
@@ -1558,6 +1697,15 @@ export class ProjectGenerator {
         id: projectId, sessionId,
         name: 'Untitled Project',
         prompts: request.prompts,
+        ...(request.workspaceId && request.userId ? {
+          ownership: {
+            workspaceId: request.workspaceId,
+            ownerUserId: request.userId,
+            createdByUserId: request.userId,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        } : {}),
         status: 'generating',
         files: [], tasks: [],
         totalTokens: 0, totalCostUsd: 0, durationMs: 0,
@@ -1574,6 +1722,7 @@ export class ProjectGenerator {
         },
         diagnostics: {
           pipelineLedger: createPipelineRunLedger(projectId, sessionId),
+          generationBudget: createInitialBudgetDiagnostics(config.generationBudget),
         },
       };
       await this.projectStore.save(project, {
@@ -1630,9 +1779,9 @@ export class ProjectGenerator {
     };
     try {
       const result = await Promise.race([
-        this.runPipelineBody(
+        runWithProgressHeartbeat(() => this.runPipelineBody(
           { projectId, sessionId, request, project, session, cacheKey, phaseRef },
-        ),
+        )),
         pipelineTimeout,
       ]);
       return result;
@@ -1727,6 +1876,9 @@ export class ProjectGenerator {
 
     const orchestrator = new PipelineOrchestrator(this.agents, bus, this.logger);
     orchestrator.onEvent(forwardEvents(/* orchSessionIsMain */ true));
+    // Serialise ledger writes so per-step trace records land on disk
+    // in emission order under one durable chain.
+    let ledgerPersistChain: Promise<void> = Promise.resolve();
     const recordPipelineLedger = (event: PipelineEvent) => {
       if (!event.type.startsWith('step:')) return;
       project.diagnostics = project.diagnostics ?? {};
@@ -1740,22 +1892,26 @@ export class ProjectGenerator {
         },
       );
       const ledger = project.diagnostics.pipelineLedger;
-      void this.projectStore.update(projectId, (current) => {
-        current.diagnostics = current.diagnostics ?? {};
-        current.diagnostics.pipelineLedger = ledger;
-      }, {
-        phase: 'pipeline-ledger',
-        caller: 'project-generator:pipeline-ledger',
-        reason: `${event.type}:${'stepId' in event ? event.stepId : 'pipeline'}`,
-      }).catch((err) => {
-        this.logger.warn('[pipeline-ledger:persist-failed] ledger update failed (non-fatal)', {
-          event: 'pipeline-ledger:persist-failed',
-          projectId,
-          sessionId,
-          pipelineEvent: event.type,
-          err: String(err),
+      ledgerPersistChain = ledgerPersistChain
+        .then(async () => {
+          await this.projectStore.update(projectId, (current) => {
+            current.diagnostics = current.diagnostics ?? {};
+            current.diagnostics.pipelineLedger = ledger;
+          }, {
+            phase: 'pipeline-ledger',
+            caller: 'project-generator:pipeline-ledger',
+            reason: `${event.type}:${'stepId' in event ? event.stepId : 'pipeline'}`,
+          });
+        })
+        .catch((err) => {
+          this.logger.warn('[pipeline-ledger:persist-failed] ledger update failed (non-fatal)', {
+            event: 'pipeline-ledger:persist-failed',
+            projectId,
+            sessionId,
+            pipelineEvent: event.type,
+            err: String(err),
+          });
         });
-      });
     };
     orchestrator.onEvent(recordPipelineLedger);
     // Bump llmCallCount on every step:started so the watchdog sees real LLM
@@ -1869,9 +2025,10 @@ export class ProjectGenerator {
       this.logger.info('[gen:spec:start] entering spec phase — invoking orchestrator', {
         event: 'gen:spec:start', projectId, sessionId,
       });
+      session.artifacts.set('generationPhase', 'spec');
       await this.markProgress(project, { phase: 'spec', step: 'spec:orchestrator-invoke' });
       const specStartedAt = Date.now();
-      let pipelineState = await orchestrator.execute(session, phase1Seed);
+      let pipelineState = await runSpecRunner(() => orchestrator.execute(session, phase1Seed));
       this.logger.info('[gen:spec:done] spec phase orchestrator returned', {
         event: 'gen:spec:done', projectId, sessionId,
         durationMs: Date.now() - specStartedAt,
@@ -1888,7 +2045,8 @@ export class ProjectGenerator {
       // mode this is the moment the stack gets chosen for the project; in
       // manual mode this just mirrors the user's pick onto the record.
       try {
-        const prefsForLock = (pipelineState.artifacts.get('userPreferences')
+        const pipelineArtifacts = pipelineState.artifacts as unknown as Map<string, Record<string, unknown>>;
+        const prefsForLock = (pipelineArtifacts.get('userPreferences')
           ?? session.artifacts.get('userPreferences')) as Record<string, unknown> | undefined;
         const declaredModeForLock = prefsForLock?.stackSelectionMode as 'auto' | 'manual' | undefined;
         const overrideForLock = prefsForLock?.techStackOverride as Record<string, string> | undefined;
@@ -2074,6 +2232,8 @@ export class ProjectGenerator {
         );
         setBuilderProjectContext(sliceSession.id, { projectId });
         for (const [k, v] of session.artifacts.entries()) sliceSession.artifacts.set(k, v);
+        sliceSession.artifacts.set('projectId', projectId);
+        sliceSession.artifacts.set('generationPhase', phaseRef.current);
         if (cumulativeFiles.length > 0) {
           sliceSession.artifacts.set('previousFiles', cumulativeFiles);
         }
@@ -2193,6 +2353,8 @@ export class ProjectGenerator {
           );
           setBuilderProjectContext(rebuildSession.id, { projectId });
           for (const [k, v] of sliceSession.artifacts.entries()) rebuildSession.artifacts.set(k, v);
+          rebuildSession.artifacts.set('projectId', projectId);
+          rebuildSession.artifacts.set('generationPhase', phaseRef.current);
           rebuildSession.artifacts.set('previousFiles', Array.from(overlay.values()));
           rebuildSession.artifacts.set('qaFeedback', sliceState.artifacts.get('qa') ?? {});
           rebuildSession.artifacts.set('builderIteration', nextIter);
@@ -2633,7 +2795,7 @@ export class ProjectGenerator {
         'finalize:quality-assurance',
         () => this.runPostPersistStep(
           phaseRef, { projectId, sliceId: finalSliceTag, step: 'qa-gate:runQualityAssurance' },
-          () => runQualityAssurance(depFix.files),
+          () => runFinalizationRunner(async () => runQualityAssurance(depFix.files)),
         ),
       );
       const finalFiles = qaGate.files;
@@ -2804,7 +2966,8 @@ export class ProjectGenerator {
             // only runs as a defensive safety-net for legacy code paths or
             // exotic recovery flows where the early lock didn't execute. We
             // never overwrite a previously locked value.
-            const prefs = (pipelineState.artifacts.get('userPreferences') as Record<string, unknown> | undefined) ?? undefined;
+            const pipelineArtifacts = pipelineState.artifacts as unknown as Map<string, Record<string, unknown>>;
+            const prefs = (pipelineArtifacts.get('userPreferences') as Record<string, unknown> | undefined) ?? undefined;
             const declaredMode = prefs?.stackSelectionMode as 'auto' | 'manual' | undefined;
             const override = prefs?.techStackOverride as Record<string, string> | undefined;
             const mode: 'auto' | 'manual' =
@@ -3113,15 +3276,17 @@ export class ProjectGenerator {
 
         // ── PROMOTE TO COMPLETED ───────────────────────────────────
         // After integrity gate passes, generation is DONE. Flip
-        // project.status to 'completed' synchronously so the UI shows a
-        // BUILD COMPLETED pill immediately. Execution / runtime
+        // project.status to 'generated' synchronously so the UI shows a
+        // BUILD GENERATED pill immediately. Execution / runtime
         // validators are post-completion health probes — they record
         // their own status under executionValidation.status /
         // runtimeValidation.status and CANNOT demote project.status
         // back to 'failed'. This is the structural fix for the bug
         // where a 'no-progress' validator verdict overrode a working,
         // preview-ready project.
-        project.status = 'completed';
+        project.status = 'generated';
+        project.projectStatus = 'generated';
+        project.verificationStatus = 'pending';
         project.completedAt = project.completedAt ?? new Date().toISOString();
         if (!project.executionValidation) {
           project.executionValidation = {
@@ -3137,23 +3302,25 @@ export class ProjectGenerator {
           project.executionValidation.status = 'pending';
         }
         await this.projectStore.update(projectId, (rec) => {
-          rec.status = 'completed';
+          rec.status = 'generated';
+          rec.projectStatus = 'generated';
+          rec.verificationStatus = 'pending';
           rec.completedAt = project.completedAt;
           rec.executionValidation = project.executionValidation;
         }, {
-          phase: 'finalize:promote-completed',
+          phase: 'finalize:promote-generated',
           caller: 'project-generator:integrity-gate-pass',
-          reason: 'integrity-gate passed; generation lifecycle done',
+          reason: 'integrity-gate passed; generation lifecycle done, verification pending',
           allowStatusDowngrade: true,
         });
       }
 
       // Fire-and-forget execution-runner health probe (real npm install +
-      // build + dev). Project is already 'completed' at this point — this
+      // build + dev). Project is already 'generated' at this point — this
       // probe ONLY records executionValidation.status and never demotes
       // project.status. A failure here surfaces as a "Validation: warning"
       // pill in the UI, not a build failure.
-      if (project.status === 'completed') {
+      if (project.status === 'generated') {
         const t0Sched = await this.startFinalizeStep(project, 'finalize:execution-validation-scheduled');
         try {
           this.scheduleExecutionValidation(project);
@@ -3327,69 +3494,9 @@ export class ProjectGenerator {
     artifacts: Map<AgentRole, Record<string, unknown>>,
     sliceLabel: string,
   ): void {
-    const merged = getMergedFiles(artifacts, /* applyPolish */ false);
-    if (merged.length === 0) return;
-    const { files: patchedFiles, report } = validateAndFixDependencies(merged);
-    if (report.patched.length === 0 && report.unresolved.length === 0) return;
-
-    if (report.patched.length > 0) {
-      // Write the patched package.json files back into the builder artifact
-      // so subsequent QA / rebuild iterations see the corrected manifest.
-      const builder = (artifacts.get('builder') as { files?: Array<{ path: string; content: string; language?: string }> } | undefined) ?? {};
-      const builderFiles = Array.isArray(builder.files) ? [...builder.files] : [];
-      const byPath = new Map(builderFiles.map((f) => [f.path, f]));
-      for (const patched of patchedFiles) {
-        if (!patched.path.replace(/\\/g, '/').endsWith('package.json')) continue;
-        const existing = byPath.get(patched.path);
-        if (existing && existing.content === patched.content) continue;
-        // Replace or insert.
-        if (existing) byPath.set(patched.path, { ...existing, content: patched.content });
-        else byPath.set(patched.path, { path: patched.path, content: patched.content, language: 'json' });
-      }
-      artifacts.set('builder', { ...builder, files: Array.from(byPath.values()) });
-
-      this.logger.info(
-        `Dep validator on slice ${sliceLabel}: patched ${report.patched.length} package.json file(s), added ${report.added.length} dep(s), reconciled ${report.reconciled.reduce((n, r) => n + r.effects.length, 0)} package pin(s) [pm=${report.packageManager}]`,
-        {
-          event: 'deps:auto-fix',
-          sliceLabel,
-          packageManager: report.packageManager,
-          added: report.added.map((a) => `${a.name}@${a.version} → ${a.packageJson}`),
-        },
-      );
-    }
-    if (report.unresolved.length > 0) {
-      this.logger.warn(
-        `Dep validator on slice ${sliceLabel}: ${report.unresolved.length} unresolved import(s)`,
-        {
-          event: 'deps:unresolved',
-          sliceLabel,
-          unresolved: report.unresolved.slice(0, 5).map((u) => `${u.name} (${u.reason})`),
-        },
-      );
-    }
+    applyDependencyAutoFixForSlice(artifacts, sliceLabel, this.logger);
   }
 
-  /**
-   * In-process per-slice build check. Runs after each slice converges and
-   * before moving to the next one, so errors are caught early instead of
-   * compounding into a massive final failure.
-   *
-   * Two fast checks (no docker, no node_modules required):
-   *   1. **TypeScript parse** — every TS / TSX / JS / JSX file is fed into
-   *      `ts.createSourceFile` which surfaces real syntax diagnostics
-   *      (unbalanced braces, unterminated JSX, missing tokens, etc.).
-   *      Catches issues that the heuristic `looksIncompleteCode` misses.
-   *   2. **Import integrity** — every relative / `@/` import must resolve
-   *      to an emitted file (already used elsewhere; we re-run it scoped
-   *      to slice-touched files so we only react to *new* breakage).
-   *
-   * For any file that this slice touched AND which now has a parse or
-   * unresolved-import diagnostic, the file is replaced with a safe
-   * simplified stub via `buildSimplifiedStub()`. Cost: zero LLM calls.
-   *
-   * Returns the list of repaired files and the raw issue list for logging.
-   */
   private runPostSliceBuildCheck(
     cumulativeFiles: Array<{ path: string; content: string; language?: string }>,
     sliceTouchedPaths: Set<string>,
@@ -3398,110 +3505,15 @@ export class ProjectGenerator {
     issues: Array<{ file: string; kind: 'parse' | 'import'; message: string; line?: number }>;
     fixed: Array<{ path: string; content: string; language?: string }>;
   } {
-    const issues: Array<{ file: string; kind: 'parse' | 'import'; message: string; line?: number }> = [];
-
-    // ── 1. Per-file TypeScript syntax parse ────────────────
-    const tsRe = /\.(?:tsx?|jsx?|mjs|cjs|mts|cts)$/i;
-    for (const f of cumulativeFiles) {
-      if (!tsRe.test(f.path)) continue;
-      // Pick a parser flavor by extension. For .ts / .tsx / .js / .jsx we
-      // use the matching ScriptKind so JSX/TSX is parsed correctly.
-      const lower = f.path.toLowerCase();
-      const kind: ts.ScriptKind = lower.endsWith('.tsx')
-        ? ts.ScriptKind.TSX
-        : lower.endsWith('.jsx')
-          ? ts.ScriptKind.JSX
-          : lower.endsWith('.ts') || lower.endsWith('.mts') || lower.endsWith('.cts')
-            ? ts.ScriptKind.TS
-            : ts.ScriptKind.JS;
-      const sf = ts.createSourceFile(f.path, f.content, ts.ScriptTarget.Latest, /* setParentNodes */ false, kind);
-      // The parser stashes parse-time diagnostics on the source file.
-      const diags = (sf as unknown as { parseDiagnostics?: ts.DiagnosticWithLocation[] }).parseDiagnostics ?? [];
-      for (const d of diags) {
-        const msg = typeof d.messageText === 'string'
-          ? d.messageText
-          : (d.messageText && typeof d.messageText === 'object' ? (d.messageText as { messageText?: string }).messageText ?? '' : '');
-        const pos = typeof d.start === 'number' ? d.start : 0;
-        const { line } = sf.getLineAndCharacterOfPosition(pos);
-        issues.push({ file: f.path, kind: 'parse', message: msg, line: line + 1 });
-      }
-    }
-
-    // ── 2. Import integrity ───────────────────────────────
-    const missing = validateImportIntegrity(cumulativeFiles);
-    for (const m of missing) {
-      issues.push({
-        file: m.importer,
-        kind: 'import',
-        message: `unresolved import '${m.specifier}'`,
-      });
-    }
-
-    if (issues.length === 0) {
-      this.logger.info(`[build-check] Slice ${sliceLabel}: PASS (${cumulativeFiles.length} files, no parse/import errors)`, {
-        event: 'build-check:pass',
-        sliceLabel,
-        fileCount: cumulativeFiles.length,
-      });
-      return { issues, fixed: [] };
-    }
-
-    // ── 3. Stub-repair files this slice TOUCHED ──────────
-    // Only stub files emitted/changed in the current slice — we don't
-    // want a cascading failure in slice N to overwrite stable files
-    // from slice 1. Issues affecting *only* untouched files are logged
-    // but left for the next slice's check or the final preview pass.
-    const brokenFiles = new Set<string>();
-    for (const i of issues) {
-      const norm = i.file.replace(/\\/g, '/').replace(/^\.\//, '');
-      if (sliceTouchedPaths.has(norm) || sliceTouchedPaths.has(i.file)) {
-        brokenFiles.add(norm);
-      }
-    }
-
-    const byFile: Record<string, number> = {};
-    for (const i of issues) byFile[i.file] = (byFile[i.file] ?? 0) + 1;
-    this.logger.warn(
-      `[build-check] Slice ${sliceLabel}: ${issues.length} issue(s) across ${Object.keys(byFile).length} file(s) — repairing ${brokenFiles.size} touched file(s) with simplified stubs`,
-      {
-        event: 'build-check:repair',
-        sliceLabel,
-        totalIssues: issues.length,
-        affectedFiles: Object.keys(byFile),
-        repairing: Array.from(brokenFiles),
-        sample: issues.slice(0, 6).map((i) => `[${i.kind}] ${i.file}${i.line ? `:${i.line}` : ''} — ${i.message}`),
-      },
+    return runPostSliceBuildCheckForSlice(
+      cumulativeFiles,
+      sliceTouchedPaths,
+      sliceLabel,
+      this.logger,
+      buildSimplifiedStub,
     );
-
-    const fixed: Array<{ path: string; content: string; language?: string }> = [];
-    for (const path of brokenFiles) {
-      const original = cumulativeFiles.find((f) => f.path === path);
-      const stub = buildSimplifiedStub(path);
-      if (stub === null) {
-        // No safe template — leave it. Final preview validator will catch it.
-        continue;
-      }
-      fixed.push({ path, content: stub, language: original?.language });
-    }
-    return { issues, fixed };
   }
 
-  /**
-   * Per-slice quick validation. Runs AFTER each slice (before the next
-   * slice starts) so problems are caught and fixed immediately rather
-   * than compounding to the end of the pipeline.
-   *
-   * Checks (zero LLM calls):
-   *   1. At least one `package.json` exists in the cumulative codebase.
-   *   2. The root `package.json` declares the required scripts: `build`
-   *      and `dev`. (These are what `runExecutionValidation` requires.)
-   *
-   * Import integrity is already covered by `runPostSliceBuildCheck`
-   * which runs immediately before this method.
-   *
-   * Returns a list of mutated files. Caller must merge them back into
-   * `cumulativeFiles`.
-   */
   private runPostSliceQuickValidation(
     cumulativeFiles: Array<{ path: string; content: string; language?: string }>,
     sliceLabel: string,
@@ -3511,719 +3523,85 @@ export class ProjectGenerator {
     patched: Array<{ path: string; content: string; language?: string }>;
     fixes: { synthesizedPackageJson: boolean; addedScripts: string[]; touchedPackageJson: string | null };
   } {
-    const issues: string[] = [];
-    const patched: Array<{ path: string; content: string; language?: string }> = [];
-    const REQUIRED_SCRIPTS = ['build', 'dev'] as const;
-
-    // Find all package.json files; pick the root-most one (shortest path,
-    // ignoring nested node_modules — none should exist in our generated
-    // tree but defensive).
-    const pkgFiles = cumulativeFiles.filter(
-      (f) => /(^|\/)package\.json$/i.test(f.path) && !f.path.includes('node_modules/'),
-    );
-
-    let synthesizedPackageJson = false;
-    const addedScripts: string[] = [];
-    let touchedPath: string | null = null;
-
-    if (pkgFiles.length === 0) {
-      // ── (1) No package.json anywhere — synthesise a minimal stub.
-      issues.push('no package.json in codebase');
-      const stub = {
-        name: 'generated-app',
-        version: '0.0.0',
-        private: true,
-        scripts: {
-          dev: 'vite',
-          build: 'vite build',
-          start: 'vite preview',
-        },
-      };
-      const content = JSON.stringify(stub, null, 2) + '\n';
-      patched.push({ path: 'package.json', content, language: 'json' });
-      synthesizedPackageJson = true;
-      touchedPath = 'package.json';
-    } else {
-      // ── (2) Pick root-most package.json and verify scripts.
-      const root = pkgFiles.slice().sort((a, b) => a.path.length - b.path.length)[0]!;
-      let parsed: Record<string, unknown> | null = null;
-      try {
-        parsed = JSON.parse(root.content) as Record<string, unknown>;
-      } catch {
-        issues.push(`root package.json (${root.path}) is not valid JSON`);
-      }
-      if (parsed) {
-        const scripts = (parsed.scripts && typeof parsed.scripts === 'object'
-          ? (parsed.scripts as Record<string, unknown>)
-          : {}) as Record<string, unknown>;
-        let mutated = false;
-        for (const name of REQUIRED_SCRIPTS) {
-          const v = scripts[name];
-          if (typeof v !== 'string' || v.trim().length === 0) {
-            issues.push(`root package.json missing required script: '${name}'`);
-            // Best-effort default — works for the Vite stack we generate.
-            // If the project uses a different stack, the generator will
-            // typically have set the script already; this fallback only
-            // fires when something genuinely went missing.
-            scripts[name] = name === 'dev' ? 'vite' : 'vite build';
-            addedScripts.push(name);
-            mutated = true;
-          }
-        }
-        if (mutated) {
-          parsed.scripts = scripts;
-          const content = JSON.stringify(parsed, null, 2) + '\n';
-          patched.push({ path: root.path, content, language: root.language ?? 'json' });
-          touchedPath = root.path;
-        }
-      }
-    }
-
-    const ok = issues.length === 0;
-    if (ok) {
-      this.logger.info(
-        `[quick-check] Slice ${sliceLabel}: PASS (package.json present, scripts ok)`,
-        { event: 'quick-check:pass', sliceLabel },
-      );
-    } else {
-      this.logger.warn(
-        `[quick-check] Slice ${sliceLabel}: ${issues.length} issue(s) — auto-patched before next slice`,
-        {
-          event: 'quick-check:auto-fix',
-          sliceLabel,
-          issues,
-          synthesizedPackageJson,
-          addedScripts,
-          touchedPackageJson: touchedPath,
-        },
-      );
-    }
-
-    return {
-      ok,
-      issues,
-      patched,
-      fixes: { synthesizedPackageJson, addedScripts, touchedPackageJson: touchedPath },
-    };
+    return runPostSliceQuickValidationForSlice(cumulativeFiles, sliceLabel, this.logger);
   }
 
-  /**
-   * Simplified-implementation fallback. Invoked AFTER MAX_QA_LOOPS rebuilds
-   * have failed to make QA pass. Instead of doing yet another full-slice
-   * regeneration (slow, often unproductive), replace ONLY the files cited
-   * in the QA findings with safe minimal stubs that:
-   *   • compile / parse cleanly (no truncation, no half-finished JSX)
-   *   • render *something* at runtime (a heading + placeholder paragraph)
-   *   • introduce no new imports the rest of the codebase might lack
-   *
-   * The slice is then allowed to continue — the user gets a working app
-   * with a few simplified pages instead of a 40-minute QA-loop death-spiral.
-   *
-   * Cost: zero LLM calls.
-   */
   private applySimplifiedFallback(
     artifacts: Map<AgentRole, Record<string, unknown>>,
     sliceLabel: string,
   ): { replaced: string[] } {
-    const qa = artifacts.get('qa') as { issues?: unknown[]; verdict?: string } | undefined;
-    if (!qa || !Array.isArray(qa.issues) || qa.issues.length === 0) return { replaced: [] };
-
-    // Collect the affected file set from QA findings (deduped).
-    const affected = new Set<string>();
-    for (const raw of qa.issues) {
-      const issue = raw as { file?: string; path?: string };
-      const p = (issue?.file ?? issue?.path ?? '').trim();
-      if (p) affected.add(p.replace(/\\/g, '/').replace(/^\.\//, ''));
-    }
-    if (affected.size === 0) return { replaced: [] };
-
-    const builder = artifacts.get('builder') as
-      | { files?: Array<{ path: string; content: string; language?: string }> }
-      | undefined;
-    if (!builder?.files) return { replaced: [] };
-
-    const replaced: string[] = [];
-    const newFiles = builder.files.map((f) => {
-      const norm = f.path.replace(/\\/g, '/').replace(/^\.\//, '');
-      if (!affected.has(norm)) return f;
-      const stub = buildSimplifiedStub(norm);
-      if (stub === null) return f; // unsupported file type — leave it alone
-      replaced.push(norm);
-      return { ...f, content: stub };
-    });
-
-    if (replaced.length === 0) return { replaced: [] };
-
-    artifacts.set('builder', { ...(builder as Record<string, unknown>), files: newFiles });
-    // Demote QA from needs-improvement to pass-with-warnings so the slice
-    // can proceed. Keep the original issues attached for transparency.
-    artifacts.set('qa', {
-      ...qa,
-      verdict: 'pass',
-      summary:
-        ((qa as { summary?: string }).summary ?? '') +
-        ` [simplified-fallback applied to ${replaced.length} file(s)]`,
-      simplifiedFallback: { replaced },
-    } as Record<string, unknown>);
-
-    this.logger.warn(
-      `Slice ${sliceLabel} simplified fallback — replaced ${replaced.length} file(s) with safe stubs after QA loop exhausted`,
-      { event: 'qa:fallback', sliceLabel, replaced },
-    );
-
-    return { replaced };
+    return applySimplifiedFallbackForSlice(artifacts, sliceLabel, this.logger, buildSimplifiedStub);
   }
 
-  /**
-   * Fail-fast guard: assert that a builder-producing pipeline run actually
-   * emitted files. Called immediately after every `*.execute(...)` that
-   * runs the BuilderAgent. If the orchestrator's status is `failed` OR the
-   * builder artifact is missing/empty, this throws with the exact phase,
-   * step, and slice context so `persistProjectFailure` records the truth
-   * — instead of silently continuing with an empty `cumulativeFiles` and
-   * surfacing the failure later in finalize / qa-gate.
-   */
   private assertBuilderProducedFiles(
     sliceState: { status?: string; error?: string; artifacts: Map<AgentRole, Record<string, unknown>> },
     ctx: { phase: string; step: string; sliceLabel: string; sliceId?: string | null; sliceIndex?: number; sliceCount?: number },
   ): void {
-    const builder = sliceState.artifacts.get('builder') as { files?: unknown[] } | undefined;
-    const files = Array.isArray(builder?.files) ? builder!.files! : [];
-    const orchFailed = sliceState.status === 'failed';
-    if (!orchFailed && files.length > 0) return;
-
-    const reason = orchFailed
-      ? `orchestrator status=failed (${sliceState.error ?? 'no error message'})`
-      : 'builder artifact has 0 files';
-    const sliceCoord = typeof ctx.sliceIndex === 'number' && typeof ctx.sliceCount === 'number'
-      ? ` slice ${ctx.sliceIndex + 1}/${ctx.sliceCount}`
-      : '';
-    const sliceTag = ctx.sliceId ? ` [slice=${ctx.sliceId}]` : '';
-    const message =
-      `[builder-empty] ${ctx.phase} → ${ctx.step}${sliceCoord}${sliceTag}: ${reason}`;
-
-    this.logger.error('[gen:builder-empty] aborting pipeline immediately — builder produced no files', {
-      event: 'gen:builder-empty',
-      phase: ctx.phase,
-      step: ctx.step,
-      sliceLabel: ctx.sliceLabel,
-      sliceId: ctx.sliceId ?? null,
-      sliceIndex: ctx.sliceIndex ?? null,
-      sliceCount: ctx.sliceCount ?? null,
-      orchestratorStatus: sliceState.status ?? 'unknown',
-      orchestratorError: sliceState.error ?? null,
-      builderFileCount: files.length,
-      reason,
-    });
-    throw new Error(message);
+    assertBuilderProducedFilesForSlice(sliceState, ctx, this.logger);
   }
 
-  /**
-   * Enforce real-implementation rules — reject builder output that ships
-   * stubs, mock fixtures, placeholder copy/images, empty handlers, or
-   * "coming soon" alerts. Flips QA verdict to needs-improvement and
-   * appends concrete violations so the rebuild loop replaces them with
-   * working implementations.
-   *
-   * Cost: zero LLM calls.
-   */
   private enforceImplementationCompleteness(
     artifacts: Map<AgentRole, Record<string, unknown>>,
     sliceLabel: string,
   ): void {
-    const merged = getMergedFiles(artifacts, /* applyPolish */ false);
-    if (merged.length === 0) return;
-    const spec = artifacts.get('spec');
-    const apiDomains = extractApiDomains(spec);
-    const report = validateImplementationCompleteness(merged, { apiDomains });
-    if (report.inspected === 0 || !report.failed) return;
-
-    const synthetic = completenessViolationsAsIssues(report);
-    const qa = (artifacts.get('qa') as
-      | { verdict?: string; issues?: unknown[]; summary?: string }
-      | undefined) ?? {};
-    const prevIssues = Array.isArray(qa.issues) ? qa.issues : [];
-    const merged2 = { ...qa, verdict: 'needs-improvement', issues: [...prevIssues, ...synthetic] };
-    artifacts.set('qa', merged2 as Record<string, unknown>);
-
-    const byRule: Record<string, number> = {};
-    for (const v of report.violations) byRule[v.rule] = (byRule[v.rule] ?? 0) + 1;
-    this.logger.warn(
-      `Implementation-completeness FAIL on slice ${sliceLabel}: ${report.violations.length} violation(s) — forcing builder rebuild`,
-      {
-        event: 'completeness:violation',
-        sliceLabel,
-        rules: byRule,
-        sampleFiles: report.violations.slice(0, 5).map((v) => `${v.rule} → ${v.file}:${v.line ?? '?'}`),
-        totalCount: report.totalCount,
-      },
-    );
+    enforceImplementationCompletenessForSlice(artifacts, sliceLabel, this.logger);
   }
 
-  /**
-   * Enforce the tech-stack contract — reject builder output that uses the
-   * wrong backend framework / ORM / frontend framework given the
-   * spec.techStack the user picked. Flips QA verdict to needs-improvement
-   * and appends concrete violations so the rebuild loop fixes them.
-   *
-   * Cost: zero LLM calls.
-   */
   private enforceTechStack(
     artifacts: Map<AgentRole, Record<string, unknown>>,
     sliceLabel: string,
   ): void {
-    const merged = getMergedFiles(artifacts, /* applyPolish */ false);
-    if (merged.length === 0) return;
-    const spec = artifacts.get('spec') as { techStack?: unknown } | undefined;
-    const stack = normalizeTechStack(spec?.techStack);
-    const report = validateStackCompliance(merged, stack);
-    if (!report.failed) return;
-
-    const synthetic = stackViolationsAsIssues(report);
-    const qa = (artifacts.get('qa') as
-      | { verdict?: string; issues?: unknown[]; summary?: string }
-      | undefined) ?? {};
-    const prevIssues = Array.isArray(qa.issues) ? qa.issues : [];
-    const merged2 = { ...qa, verdict: 'needs-improvement', issues: [...prevIssues, ...synthetic] };
-    artifacts.set('qa', merged2 as Record<string, unknown>);
-
-    const byRule: Record<string, number> = {};
-    for (const v of report.violations) byRule[v.rule] = (byRule[v.rule] ?? 0) + 1;
-    this.logger.warn(
-      `Tech-stack FAIL on slice ${sliceLabel}: ${report.violations.length} violation(s) — chosen=${stack.backend}/${stack.frontend}/${stack.orm}; forcing rebuild`,
-      {
-        event: 'tech-stack:violation',
-        sliceLabel,
-        chosen: { backend: stack.backend, frontend: stack.frontend, orm: stack.orm, database: stack.database },
-        rules: byRule,
-        sampleFiles: report.violations.slice(0, 5).map((v) => `${v.rule} → ${v.file}`),
-      },
-    );
+    enforceTechStackForSlice(artifacts, sliceLabel, this.logger);
   }
 
-  /**
-   * Enforce the strict UI design system on builder output. Any violation
-   * (forbidden palette colors, raw <button>, off-grid spacing, missing
-   * AppShell, …) flips the QA artifact's verdict to needs-improvement and
-   * appends synthetic issues so the existing rebuild loop forces a fix.
-   *
-   * Cost: zero LLM calls. Runs after builder, before QA loop.
-   */
   private enforceUiSystem(
     artifacts: Map<AgentRole, Record<string, unknown>>,
     sliceLabel: string,
   ): void {
-    const merged = getMergedFiles(artifacts, /* applyPolish */ false);
-    if (merged.length === 0) return;
-    const report = validateUiSystemCompliance(merged);
-    if (report.inspected === 0 || !report.failed) return;
-
-    const synthetic = uiSystemViolationsAsIssues(report);
-    const qa = (artifacts.get('qa') as
-      | { verdict?: string; issues?: unknown[]; summary?: string }
-      | undefined) ?? {};
-    const prevIssues = Array.isArray(qa.issues) ? qa.issues : [];
-    const merged2 = { ...qa, verdict: 'needs-improvement', issues: [...prevIssues, ...synthetic] };
-    artifacts.set('qa', merged2 as Record<string, unknown>);
-
-    // Group violations by rule for a compact log line.
-    const byRule: Record<string, number> = {};
-    for (const v of report.violations) {
-      byRule[v.rule] = (byRule[v.rule] ?? 0) + (v.count ?? 1);
-    }
-    this.logger.warn(
-      `UI-system FAIL on slice ${sliceLabel}: ${report.violations.length} violation rule(s), ${report.totalCount} total occurrence(s) — forcing builder rebuild`,
-      {
-        event: 'ui-system:violation',
-        sliceLabel,
-        rules: byRule,
-        sampleFiles: report.violations.slice(0, 5).map((v) => `${v.rule} → ${v.file}`),
-        totalCount: report.totalCount,
-      },
-    );
+    enforceUiSystemForSlice(artifacts, sliceLabel, this.logger);
   }
 
-  /**
-   * Statically validate that every relative import in builder/QA-merged
-   * source files resolves to an emitted file. If any are missing, override
-   * the QA artifact's verdict to 'needs-improvement' and append synthetic
-   * issues so the existing rebuild loop forces builder to fix them.
-   *
-   * Cost: zero LLM calls. Catches hallucinated imports before the runtime
-   * validator wastes a 90-second docker boot to surface a Next.js 500.
-   */
   private injectImportIntegrityIssues(
     artifacts: Map<AgentRole, Record<string, unknown>>,
     sliceLabel: string,
   ): void {
-    const merged = getMergedFiles(artifacts, /* applyPolish */ false);
-    if (merged.length === 0) return;
-    const missing = validateImportIntegrity(merged);
-    if (missing.length === 0) return;
+    injectImportIntegrityIssuesForSlice(artifacts, sliceLabel, this.logger);
+  }
 
-    const synthetic = missingImportsAsIssues(missing);
-    const qa = (artifacts.get('qa') as
-      | { verdict?: string; issues?: unknown[]; summary?: string }
-      | undefined) ?? {};
-    const prevIssues = Array.isArray(qa.issues) ? qa.issues : [];
-    const merged2 = { ...qa, verdict: 'needs-improvement', issues: [...prevIssues, ...synthetic] };
-    artifacts.set('qa', merged2 as Record<string, unknown>);
-
-    this.logger.warn(
-      `Import integrity FAIL on slice ${sliceLabel}: ${missing.length} missing import(s) — forcing builder rebuild`,
-      { sample: missing.slice(0, 3).map((m) => `${m.importer} → ${m.specifier}`) },
-    );
+  private buildPreviewValidationArtifacts(rec: ProjectRecord): PreviewValidationArtifacts {
+    return buildPreviewValidationArtifactsForScheduler(rec, {
+      sanitizeSnippet,
+      looksPlaceholderText,
+      hasFrameworkOverlaySignals,
+    }) as PreviewValidationArtifacts;
   }
 
   /**
-  /**
-   * Fire-and-forget execution validation gate. Runs the project in a real
-   * environment (npm install → npm run build → npm run dev) and feeds any
-   * captured errors back to the QA agent through ProjectUpdater. Loops
-   * until the build succeeds and the dev server reaches a ready marker,
-   * or the iteration budget is exhausted.
-   *
-   * Acts as a HARD GATE — projects only graduate to 'completed' when this
-   * loop returns 'pass'. On 'pass', we chain into the optional Docker
-   * validator (if wired) for an extra HTTP-level check. On 'fail', the
-   * project is marked 'failed' and Docker validation is skipped.
+   * Fire-and-forget execution validation gate.
    */
   private scheduleExecutionValidation(project: ProjectRecord): void {
-    setImmediate(async () => {
-      try {
-        const summary = await runExecutionFeedbackLoop(
-          project.id,
-          {
-            updater: this.updater,
-            projectStore: this.projectStore,
-            logger: this.logger,
-          },
-          { maxIterations: 3 },
-        );
-
-        const fresh = await this.projectStore.get(project.id);
-        if (!fresh) return;
-
-        // Aggregate errors from the LAST execution attempt across iterations.
-        const lastBuildErrors   = summary.lastResult.buildErrors.slice(0, 25);
-        const lastRuntimeErrors = summary.lastResult.runtimeErrors.slice(0, 25);
-        const fixIters = summary.iterations.filter((i) => i.kind === 'fix').length;
-
-        const baseExecutionValidation = {
-          finalVerdict: summary.finalVerdict,
-          iterations: fixIters,
-          buildErrors: lastBuildErrors,
-          runtimeErrors: lastRuntimeErrors,
-          httpProbes: summary.lastResult.httpProbes.map((p) => ({
-            path: p.path,
-            ok: p.ok,
-            status: p.status,
-            bodyBytes: p.bodyBytes,
-            durationMs: p.durationMs,
-            error: p.error,
-          })),
-          totalDurationMs: summary.totalDurationMs,
-          completedAt: new Date().toISOString(),
-          reason: summary.reason,
-        };
-
-        // ── Decide validator status (NEVER touches project.status) ──
-        // The validator is a post-completion health probe. Vocabulary:
-        //   passed  — verdict pass.
-        //   warning — verdict fail BUT live preview is reachable, OR
-        //             the auto-fix loop itself was unable to run
-        //             (infra failure: updater-failed / crashed /
-        //             no-files). The project still works.
-        //   failed  — verdict fail with no mitigating signal. Recorded
-        //             on the validation block; project.status is left
-        //             at 'completed' (the build itself succeeded
-        //             through the integrity gate).
-        const previewIsReady = fresh.preview?.previewStatus === 'ready';
-        const infraFailure =
-          summary.reason === 'updater-failed' ||
-          summary.reason === 'crashed' ||
-          summary.reason === 'no-files';
-        let validatorStatus: 'passed' | 'warning' | 'failed';
-        let validatorWarning:
-          | { code: string; message: string; details?: Record<string, unknown> }
-          | null = null;
-        if (summary.finalVerdict === 'pass') {
-          validatorStatus = 'passed';
-        } else if (previewIsReady) {
-          validatorStatus = 'warning';
-          validatorWarning = {
-            code: 'execution.validator-disagreed-with-live-preview',
-            message: `Headless execution validator failed (${summary.reason}) but the live preview is ready and reachable. Trusting the live preview; flagging the validator disagreement.`,
-            details: {
-              reason: summary.reason,
-              iterations: fixIters,
-              buildErrors: lastBuildErrors.slice(0, 6),
-              runtimeErrors: lastRuntimeErrors.slice(0, 4),
-              durationMs: summary.totalDurationMs,
-              previewUrl: fresh.preview?.previewUrl ?? null,
-            },
-          };
-        } else if (infraFailure) {
-          validatorStatus = 'warning';
-          validatorWarning = {
-            code: 'execution.auto-fix-unavailable',
-            message: `Execution auto-fix loop could not run (${summary.reason}). Code is generated and QA-passed; manual fixes may be needed before \`npm run dev\` succeeds.`,
-            details: {
-              reason: summary.reason,
-              iterations: fixIters,
-              buildErrors: lastBuildErrors.slice(0, 6),
-              runtimeErrors: lastRuntimeErrors.slice(0, 4),
-              durationMs: summary.totalDurationMs,
-            },
-          };
-        } else {
-          validatorStatus = 'failed';
-        }
-
-        const executionValidation = {
-          ...baseExecutionValidation,
-          status: validatorStatus,
-        };
-
-        await this.projectStore.update(project.id, (rec) => {
-          rec.executionValidation = executionValidation;
-          if (validatorWarning) {
-            rec.warnings = [...(rec.warnings ?? []), validatorWarning];
-          }
-        }, {
-          phase: 'exec-validation:persist-verdict',
-          caller: 'project-generator:scheduleExecutionValidation',
-          reason: `verdict=${summary.finalVerdict} status=${validatorStatus} reason=${summary.reason}`,
-        });
-        fresh.executionValidation = executionValidation;
-
-        this.logger.info('Execution validation finished (project.status untouched)', {
-          event: 'gen:exec-validation:done',
-          projectId: project.id,
-          validatorStatus,
-          verdict: summary.finalVerdict,
-          reason: summary.reason,
-          iterations: fixIters,
-          buildErrors: lastBuildErrors.length,
-          runtimeErrors: lastRuntimeErrors.length,
-          previewIsReady,
-          durationMs: summary.totalDurationMs,
-        });
-
-        // Always chain into Docker validation if available — it's a
-        // separate health probe (HTTP-level) that records its own status
-        // in runtimeValidation.status. Skipping it would hide useful
-        // information from the dashboard.
-        if (validatorStatus !== 'failed') {
-          const dockerAvailable = !!(this.previewManager && this.previewManager.isDockerAvailable());
-          if (dockerAvailable) this.scheduleRuntimeValidation(fresh);
-        }
-      } catch (err) {
-        // Loop crashed — record as a validator failure ONLY. Do not
-        // demote project.status; the build itself reached integrity-pass
-        // before this probe was scheduled.
-        try {
-          const fresh = await this.projectStore.get(project.id);
-          if (fresh) {
-            const crashRecord = {
-              status: 'failed' as const,
-              finalVerdict: 'fail' as const,
-              iterations: 0,
-              buildErrors: [`execution-loop crashed: ${err instanceof Error ? err.message : String(err)}`],
-              runtimeErrors: [] as string[],
-              totalDurationMs: 0,
-              completedAt: new Date().toISOString(),
-              reason: 'crashed' as string,
-            };
-            await this.projectStore.update(project.id, (rec) => {
-              rec.executionValidation = crashRecord;
-              rec.warnings = [
-                ...(rec.warnings ?? []),
-                {
-                  code: 'execution.validator-crashed',
-                  message: `Execution validator crashed: ${err instanceof Error ? err.message : String(err)}`,
-                  details: { reason: 'crashed' },
-                },
-              ];
-            }, {
-              phase: 'exec-validation:loop-crashed',
-              caller: 'project-generator:scheduleExecutionValidation',
-              reason: 'execution-validation loop threw',
-            });
-          }
-        } catch (innerErr) {
-          this.logger.error('[gen:exec-validation:persist-failure-error] could not persist execution-loop crash', {
-            event: 'gen:exec-validation:persist-failure-error',
-            projectId: project.id,
-            originalErr: err instanceof Error ? err.message : String(err),
-            innerErr: innerErr instanceof Error ? innerErr.message : String(innerErr),
-          });
-        }
-        this.logger.error('Execution validation crashed (project.status untouched)', {
-          projectId: project.id,
-          err: err instanceof Error ? err.message : String(err),
-          stack: err instanceof Error ? err.stack : undefined,
-        });
-      }
+    scheduleExecutionValidationForScheduler({
+      project,
+      updater: this.updater,
+      projectStore: this.projectStore,
+      logger: this.logger,
+      buildArtifacts: (record) => this.buildPreviewValidationArtifacts(record),
+      scheduleRuntimeValidation: (record) => this.scheduleRuntimeValidation(record),
     });
   }
 
-  /**
-   * Fire-and-forget post-generation runtime check. Boots the preview
-   * container, scrapes the rendered HTML + container logs, and runs up to 2
-   * builder-loop fix iterations if anything is wrong. Result is persisted
-   * back onto the ProjectRecord under `runtimeValidation` so the UI can
-   * surface a banner.
-   */
   private scheduleRuntimeValidation(project: ProjectRecord): void {
-    const pm = this.previewManager;
-    if (!pm || !pm.isDockerAvailable()) {
-      this.logger.info('Skipping runtime validation', {
-        projectId: project.id,
-        reason: !pm ? 'preview-manager-not-wired' : 'docker-unavailable',
-      });
-      return;
-    }
-    setImmediate(async () => {
-      // SUBSTEP: finalize:preview-starting — emitted as soon as the
-      // async runtime-validation worker starts. Wall-clock from this
-      // marker until preview-ready measures container boot + first
-      // successful HTTP probe (the slowest single step in the
-      // post-generation lifecycle on most projects).
-      const t0Preview = await this.startFinalizeStep(project, 'finalize:preview-starting');
-      try {
-        const summary = await validateAndAutoFix(
-          project.id,
-          {
-            previewManager: pm,
-            updater: this.updater,
-            apiBaseUrl: this.apiBaseUrl,
-            logger: this.logger,
-            spec: project.spec,
-          },
-          { maxIterations: 3 },
-        );
-        const fresh = await this.projectStore.get(project.id);
-        if (!fresh) return;
-        // SUBSTEP: finalize:preview-ready — emitted whenever
-        // validateAndAutoFix returns, regardless of verdict. The verdict
-        // is reflected in `summary.finalVerdict` and the persisted
-        // `runtimeValidation` block; the marker itself just signals that
-        // the preview-boot phase has terminated.
-        await this.completeFinalizeStep(
-          fresh,
-          'finalize:preview-ready',
-          t0Preview,
-          {
-            verdict: summary.finalVerdict,
-            iterations: summary.iterations.filter((i) => i.kind === 'fix').length,
-            issueCount: summary.lastValidation.issues.length,
-          },
-        );
-        const runtimeValidation = {
-          status: (summary.finalVerdict === 'pass'
-            ? 'passed'
-            : (fresh.preview?.previewStatus === 'ready' ? 'warning' : 'failed')) as 'passed' | 'warning' | 'failed',
-          finalVerdict: summary.finalVerdict,
-          iterations: summary.iterations.filter((i) => i.kind === 'fix').length,
-          issues: summary.lastValidation.issues.map((i) => ({ category: i.category, message: i.message, hint: i.hint })),
-          totalDurationMs: summary.totalDurationMs,
-          completedAt: new Date().toISOString(),
-          reason: summary.finalVerdict === 'pass'
-            ? 'pass'
-            : (summary.lastValidation.issues
-                .slice(0, 3)
-                .map((i) => `[${i.category}] ${i.message}`)
-                .join('; ') || 'fail'),
-        };
-        fresh.runtimeValidation = runtimeValidation;
-        // POST-COMPLETION HEALTH PROBE — never demotes project.status.
-        // The build is already 'completed' (integrity-gate passed before
-        // this probe was scheduled). A failed runtime check surfaces as
-        // a "Validation: warning/failed" pill in the UI, not as a build
-        // failure. The only field this method writes is
-        // runtimeValidation.{status,finalVerdict,issues,...}.
-        const issueWarning = summary.finalVerdict === 'fail' && runtimeValidation.status !== 'passed'
-          ? {
-              code: runtimeValidation.status === 'warning'
-                ? 'runtime.validator-disagreed-with-live-preview'
-                : 'runtime.validation-failed',
-              message: runtimeValidation.status === 'warning'
-                ? `Runtime validator reported issues but live preview is ready: ${runtimeValidation.reason}`
-                : `Runtime validation failed: ${runtimeValidation.reason}`,
-              details: {
-                issues: summary.lastValidation.issues.slice(0, 6),
-                iterations: runtimeValidation.iterations,
-                durationMs: summary.totalDurationMs,
-                previewStatus: fresh.preview?.previewStatus ?? null,
-              },
-            }
-          : null;
-        await this.projectStore.update(project.id, (rec) => {
-          rec.runtimeValidation = runtimeValidation;
-          if (issueWarning) {
-            rec.warnings = [...(rec.warnings ?? []), issueWarning];
-          }
-        }, {
-          phase: `runtime-validation:${runtimeValidation.status}`,
-          caller: 'project-generator:scheduleRuntimeValidation',
-          reason: `verdict=${summary.finalVerdict} status=${runtimeValidation.status}`,
-        });
-        this.logger.info('Runtime validation finished (project.status untouched)', {
-          event: 'gen:runtime-validation:done',
-          projectId: project.id,
-          validatorStatus: runtimeValidation.status,
-          verdict: summary.finalVerdict,
-          fixes: runtimeValidation.iterations,
-          issues: runtimeValidation.issues.length,
-          previewStatus: fresh.preview?.previewStatus ?? null,
-          durationMs: summary.totalDurationMs,
-        });
-      } catch (err) {
-        // Validator crashed — record on runtimeValidation.status only.
-        // Do not demote project.status; the generation is already done.
-        try {
-          const fresh = await this.projectStore.get(project.id);
-          if (fresh) {
-            const crashRecord = {
-              status: 'failed' as const,
-              finalVerdict: 'fail' as const,
-              iterations: 0,
-              issues: [{ category: 'unknown', message: `Validator crashed: ${String(err)}` }],
-              totalDurationMs: 0,
-              completedAt: new Date().toISOString(),
-              reason: 'crashed',
-            };
-            await this.projectStore.update(project.id, (rec) => {
-              rec.runtimeValidation = crashRecord;
-              rec.warnings = [
-                ...(rec.warnings ?? []),
-                {
-                  code: 'runtime.validator-crashed',
-                  message: `Runtime validator crashed: ${err instanceof Error ? err.message : String(err)}`,
-                  details: { reason: 'crashed' },
-                },
-              ];
-            }, {
-              phase: 'runtime-validation:validator-crashed',
-              caller: 'project-generator:scheduleRuntimeValidation',
-              reason: 'runtime-validation threw',
-            });
-          }
-        } catch (innerErr) {
-          this.logger.error('[gen:runtime-validation:persist-failure-error] could not persist runtime-validator crash', {
-            event: 'gen:runtime-validation:persist-failure-error',
-            projectId: project.id,
-            originalErr: err instanceof Error ? err.message : String(err),
-            innerErr: innerErr instanceof Error ? innerErr.message : String(innerErr),
-          });
-        }
-        this.logger.error('Runtime validation crashed (project.status untouched)', {
-          projectId: project.id,
-          err: err instanceof Error ? err.message : String(err),
-          stack: err instanceof Error ? err.stack : undefined,
-        });
-      }
+    scheduleRuntimeValidationForScheduler({
+      project,
+      previewManager: this.previewManager,
+      updater: this.updater,
+      projectStore: this.projectStore,
+      logger: this.logger,
+      apiBaseUrl: this.apiBaseUrl,
+      startFinalizeStep: (record, step) => this.startFinalizeStep(record, step),
+      completeFinalizeStep: (record, step, startedAt, details) => this.completeFinalizeStep(record, step, startedAt, details),
+      buildArtifacts: (record) => this.buildPreviewValidationArtifacts(record),
     });
   }
+
 }

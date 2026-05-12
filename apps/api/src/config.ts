@@ -7,6 +7,23 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 _dotenv({ path: resolve(dirname(fileURLToPath(import.meta.url)), '../../../.env') });
 
+function optionalPositiveFloat(value: string | undefined): number | null {
+  if (value === undefined || value.trim() === '') return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function boundedRatio(value: string | undefined, fallback: number): number {
+  if (value === undefined || value.trim() === '') return fallback;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 && parsed < 1 ? parsed : fallback;
+}
+
+function envBool(value: string | undefined, fallback = false): boolean {
+  if (value === undefined || value.trim() === '') return fallback;
+  return /^(1|true|yes|on)$/i.test(value.trim());
+}
+
 export const config = {
   env: process.env.NODE_ENV ?? 'development',
   isDev: (process.env.NODE_ENV ?? 'development') === 'development',
@@ -61,11 +78,32 @@ export const config = {
     sessionTimeoutMs: parseInt(process.env.SESSION_TIMEOUT_MS ?? '300000', 10),
   },
 
+  generationBudget: {
+    softLimitUsd: optionalPositiveFloat(
+      process.env.GENERATION_BUDGET_SOFT_USD ??
+      process.env.GENERATION_BUDGET_USD ??
+      process.env.PROJECT_GENERATION_BUDGET_USD,
+    ),
+    warningThreshold: boundedRatio(process.env.GENERATION_BUDGET_WARNING_THRESHOLD, 0.75),
+    criticalThreshold: boundedRatio(process.env.GENERATION_BUDGET_CRITICAL_THRESHOLD, 0.90),
+    hardStopEnabled: envBool(process.env.GENERATION_BUDGET_HARD_STOP, false),
+  },
+
   cors: {
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000')
       .split(',')
       .map(o => o.trim())
       .filter(Boolean),
+  },
+
+  auth: {
+    devBypassRequested: envBool(process.env.DEV_AUTH_BYPASS, false),
+    devBypass: ((process.env.NODE_ENV ?? 'development') === 'development') && envBool(process.env.DEV_AUTH_BYPASS, false),
+    tokenSecret: process.env.AUTH_TOKEN_SECRET ?? '',
+    devUserId: process.env.DEV_USER_ID ?? process.env.DEV_AUTH_BYPASS_USER_ID ?? 'dev-user',
+    devWorkspaceId: process.env.DEV_WORKSPACE_ID ?? process.env.DEV_AUTH_BYPASS_WORKSPACE_ID ?? 'dev-workspace',
+    devUserEmail: process.env.DEV_USER_EMAIL ?? process.env.DEV_AUTH_BYPASS_USER_EMAIL ?? 'dev@local.test',
+    devRole: (process.env.DEV_USER_ROLE ?? process.env.DEV_AUTH_BYPASS_ROLE ?? 'owner') as 'owner' | 'admin' | 'member' | 'viewer',
   },
 } as const;
 

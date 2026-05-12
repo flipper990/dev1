@@ -7,6 +7,8 @@ export type {
   PromptHistoryEntry,
   ProjectVersion,
   RuntimeValidationResult,
+  PreviewHealthStatus,
+  PreviewLifecycleStatus,
   GeneratedProject,
   ProjectFileEntry,
   ProjectFileContent,

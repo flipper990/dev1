@@ -1,16 +1,159 @@
 import type {
   GenerateResponse,
   GeneratedProject,
+  PreviewHealthStatus,
+  PreviewLifecycleStatus,
   ProjectFileContent,
   ProjectFileEntry,
   SessionProgress,
 } from '../types/dashboard';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
+import { API_BASE, wsBaseFromApiBase } from './api-base';
 
 /** Default per-request timeout. The backend can be slow during a build but anything
  *  over 20 s for a simple GET is almost certainly unreachable. */
 const DEFAULT_TIMEOUT_MS = 20_000;
+
+const AUTH_TOKEN_STORAGE_KEYS = [
+  'devteam:authToken',
+  'devteam.authToken',
+  'authToken',
+  'accessToken',
+  'auth_token',
+  'token',
+  'jwt',
+] as const;
+
+const DEV_AUTH_BYPASS_ENABLED = /^(1|true|yes|on)$/i.test(
+  process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS ?? process.env.DEV_AUTH_BYPASS ?? '',
+);
+const DEV_AUTH_USER_ID =
+  process.env.NEXT_PUBLIC_DEV_USER_ID
+  ?? process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS_USER_ID
+  ?? 'dev-user';
+const DEV_AUTH_USER_EMAIL =
+  process.env.NEXT_PUBLIC_DEV_USER_EMAIL
+  ?? process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS_USER_EMAIL
+  ?? 'dev@local.test';
+const DEV_AUTH_WORKSPACE_ID =
+  process.env.NEXT_PUBLIC_DEV_WORKSPACE_ID
+  ?? process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS_WORKSPACE_ID
+  ?? 'dev-workspace';
+const DEV_AUTH_ROLE =
+  process.env.NEXT_PUBLIC_DEV_USER_ROLE
+  ?? process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS_ROLE
+  ?? 'owner';
+const AUTH_TOKEN_COOKIE_NAME = 'devteam_auth_token';
+
+let runtimeAuthToken: string | null = null;
+
+function isBrowser(): boolean {
+  return typeof window !== 'undefined' && typeof document !== 'undefined';
+}
+
+function normalizeToken(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^bearer\s+/i.test(trimmed)) return trimmed.replace(/^bearer\s+/i, '').trim() || null;
+  return trimmed;
+}
+
+function readStorageToken(storage: Storage | undefined): string | null {
+  if (!storage) return null;
+  try {
+    for (const key of AUTH_TOKEN_STORAGE_KEYS) {
+      const token = normalizeToken(storage.getItem(key));
+      if (token) return token;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function readAuthToken(): string | null {
+  const override = normalizeToken(runtimeAuthToken);
+  if (override) return override;
+
+  const envToken = normalizeToken(process.env.NEXT_PUBLIC_AUTH_TOKEN);
+  if (envToken) return envToken;
+
+  if (!isBrowser()) return null;
+  return readStorageToken(window.localStorage) ?? readStorageToken(window.sessionStorage);
+}
+
+function syncAuthCookie(token: string | null): void {
+  if (!isBrowser()) return;
+  try {
+    const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+    if (token) {
+      document.cookie = `${AUTH_TOKEN_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; SameSite=Lax${secure}`;
+      return;
+    }
+    document.cookie = `${AUTH_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+  } catch {
+    // Best-effort only. Auth still works via Authorization header when present.
+  }
+}
+
+function applyAuthHeaders(headers: Headers): void {
+  if (headers.has('Authorization')) return;
+  const token = readAuthToken();
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+    syncAuthCookie(token);
+    return;
+  }
+
+  syncAuthCookie(null);
+  const allowDevHeaders = DEV_AUTH_BYPASS_ENABLED || process.env.NODE_ENV !== 'production';
+  if (!allowDevHeaders) return;
+  if (!headers.has('x-devteam-user-id')) headers.set('x-devteam-user-id', DEV_AUTH_USER_ID);
+  if (!headers.has('x-devteam-user-email')) headers.set('x-devteam-user-email', DEV_AUTH_USER_EMAIL);
+  if (!headers.has('x-devteam-workspace-id')) headers.set('x-devteam-workspace-id', DEV_AUTH_WORKSPACE_ID);
+  if (!headers.has('x-devteam-role')) headers.set('x-devteam-role', DEV_AUTH_ROLE);
+}
+
+function buildRequestHeaders(
+  source: HeadersInit | undefined,
+  includeJsonHeaders: boolean,
+): Headers {
+  const headers = new Headers(source ?? {});
+  if (includeJsonHeaders) {
+    if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+    if (!headers.has('Accept')) headers.set('Accept', 'application/json');
+  }
+  applyAuthHeaders(headers);
+  return headers;
+}
+
+async function fetchWithAuth(
+  url: string,
+  init: RequestInit,
+  options?: { includeJsonHeaders?: boolean },
+): Promise<Response> {
+  const includeJsonHeaders = options?.includeJsonHeaders ?? true;
+  const headers = buildRequestHeaders(init.headers, includeJsonHeaders);
+  const usesHeaderAuth =
+    headers.has('Authorization') ||
+    headers.has('x-devteam-user-id') ||
+    headers.has('x-devteam-user-email') ||
+    headers.has('x-devteam-workspace-id') ||
+    headers.has('x-devteam-role');
+  return fetch(url, {
+    ...init,
+    headers,
+    cache: init.cache ?? 'no-store',
+    credentials: init.credentials ?? (usesHeaderAuth ? 'same-origin' : 'include'),
+  });
+}
+
+/** Optional runtime injection point for auth/session layers.
+ *  When unset, the client falls back to env + storage discovery. */
+export function setApiAuthToken(token: string | null): void {
+  runtimeAuthToken = normalizeToken(token);
+  syncAuthCookie(runtimeAuthToken);
+}
 
 /** Sentinel on thrown errors so callers can tell "the backend is down" apart
  *  from "the backend returned 4xx". Callers that want mock-fallback behaviour
@@ -50,14 +193,8 @@ async function request<T>(path: string, init?: RequestInit & { timeoutMs?: numbe
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}${path}`, {
+    response = await fetchWithAuth(`${API_BASE}${path}`, {
       ...rest,
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        ...(rest.headers ?? {}),
-      },
-      cache: 'no-store',
       signal: controller.signal,
     });
   } catch (err) {
@@ -145,17 +282,50 @@ function arr<T = unknown>(v: unknown): T[] {
 /** Normalize a raw project row into a fully-populated GeneratedProject. */
 export function normalizeProject(raw: unknown): GeneratedProject {
   const p = (raw ?? {}) as Raw;
-  const statusRaw = str(p['status'], 'generating');
+  const statusRaw = str(p['projectStatus'] ?? p['status'], 'generating');
   const status: GeneratedProject['status'] =
-    statusRaw === 'completed' ? 'completed' :
-    statusRaw === 'failed'    ? 'failed' :
+    statusRaw === 'generated' || statusRaw === 'completed' ? 'generated' :
+    statusRaw === 'failed' ? 'failed' :
     'generating';
+  const runtimeValidation = (p['runtimeValidation'] && typeof p['runtimeValidation'] === 'object')
+    ? (p['runtimeValidation'] as GeneratedProject['runtimeValidation'])
+    : undefined;
+  const executionValidation = (p['executionValidation'] && typeof p['executionValidation'] === 'object')
+    ? (p['executionValidation'] as GeneratedProject['executionValidation'])
+    : undefined;
+  const preview = (p['preview'] && typeof p['preview'] === 'object')
+    ? (p['preview'] as GeneratedProject['preview'])
+    : undefined;
+  const verificationStatusRaw = str(p['verificationStatus']);
+  const verificationStatus: NonNullable<GeneratedProject['verificationStatus']> =
+    verificationStatusRaw === 'running' || verificationStatusRaw === 'passed' || verificationStatusRaw === 'failed' || verificationStatusRaw === 'warning'
+      ? verificationStatusRaw
+      : verificationStatusRaw === 'pending'
+        ? 'pending'
+        : (() => {
+          if (status === 'failed') return 'failed' as const;
+          if (runtimeValidation?.status === 'failed' || executionValidation?.status === 'failed') return 'failed' as const;
+          if (runtimeValidation?.status === 'warning' || executionValidation?.status === 'warning') return 'warning' as const;
+          if (runtimeValidation?.status === 'running' || executionValidation?.status === 'running') return 'running' as const;
+          if (runtimeValidation?.status === 'passed' && executionValidation?.status === 'passed') return 'passed' as const;
+          return 'pending' as const;
+        })();
+  const previewHealthStatusRaw = str(p['previewHealthStatus']);
+  const previewHealthStatus: NonNullable<GeneratedProject['previewHealthStatus']> =
+    previewHealthStatusRaw === 'healthy' || previewHealthStatusRaw === 'placeholder' || previewHealthStatusRaw === 'broken'
+      ? previewHealthStatusRaw
+      : preview?.previewHealth === 'healthy' || preview?.previewHealth === 'placeholder' || preview?.previewHealth === 'broken'
+        ? preview.previewHealth
+      : 'unknown';
   const promptLegacy = typeof p['prompt'] === 'string' ? [p['prompt'] as string] : [];
   const normalized = {
     id:             str(p['id'], `unknown-${Date.now()}`),
     sessionId:      str(p['sessionId']),
     name:           str(p['name'], 'Untitled project'),
     status,
+    projectStatus:  status,
+    verificationStatus,
+    previewHealthStatus,
     prompts:        arr<string>(p['prompts']).filter((x) => typeof x === 'string').concat(promptLegacy).slice(0, 32),
     promptHistory:  arr(p['promptHistory']) as GeneratedProject['promptHistory'],
     versions:       arr(p['versions']) as GeneratedProject['versions'],
@@ -164,15 +334,9 @@ export function normalizeProject(raw: unknown): GeneratedProject {
     durationMs:     num(p['durationMs']),
     createdAt:      str(p['createdAt'], new Date().toISOString()),
     completedAt:    typeof p['completedAt'] === 'string' ? p['completedAt'] : undefined,
-    preview:        (p['preview'] && typeof p['preview'] === 'object')
-      ? (p['preview'] as GeneratedProject['preview'])
-      : undefined,
-    runtimeValidation: (p['runtimeValidation'] && typeof p['runtimeValidation'] === 'object')
-      ? (p['runtimeValidation'] as GeneratedProject['runtimeValidation'])
-      : undefined,
-    executionValidation: (p['executionValidation'] && typeof p['executionValidation'] === 'object')
-      ? (p['executionValidation'] as GeneratedProject['executionValidation'])
-      : undefined,
+    preview,
+    runtimeValidation,
+    executionValidation,
     stackSelectionMode:
       p['stackSelectionMode'] === 'manual' || p['stackSelectionMode'] === 'auto'
         ? (p['stackSelectionMode'] as 'auto' | 'manual')
@@ -334,26 +498,32 @@ export async function getProjectPromptHistory(projectId: string): Promise<import
 
 export async function getProjectVersions(projectId: string): Promise<import('../types/dashboard').ProjectVersion[]> {
   try {
-    const result = await request<{ versions: import('../types/dashboard').ProjectVersion[] }>(`/api/projects/${projectId}/versions`);
-    return arr(result?.versions) as import('../types/dashboard').ProjectVersion[];
+    const result = await request<{
+      projectId: string;
+      currentVersion: number;
+      history: Array<{
+        version?: number;
+        createdAt?: string;
+        prompts?: string[];
+        diffs?: Array<{ path?: string }>;
+      }>;
+    }>(`/api/projects/${projectId}/versions`);
+    return arr<Record<string, unknown>>(result?.history).map((raw, index) => {
+      const version = num(raw['version'], index + 1);
+      const prompts = arr<string>(raw['prompts']).filter((value) => typeof value === 'string');
+      const diffs = arr<{ path?: string }>(raw['diffs']);
+      return {
+        id: String(version),
+        createdAt: str(raw['createdAt'], new Date().toISOString()),
+        promptText: prompts[0] ?? `Version ${version}`,
+        summary: prompts.length > 1 ? `${prompts.length} prompts` : undefined,
+        fileCount: diffs.length > 0 ? diffs.length : undefined,
+      } satisfies import('../types/dashboard').ProjectVersion;
+    });
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) return [];
     throw err;
   }
-}
-
-/**
- * Roll the project back to a previously-snapshotted version.
- * The server takes a pre-restore snapshot first, so the restore is undoable.
- */
-export async function restoreProjectVersion(projectId: string, versionId: string): Promise<void> {
-  await request<{ project: unknown }>(`/api/projects/${projectId}/versions/${versionId}/restore`, {
-    method: 'POST',
-  });
-}
-
-export async function getContainerInfo(projectId: string): Promise<{ available: boolean; status: string; url: string | null }> {
-  return request<{ available: boolean; status: string; url: string | null }>(`/api/projects/${projectId}/container`);
 }
 
 /* ── Docker preview API ────────────────────────────────────────
@@ -364,25 +534,26 @@ export async function getContainerInfo(projectId: string): Promise<{ available: 
  * the UI falls back to the in-browser srcDoc preview.
  * ───────────────────────────────────────────────────────────── */
 
-export type PreviewState = 'idle' | 'detecting' | 'building' | 'starting' | 'ready' | 'failed' | 'fallback' | 'stopped';
+export type PreviewState = PreviewLifecycleStatus;
 
 export interface PreviewStatus {
   projectId: string;
   state: PreviewState;
-  stack: 'nextjs' | 'vite-react' | 'plain-react' | 'node-express' | 'unknown' | null;
+  health: PreviewHealthStatus;
+  stack: 'nextjs' | 'vite-react' | 'plain-react' | 'node-express' | 'fullstack' | 'unknown' | null;
   url: string | null;
   hostPort: number | null;
   error: string | null;
   log: string;
   uptimeMs: number;
-  /** True when state === 'fallback' — caller should render frontend-only static preview. */
+  /** True when no preview backend is available and UI should render static fallback. */
   fallback?: boolean;
   /** Reason for fallback (e.g. 'docker-unavailable'). */
   fallbackReason?: 'docker-unavailable' | 'boot-failed' | null;
   /** User-facing notice to display in the preview UI. */
   notice?: string;
   /** Which backend served this preview. */
-  mode?: 'docker' | 'local';
+  mode?: 'docker' | 'local' | 'local-fallback' | 'fullstack';
   /** ISO timestamp when start() was first invoked. */
   startedAtIso?: string;
   /** ISO timestamp the moment state transitioned to 'ready' (null until then). */
@@ -481,11 +652,15 @@ export async function stopPreview(projectId: string): Promise<{ stopped: boolean
 
 /**
  * Trigger a ZIP export download for the given project.
- * The backend strips all mock/preview-only code; what you get is production-ready.
+ * Export reflects generated source availability, not production-readiness.
  */
 export async function exportProject(projectId: string, projectName?: string): Promise<void> {
   const url = `${API_BASE}/api/projects/${projectId}/export`;
-  const response = await fetch(url, { cache: 'no-store' });
+  const response = await fetchWithAuth(
+    url,
+    { method: 'GET' },
+    { includeJsonHeaders: false },
+  );
   if (!response.ok) {
     let detail = `HTTP ${response.status}`;
     try {
@@ -530,7 +705,11 @@ export function openSessionSocket(
   onDone: (status: string) => void,
   onError: (message: string) => void,
 ): WebSocket {
-  const base = API_BASE.replace('http://', 'ws://').replace('https://', 'wss://');
+  // Browser WebSocket does not support custom auth headers.
+  // We mirror the discovered token into a SameSite cookie so the WS
+  // handshake carries session credentials consistently.
+  syncAuthCookie(readAuthToken());
+  const base = wsBaseFromApiBase(API_BASE);
   const socket = new WebSocket(`${base}/ws/sessions/${sessionId}/progress`);
   let finished = false;
   const finish = (status: string) => {

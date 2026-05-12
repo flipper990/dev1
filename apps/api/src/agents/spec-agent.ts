@@ -5,6 +5,7 @@
 
 import { BaseAgent } from '../../../../packages/agent-core/src/base-agent.js';
 import type { Task, MemoryEntry } from '../../../../packages/agent-core/src/types.js';
+import { renderSkillsForPrompt } from '../../../../packages/agent-core/src/skills/index.js';
 import { extractJSON } from './utils.js';
 
 export class SpecAgent extends BaseAgent {
@@ -16,6 +17,11 @@ export class SpecAgent extends BaseAgent {
     };
 
     let prompt = '';
+    prompt += renderSkillsForPrompt({
+      role: 'spec',
+      prompts,
+      userPreferences,
+    });
 
     // ── STACK SELECTION MODE ───────────────────────────────────────────────
     // 'auto' (default): the user did not pick a stack in the UI; the spec

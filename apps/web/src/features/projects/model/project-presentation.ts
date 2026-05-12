@@ -43,7 +43,7 @@ function getStackLabel(project: GeneratedProject): string {
 function getBuild(project: GeneratedProject): ProjectPresentation['build'] {
   if (project.status === 'generating') return { label: 'Building', tone: 'active' };
   if (project.status === 'failed') return { label: 'Build failed', tone: 'error' };
-  return { label: 'Build complete', tone: 'success' };
+  return { label: 'Code generated', tone: 'success' };
 }
 
 function getPreview(project: GeneratedProject): ProjectPresentation['preview'] {
@@ -53,10 +53,13 @@ function getPreview(project: GeneratedProject): ProjectPresentation['preview'] {
 
 function getExportStatus(project: GeneratedProject): ProjectPresentation['export'] {
   if (project.status === 'failed') return { label: 'Blocked', tone: 'error' };
-  if (project.status === 'generating') return { label: 'Pending build', tone: 'neutral' };
-  const runtimeFailed = project.runtimeValidation?.finalVerdict === 'fail' || project.executionValidation?.finalVerdict === 'fail';
-  if (runtimeFailed) return { label: 'Review required', tone: 'warning' };
-  return { label: 'Source ready', tone: 'success' };
+  if (project.status === 'generating') return { label: 'Pending generation', tone: 'neutral' };
+
+  if (project.verificationStatus === 'passed') return { label: 'Source available · verified', tone: 'success' };
+  if (project.verificationStatus === 'running') return { label: 'Source available · verification running', tone: 'active' };
+  if (project.verificationStatus === 'warning' || project.verificationStatus === 'failed') return { label: 'Source available · checks need review', tone: 'warning' };
+
+  return { label: 'Source available · unverified', tone: 'warning' };
 }
 
 export function deriveProjectPresentation(project: GeneratedProject, owner = 'Platform team'): ProjectPresentation {

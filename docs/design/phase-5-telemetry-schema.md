@@ -31,6 +31,11 @@
 - Sanitize payloads to remove empty fields.
 
 ## Implementation files
-- `src/lib/telemetry/events.ts`
-- `src/lib/telemetry/useTrackEvent.ts`
-- `src/lib/telemetry/routeMetrics.ts`
+- `apps/web/src/lib/telemetry/events.ts`
+- `apps/web/src/lib/telemetry/useTrackEvent.ts`
+- `apps/web/src/lib/telemetry/localTracker.ts`
+- `apps/web/src/lib/telemetry/routeMetrics.ts`
+
+## Current ingestion status
+- Frontend sends to `/api/telemetry/events` only when `NEXT_PUBLIC_TELEMETRY_ENABLED=1` or `true`.
+- Backend ingestion route is currently not implemented, so telemetry is disabled by default and remains local-only.

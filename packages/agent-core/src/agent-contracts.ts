@@ -6,6 +6,7 @@ import type {
   AgentMessage,
   AgentMiddleware,
   AgentRole,
+  LLMProvider,
   MemoryEntry,
   MemoryQuery,
   ModelConfig,
@@ -18,13 +19,29 @@ export interface LLMClient {
     system: string;
     messages: { role: 'user' | 'assistant'; content: string }[];
     stream?: boolean;
+    metadata?: {
+      projectId?: string;
+      sessionId?: string;
+      traceId?: string;
+      agentRole?: AgentRole;
+      phase?: string;
+      step?: string;
+    };
   }): AsyncGenerator<string, void, unknown>;
 
   chatSync(params: {
     model: ModelConfig;
     system: string;
     messages: { role: 'user' | 'assistant'; content: string }[];
-  }): Promise<{ content: string; tokensIn: number; tokensOut: number }>;
+    metadata?: {
+      projectId?: string;
+      sessionId?: string;
+      traceId?: string;
+      agentRole?: AgentRole;
+      phase?: string;
+      step?: string;
+    };
+  }): Promise<{ content: string; tokensIn: number; tokensOut: number; costUsd?: number; provider?: LLMProvider; model?: string; requestId?: string }>;
 }
 
 export type MemoryEntryInput = Omit<

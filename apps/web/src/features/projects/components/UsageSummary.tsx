@@ -23,14 +23,14 @@ export function UsageSummary({ projects }: UsageSummaryProps) {
       tokens: acc.tokens + (project.totalTokens ?? 0),
       cost: acc.cost + (project.totalCostUsd ?? 0),
       duration: acc.duration + (project.durationMs ?? 0),
-      completed: acc.completed + (project.status === 'completed' ? 1 : 0),
+      completed: acc.completed + (project.status === 'generated' ? 1 : 0),
     }),
     { tokens: 0, cost: 0, duration: 0, completed: 0 },
   );
 
   const items = [
     ['Projects', projects.length.toLocaleString()],
-    ['Completed', totals.completed.toLocaleString()],
+    ['Generated', totals.completed.toLocaleString()],
     ['Tokens', formatTokens(totals.tokens)],
     ['Cost', `$${totals.cost.toFixed(2)}`],
     ['Runtime', formatDuration(totals.duration)],

@@ -18,6 +18,7 @@ import type { PreviewManager } from '../preview/preview-manager.js';
 import type { ProjectStore } from '../storage/project-store.js';
 import type { ProjectUpdater } from '../pipeline/project-updater.js';
 import { validateAndAutoFix } from '../pipeline/auto-fix.js';
+import type { createAuthGuards } from '../security/auth.js';
 
 export interface PreviewRoutesDeps {
   preview: PreviewManager;
@@ -25,16 +26,17 @@ export interface PreviewRoutesDeps {
   updater: ProjectUpdater;
   apiBaseUrl: string;
   logger: Logger;
+  auth: ReturnType<typeof createAuthGuards>;
 }
 
 const PROJECT_ID_RE = /^[A-Za-z0-9_-]{8,32}$/;
 
 export function registerPreviewRoutes(app: FastifyInstance, deps: PreviewRoutesDeps): void {
-  const { preview, projectStore, updater, apiBaseUrl, logger } = deps;
+  const { preview, projectStore, updater, apiBaseUrl, logger, auth } = deps;
 
   // ── REST control plane ───────────────────────────────────
 
-  app.post('/api/projects/:id/preview/start', async (req: FastifyRequest, reply: FastifyReply) => {
+  app.post('/api/projects/:id/preview/start', { preHandler: [auth.requireProjectAccess('member')] }, async (req: FastifyRequest, reply: FastifyReply) => {
     const { id } = req.params as { id: string };
     req.log.info({ event: 'route:preview:start', projectId: id, reqId: req.id }, '[route:preview:start] request received');
     if (!PROJECT_ID_RE.test(id)) return reply.status(400).send({ error: 'Invalid project id' });
@@ -48,11 +50,12 @@ export function registerPreviewRoutes(app: FastifyInstance, deps: PreviewRoutesD
     if (!preview.isAnyAvailable()) {
       return reply.status(200).send({
         projectId: id,
-        state: 'fallback',
+        state: 'failed',
+        health: 'unknown',
         stack: null,
         url: null,
         hostPort: null,
-        error: null,
+        error: 'Preview backend unavailable',
         log: '',
         uptimeMs: 0,
         fallback: true,
@@ -72,7 +75,7 @@ export function registerPreviewRoutes(app: FastifyInstance, deps: PreviewRoutesD
     }
   });
 
-  app.post('/api/projects/:id/preview/stop', async (req: FastifyRequest, reply: FastifyReply) => {
+  app.post('/api/projects/:id/preview/stop', { preHandler: [auth.requireProjectAccess('member')] }, async (req: FastifyRequest, reply: FastifyReply) => {
     const { id } = req.params as { id: string };
     req.log.info({ event: 'route:preview:stop', projectId: id, reqId: req.id }, '[route:preview:stop] request received');
     if (!PROJECT_ID_RE.test(id)) return reply.status(400).send({ error: 'Invalid project id' });
@@ -80,7 +83,7 @@ export function registerPreviewRoutes(app: FastifyInstance, deps: PreviewRoutesD
     return reply.status(200).send({ stopped: true });
   });
 
-  app.get('/api/projects/:id/preview/status', async (req: FastifyRequest, reply: FastifyReply) => {
+  app.get('/api/projects/:id/preview/status', { preHandler: [auth.requireProjectAccess('viewer')] }, async (req: FastifyRequest, reply: FastifyReply) => {
     const { id } = req.params as { id: string };
     // status is high-frequency-polled; log at debug level to avoid spam.
     req.log.debug({ event: 'route:preview:status', projectId: id, reqId: req.id }, '[route:preview:status] poll');
@@ -93,11 +96,12 @@ export function registerPreviewRoutes(app: FastifyInstance, deps: PreviewRoutesD
       if (!preview.isAnyAvailable()) {
         return reply.status(200).send({
           projectId: id,
-          state: 'fallback',
+          state: 'failed',
+          health: 'unknown',
           stack: null,
           url: null,
           hostPort: null,
-          error: null,
+          error: 'Preview backend unavailable',
           log: '',
           uptimeMs: 0,
           fallback: true,
@@ -108,6 +112,7 @@ export function registerPreviewRoutes(app: FastifyInstance, deps: PreviewRoutesD
       return reply.status(200).send({
         projectId: id,
         state: 'idle',
+        health: 'unknown',
         stack: null,
         url: null,
         hostPort: null,
@@ -119,7 +124,7 @@ export function registerPreviewRoutes(app: FastifyInstance, deps: PreviewRoutesD
     return reply.status(200).send(status);
   });
 
-  app.post('/api/projects/:id/preview/iframe-ready', async (req: FastifyRequest, reply: FastifyReply) => {
+  app.post('/api/projects/:id/preview/iframe-ready', { preHandler: [auth.requireProjectAccess('member')] }, async (req: FastifyRequest, reply: FastifyReply) => {
     const { id } = req.params as { id: string };
     if (!PROJECT_ID_RE.test(id)) return reply.status(400).send({ error: 'Invalid project id' });
     const body = (req.body ?? {}) as { url?: string; viewport?: string; loadDurationMs?: number };
@@ -132,7 +137,7 @@ export function registerPreviewRoutes(app: FastifyInstance, deps: PreviewRoutesD
     return reply.status(204).send();
   });
 
-  app.get('/api/preview/health', async () => ({
+  app.get('/api/preview/health', { preHandler: [auth.requireRole('viewer')] }, async () => ({
     dockerAvailable: preview.isDockerAvailable(),
     localAvailable: preview.isLocalAvailable(),
     anyAvailable: preview.isAnyAvailable(),
@@ -149,7 +154,7 @@ export function registerPreviewRoutes(app: FastifyInstance, deps: PreviewRoutesD
   // because each fix iteration runs the full agent pipeline. Callers that
   // want progress should subscribe to the WebSocket for updater session
   // events as usual.
-  app.post('/api/projects/:id/preview/validate', async (req: FastifyRequest, reply: FastifyReply) => {
+  app.post('/api/projects/:id/preview/validate', { preHandler: [auth.requireProjectAccess('member')] }, async (req: FastifyRequest, reply: FastifyReply) => {
     const { id } = req.params as { id: string };
     if (!PROJECT_ID_RE.test(id)) return reply.status(400).send({ error: 'Invalid project id' });
     if (!preview.isDockerAvailable()) {
@@ -183,6 +188,7 @@ export function registerPreviewRoutes(app: FastifyInstance, deps: PreviewRoutesD
   app.route({
     method: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'],
     url: '/preview/:id/*',
+    preHandler: [auth.requireProjectAccess('viewer')],
     handler: (req, reply) => proxyHandler(req, reply, preview, logger),
   });
   // Also handle the "no trailing slash" form by redirecting to the slash form
@@ -190,6 +196,7 @@ export function registerPreviewRoutes(app: FastifyInstance, deps: PreviewRoutesD
   app.route({
     method: ['GET'],
     url: '/preview/:id',
+    preHandler: [auth.requireProjectAccess('viewer')],
     handler: (req, reply) => {
       const { id } = req.params as { id: string };
       reply.redirect(`/preview/${id}/`, 308);

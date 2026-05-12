@@ -4,10 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppShell } from '../../src/components/shell';
 import { Button, Panel, Skeleton } from '../../components/ui';
-import { listProjects } from '../../lib/api';
 import { getExperimentAssignments } from '../../src/lib/flags/uiRedesignFlags';
 import { useTrackEvent } from '../../src/lib/telemetry/useTrackEvent';
-import type { GeneratedProject } from '../../types/dashboard';
 import {
   ProjectFilters,
   ProjectList,
@@ -15,7 +13,8 @@ import {
   type ProjectHealthFilter,
   type ProjectStageFilter,
 } from '../../src/features/projects/components';
-import { deriveProjectPresentation, deriveUnifiedProjectStatus, sortProjectsByUpdated } from '../../src/features/projects/model';
+import { deriveProjectPresentation, deriveUnifiedProjectStatus } from '../../src/features/projects/model';
+import { useProjects } from '../../hooks/useProjectData';
 
 const SHOW_DEBUG_IDS = process.env.NODE_ENV !== 'production';
 
@@ -23,9 +22,13 @@ export default function ProjectsPage() {
   const router = useRouter();
   const trackEvent = useTrackEvent();
   const experiments = useMemo(() => getExperimentAssignments(), []);
-  const [projects, setProjects] = useState<GeneratedProject[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    projects,
+    loading,
+    error,
+    stale,
+    reconnecting,
+  } = useProjects();
   const [query, setQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<ProjectStageFilter>('all');
   const [healthFilter, setHealthFilter] = useState<ProjectHealthFilter>('all');
@@ -43,27 +46,6 @@ export default function ProjectsPage() {
 
     window.addEventListener('devteam:project-search', onProjectSearch);
     return () => window.removeEventListener('devteam:project-search', onProjectSearch);
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    listProjects()
-      .then((result) => {
-        if (!alive) return;
-        setProjects(sortProjectsByUpdated(result));
-        setError(null);
-      })
-      .catch((err) => {
-        if (!alive) return;
-        setError(err instanceof Error ? err.message : 'Unable to load projects.');
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
   }, []);
 
   const filtered = useMemo(() => {
@@ -102,6 +84,7 @@ export default function ProjectsPage() {
         <Panel title="Backend data" subtitle="Project identity and state source">
           <div className="space-y-2 text-body-s text-text-secondary">
             <p>{error ? 'Unable to load /api/projects.' : 'Using /api/projects.'}</p>
+            <p>{reconnecting ? 'Reconnecting to backend…' : stale ? 'Showing stale project data.' : 'Live polling active.'}</p>
             <p>{SHOW_DEBUG_IDS ? 'Debug project IDs visible.' : 'Debug project IDs hidden.'}</p>
             <p className="text-body-s text-text-secondary">Project actions use projectId as identity. Names are display labels only.</p>
           </div>

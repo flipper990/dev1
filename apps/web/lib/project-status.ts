@@ -1,16 +1,17 @@
 // Single source of truth for combining the two independent backend
 // status fields the dashboard renders for a project:
 //
-//   • project.status                 — generating | completed | failed
+//   • project.status                 — generating | generated | failed
 //                                      (generation pipeline)
 //   • project.preview.previewStatus  — idle | preparing | installing |
-//                                      building | starting | ready |
+//                                      building | starting | reachable |
+//                                      ready |
 //                                      failed
 //                                      (preview / dev-server lifecycle)
 //
 // IMPORTANT — no success masking. Earlier revisions of this helper
 // rewrote `project.status === 'failed' && previewStatus === 'ready'`
-// into an `effective: 'completed'` so the header pill would not
+// into an `effective: 'generated'` so the header pill would not
 // contradict a working iframe. That was unsafe: it hid real backend
 // failures and could misreport a broken app as successful. The UI
 // must NEVER invent success — it may surface that two statuses
@@ -30,11 +31,11 @@
 
 import type { GeneratedProject } from '../types/dashboard';
 
-export type RawProjectStatus = 'generating' | 'completed' | 'failed';
+export type RawProjectStatus = 'generating' | 'generated' | 'failed';
 
 export type RawPreviewStatus =
   | 'idle' | 'preparing' | 'installing' | 'building'
-  | 'starting' | 'ready' | 'failed';
+  | 'starting' | 'reachable' | 'ready' | 'failed';
 
 export type ConsistencyState = 'in_sync' | 'conflicting';
 
@@ -60,7 +61,7 @@ export interface StatusReconciliation {
  *  treated as conflicting is `project.failed` + `preview.ready`:
  *  the build cannot have hard-failed if the dev server is running.
  *  Every other combination — including `generating` + `ready` (a
- *  prior preview from a re-generation) and `completed` + `failed`
+ *  prior preview from a re-generation) and `generated` + `failed`
  *  (a healthy build whose preview later crashed) — is a legitimate
  *  transient. */
 function deriveConsistency(
@@ -90,7 +91,7 @@ export function reconcileProjectStatus(
       reason: 'no-project',
     };
   }
-  const projectStatus = (p.status as RawProjectStatus) ?? 'generating';
+  const projectStatus = ((p.projectStatus ?? p.status) as RawProjectStatus) ?? 'generating';
   const previewStatus = (p.preview?.previewStatus ?? null) as RawPreviewStatus | null;
   const { state, reason } = deriveConsistency(projectStatus, previewStatus);
   return { projectStatus, previewStatus, consistency: state, reason };

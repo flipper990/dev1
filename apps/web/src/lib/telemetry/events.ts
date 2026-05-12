@@ -1,3 +1,5 @@
+import { API_BASE } from '../../../lib/api-base';
+
 export type TelemetryEventName =
   | 'ui_variant_exposed'
   | 'shell_loaded'
@@ -43,7 +45,11 @@ export type TelemetryEvent<K extends TelemetryEventName = TelemetryEventName> = 
   payload: TelemetryEventPayloadMap[K];
 };
 
-export const TELEMETRY_ENDPOINT = '/api/telemetry/events';
+export const TELEMETRY_ROUTE_PATH = '/api/telemetry/events';
+export const TELEMETRY_ENDPOINT = `${API_BASE}${TELEMETRY_ROUTE_PATH}`;
+export const TELEMETRY_ENABLED =
+  process.env.NEXT_PUBLIC_TELEMETRY_ENABLED === '1'
+  || process.env.NEXT_PUBLIC_TELEMETRY_ENABLED === 'true';
 
 export function buildTelemetryEvent<K extends TelemetryEventName>(
   name: K,
@@ -68,4 +74,8 @@ export function sanitizeTelemetryPayload(payload: TelemetryEventBase): Telemetry
   }
 
   return next as TelemetryEventBase;
+}
+
+export function telemetryOptOutInLocalStorage(): boolean {
+  return typeof window !== 'undefined' && window.localStorage.getItem('telemetry:disable') === '1';
 }

@@ -13,6 +13,8 @@ import { computeFileDiffs } from './diff-utils.js';
 import { assembleProject, buildTaskSummaries, buildStepSummaries } from './project-assembler.js';
 import { runQualityAssurance } from './quality-assurance.js';
 import type { UpdateRequest, UpdateResult } from './generator-types.js';
+import { config } from '../config.js';
+import { createInitialBudgetDiagnostics } from '../llm/generation-budget.js';
 
 export class ProjectUpdater {
   private agents: Map<AgentRole, BaseAgent>;
@@ -69,6 +71,8 @@ export class ProjectUpdater {
 
     const allPrompts = [...(existing.prompts ?? []), ...prompts];
     const session = this.sessionManager.create(sessionId, userId ?? 'system', allPrompts);
+    session.artifacts.set('projectId', projectId);
+    session.artifacts.set('generationPhase', 'update');
     if (preferences) session.artifacts.set('userPreferences', preferences);
     if (runtimeFeedback) session.artifacts.set('runtimeFeedback', runtimeFeedback as unknown as Record<string, unknown>);
 
@@ -80,10 +84,16 @@ export class ProjectUpdater {
     if (existing.files?.length) session.artifacts.set('existingFiles', existing.files);
 
     existing.status = 'generating';
+    existing.projectStatus = 'generating';
+    existing.verificationStatus = 'pending';
     existing.sessionId = sessionId;
+    existing.diagnostics = {
+      ...(existing.diagnostics ?? {}),
+      generationBudget: existing.diagnostics?.generationBudget ?? createInitialBudgetDiagnostics(config.generationBudget),
+    };
     await this.projectStore.save(existing, {
       caller: 'project-updater:start',
-      reason: 'update flow flips completed→generating',
+      reason: 'update flow flips generated→generating',
       allowStatusDowngrade: true,
     });
 
@@ -134,6 +144,8 @@ export class ProjectUpdater {
           `Keeping existing files; not overwriting.`,
         );
         existing.status = 'failed';
+        existing.projectStatus = 'failed';
+        existing.verificationStatus = 'failed';
         existing.updatedAt = new Date().toISOString();
         await this.projectStore.save(existing, {
           caller: 'project-updater:file-loss-safeguard',
@@ -153,7 +165,7 @@ export class ProjectUpdater {
 
       // ── Final QA gate ─────────────────────────────────────
       // Same guarantee as ProjectGenerator: no low-quality output is
-      // ever marked `completed`. Deterministic fixes applied in-place.
+      // ever marked `generated`. Deterministic fixes applied in-place.
       const qa = runQualityAssurance(assembled);
       const newFiles = qa.files;
       if (qa.report.autoFixCount > 0) {
@@ -199,7 +211,9 @@ export class ProjectUpdater {
       };
 
       existing.name = specOut?.productName ?? existing.name;
-      existing.status = pipelineState.status === 'completed' && qa.report.passed ? 'completed' : 'failed';
+      existing.status = pipelineState.status === 'completed' && qa.report.passed ? 'generated' : 'failed';
+      existing.projectStatus = existing.status;
+      existing.verificationStatus = existing.status === 'generated' ? 'pending' : 'failed';
       existing.prompts = allPrompts;
       existing.files = newFiles;
       existing.spec         = pipelineState.artifacts.get('spec') as Record<string, unknown> | undefined ?? existing.spec;
@@ -244,6 +258,8 @@ export class ProjectUpdater {
     } catch (err) {
       const error = (err as Error).message;
       existing.status = 'failed';
+      existing.projectStatus = 'failed';
+      existing.verificationStatus = 'failed';
       existing.updatedAt = new Date().toISOString();
       await this.projectStore.save(existing, {
         caller: 'project-updater:catch',

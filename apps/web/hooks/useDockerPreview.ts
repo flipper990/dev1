@@ -52,6 +52,7 @@ export type PreviewState =
   | 'installing'   // backend reports state='building' (npm install + image build)
   | 'building'     // backend reports state='building' (compile)
   | 'starting'    // dev server launching
+  | 'reachable'   // transport reachable, health not yet healthy
   | 'ready'
   | 'failed';
 
@@ -143,22 +144,16 @@ export function useDockerPreview(
           const s = await getPreviewStatus(projectId);
           if (cancelledRef.current || !mounted) return;
           setStatus(s);
-          if (s.state === 'ready') {
+          if (s.state === 'ready' && s.health === 'healthy') {
             setPhase('ready');
             return; // stop polling
-          }
-          if (s.state === 'fallback') {
-            // API reported Docker unavailable mid-flight — switch to
-            // frontend-only static preview.
-            setPhase('unavailable');
-            return;
           }
           if (s.state === 'failed') {
             setPhase('failed');
             setError(s.error ?? 'Preview failed to start');
             return;
           }
-          // detecting / building / starting / idle / stopped → keep polling.
+          // preparing / installing / building / starting / reachable / idle → keep polling.
           pollTimerRef.current = setTimeout(poll, POLL_INTERVAL_MS);
         } catch (err) {
           if (cancelledRef.current || !mounted) return;
@@ -228,10 +223,13 @@ export function useDockerPreview(
     if (phase === 'checking') return 'preparing';
     // phase === 'starting' — refine using backend status if known.
     const s = status?.state;
-    if (s === 'detecting') return 'preparing';
-    if (s === 'building')  return 'installing';
-    if (s === 'starting')  return 'starting';
-    if (s === 'failed')    return 'failed';
+    if (s === 'preparing')  return 'preparing';
+    if (s === 'installing') return 'installing';
+    if (s === 'building')   return 'building';
+    if (s === 'starting')   return 'starting';
+    if (s === 'reachable')  return 'reachable';
+    if (s === 'ready')      return status?.health === 'healthy' ? 'ready' : 'reachable';
+    if (s === 'failed')     return 'failed';
     return 'preparing';
   })();
 

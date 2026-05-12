@@ -8,6 +8,14 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import type {
+  PreviewHealthStatus,
+  PreviewLifecycleStatus,
+  ProjectLifecycleStatus,
+  VerificationStatus,
+} from '@devteam/types';
+import type { GenerationBudgetDiagnostics } from '../llm/generation-budget.js';
+import { resolvePathWithinRoot, UnsafeProjectPathError } from '../security/safe-path.js';
 
 // Resolved at module load. Anchored to this source file so the mutation
 // log lands at apps/api/src/testing/* regardless of which cwd the API
@@ -95,7 +103,14 @@ export interface ProjectRecord {
   sessionId: string;
   name: string;
   prompts: string[];
-  status: 'generating' | 'completed' | 'failed';
+  /** Legacy lifecycle field; mirrors `projectStatus`. */
+  status: ProjectLifecycleStatus;
+  /** Canonical generation lifecycle: generating | generated | failed. */
+  projectStatus?: ProjectLifecycleStatus;
+  /** Canonical verification lifecycle: pending | running | passed | failed | warning. */
+  verificationStatus?: VerificationStatus;
+  /** Canonical top-level preview health projection. */
+  previewHealthStatus?: PreviewHealthStatus;
   files: { path: string; content: string }[];
   spec?: Record<string, unknown>;
   plan?: Record<string, unknown>;
@@ -113,6 +128,13 @@ export interface ProjectRecord {
    * to dive into the spec object.
    */
   techStack?: Record<string, string>;
+  ownership?: {
+    workspaceId: string;
+    ownerUserId: string;
+    createdByUserId: string;
+    createdAt: string;
+    updatedAt?: string;
+  };
   /** Intent-expansion output: features, UI expectations, quality standards. */
   expandedSpec?: Record<string, unknown>;
   /** Quality-enforcer output: scores, verdict, findings, patches summary. */
@@ -145,6 +167,8 @@ export interface ProjectRecord {
     completedAt: string;
     /** Human-readable summary used by the UI banner. */
     reason?: string;
+    /** Free-form structured details for postmortem/debug surfaces. */
+    details?: Record<string, unknown>;
   };
   /** Real-environment execution-runner verdict (npm install + build + dev).
    *
@@ -180,7 +204,7 @@ export interface ProjectRecord {
   /** Final-integrity-gate verdict. Runs after qa-gate but BEFORE
    *  execution / runtime validation; blocks projects whose generated
    *  source still has unresolved package imports or dangling internal
-   *  imports from being marked `completed`. When `verdict === 'fail'`,
+   *  imports from being marked `generated`. When `verdict === 'fail'`,
    *  `status` is `'failed'` and neither preview nor execution
    *  validators were invoked. */
   integrityReport?: {
@@ -251,13 +275,15 @@ export interface ProjectRecord {
   /** Lightweight history of all versions. Oldest first. */
   versionHistory: VersionMeta[];
   /** Non-fatal warnings produced during the pipeline (e.g. partial output
-   *  from a soft-deadline break). The project still finishes as 'completed'
+   *  from a soft-deadline break). The project still finishes as 'generated'
    *  but consumers can surface these. */
   warnings?: Array<{ code: string; message: string; details?: Record<string, unknown> }>;
   /** Durable project diagnostics collected during generation and validation. */
   diagnostics?: {
     /** Append-only generation-step ledger populated from pipeline events. */
     pipelineLedger?: PipelineRunLedger;
+    /** Per-project generation-cost budget state and threshold events. */
+    generationBudget?: GenerationBudgetDiagnostics;
     [key: string]: unknown;
   };
   /**
@@ -303,14 +329,16 @@ export interface ProjectRecord {
   };
   /**
    * Preview-runtime lifecycle state. **Decoupled from `status`** — `status`
-   * tracks generation only ('generating' | 'completed' | 'failed'); this
+   * tracks generation only ('generating' | 'generated' | 'failed'); this
    * block tracks the post-generation Docker/local preview server. Mirrored
    * from PreviewManager state on every transition so polling clients can
    * show "Preview starting…" without conflating with generation progress.
    */
   preview?: {
     /** Public preview state vocabulary (decoupled from internal docker states). */
-    previewStatus: 'idle' | 'preparing' | 'installing' | 'building' | 'starting' | 'ready' | 'failed';
+    previewStatus: PreviewLifecycleStatus;
+    /** Canonical content-health verdict for the preview evidence. */
+    previewHealth?: PreviewHealthStatus;
     /** Convenience flag — true iff previewStatus === 'ready'. */
     previewReady: boolean;
     /** Preview iframe URL (relative). Populated as soon as a host port is allocated. */
@@ -589,9 +617,7 @@ export interface ProjectRecord {
         | 'iframe-ready' | 'failed';
       at: string;
       projectId: string;
-      previewStatus:
-        | 'idle' | 'preparing' | 'installing' | 'building'
-        | 'starting' | 'ready' | 'failed';
+      previewStatus: PreviewLifecycleStatus;
       durationMs?: number;
       details?: Record<string, unknown>;
       stdoutTail?: string;
@@ -633,6 +659,37 @@ export interface TaskSummary {
   error?: string;
 }
 
+function normalizeProjectLifecycleStatus(raw: unknown): ProjectLifecycleStatus {
+  if (raw === 'generating' || raw === 'generated' || raw === 'failed') return raw;
+  if (raw === 'completed') return 'generated';
+  return 'generating';
+}
+
+function normalizeValidatorLifecycleStatus(raw: unknown): VerificationStatus | null {
+  if (raw === 'pending' || raw === 'running' || raw === 'passed' || raw === 'failed' || raw === 'warning') return raw;
+  return null;
+}
+
+function deriveVerificationStatus(project: ProjectRecord): VerificationStatus {
+  const projectStatus = normalizeProjectLifecycleStatus(project.projectStatus ?? project.status);
+  if (projectStatus === 'failed') return 'failed';
+  if (projectStatus === 'generating') return 'pending';
+
+  const executionStatus = normalizeValidatorLifecycleStatus(project.executionValidation?.status);
+  const runtimeStatus = normalizeValidatorLifecycleStatus(project.runtimeValidation?.status);
+  const statuses = [executionStatus, runtimeStatus].filter((value): value is VerificationStatus => value !== null);
+
+  if (statuses.includes('running')) return 'running';
+  if (statuses.includes('failed')) return 'failed';
+  if (statuses.includes('warning')) return 'warning';
+
+  const executionPassed = executionStatus === 'passed';
+  const runtimePassed = runtimeStatus === 'passed';
+  if (executionPassed && runtimePassed) return 'passed';
+
+  return 'pending';
+}
+
 /**
  * Options accepted by ProjectStore.save() / update() / updatePreview() that
  * tune the stale-write detector. ALL fields are optional; the defaults are
@@ -643,7 +700,7 @@ export interface TaskSummary {
  *   - allowPreviewOverwrite: only PreviewManager.updatePreview() should
  *     ever set this. Other writers always get their next.preview rebased
  *     onto the on-disk record.
- *   - allowStatusDowngrade: required to flip 'completed' → anything else
+ *   - allowStatusDowngrade: required to flip 'generated' → anything else
  *     or 'failed' → 'generating'. Without it, the guard restores the
  *     on-disk status and logs STALE_WRITE.
  */
@@ -700,6 +757,16 @@ export class ProjectStore {
   constructor(baseDir: string, logger: Logger) {
     this.baseDir = baseDir;
     this.logger = logger;
+  }
+
+  private syncLifecycleFields(project: ProjectRecord): void {
+    const projectStatus = normalizeProjectLifecycleStatus(project.projectStatus ?? project.status);
+    project.status = projectStatus;
+    project.projectStatus = projectStatus;
+    project.verificationStatus = deriveVerificationStatus(project);
+    const previewHealth = project.preview?.previewHealth
+      ?? (project.preview?.previewStatus === 'ready' ? 'healthy' : 'unknown');
+    project.previewHealthStatus = previewHealth;
   }
 
   /**
@@ -897,8 +964,8 @@ export class ProjectStore {
   //      onto the on-disk preview. Bypass with `allowPreviewOverwrite`.
   //
   //   2. STATUS DOWNGRADE GUARD
-  //      Refuses transitions like `completed → generating` or
-  //      `completed → failed` (without a fresher signal) unless the
+  //      Refuses transitions like `generated → generating` or
+  //      `generated → failed` (without a fresher signal) unless the
   //      caller explicitly passes `allowStatusDowngrade: true` and a
   //      `reason`. Logs STALE_WRITE.
   //
@@ -917,7 +984,7 @@ export class ProjectStore {
   //   exactly the bug we're trying to prevent.
 
   private readonly mutationLogTrackedFields: ReadonlyArray<keyof ProjectRecord> = [
-    'status', 'error', 'completedAt',
+    'status', 'projectStatus', 'verificationStatus', 'previewHealthStatus', 'error', 'completedAt',
   ] as const;
 
   private get mutationLoggingEnabled(): boolean {
@@ -940,6 +1007,8 @@ export class ProjectStore {
     const caller = opts.caller ?? 'unknown';
     const reason = opts.reason ?? '';
     const fields: MutationDiff['fields'] = {};
+    if (existing) this.syncLifecycleFields(existing);
+    this.syncLifecycleFields(next);
 
     // (1) Preview-block protection: preview is owned by updatePreview().
     // If the on-disk record has a preview block and we're not the
@@ -999,8 +1068,8 @@ export class ProjectStore {
         fields.status_blocked_preview_writer = { prev: cur, next: prev };
       } else {
         const downgrade =
-          (prev === 'completed' && cur !== 'completed') ||
-          (prev === 'failed' && cur === 'generating');
+          (prev === 'generated' && cur !== 'generated') ||
+          (prev === 'failed' && cur !== 'failed');
         if (downgrade && !opts.allowStatusDowngrade) {
           this.logger.error('project-store: STALE_WRITE status downgrade BLOCKED — preserving on-disk status', {
             event: 'project-store:stale-write-status-blocked',
@@ -1031,6 +1100,9 @@ export class ProjectStore {
         }
       }
     }
+
+    // Recompute derived lifecycle projections after any status/preview rebases.
+    this.syncLifecycleFields(next);
 
     // (3) Track other interesting fields for the mutation log.
     for (const field of this.mutationLogTrackedFields) {
@@ -1115,8 +1187,11 @@ export class ProjectStore {
         await this.withProjectLock(entry.name, async () => {
           const raw = await readFile(metaPath, 'utf-8');
           const project = JSON.parse(raw) as ProjectRecord;
+          this.syncLifecycleFields(project);
           if (project.status !== 'generating') return;
           project.status = 'failed';
+          project.projectStatus = 'failed';
+          project.verificationStatus = 'failed';
           project.completedAt = project.completedAt ?? new Date().toISOString();
           await this.atomicWriteJson(metaPath, project, {
             projectId: entry.name,
@@ -1138,6 +1213,7 @@ export class ProjectStore {
     // Ensure version fields are always present (handles records created before versioning)
     if (!project.version) project.version = 1;
     if (!project.versionHistory) project.versionHistory = [];
+    this.syncLifecycleFields(project);
     const dir = join(this.baseDir, project.id);
     await mkdir(dir, { recursive: true });
 
@@ -1162,6 +1238,7 @@ export class ProjectStore {
         try {
           const raw = await readFile(metaPath, 'utf-8');
           existing = JSON.parse(raw) as ProjectRecord;
+          this.syncLifecycleFields(existing);
         } catch {
           existing = null; // treat as first write
         }
@@ -1202,7 +1279,23 @@ export class ProjectStore {
               'Check the file-integrity audit log to find the introducing step.',
             );
           }
-          const filePath = join(outputDir, file.path);
+          let filePath: string;
+          try {
+            filePath = resolvePathWithinRoot(outputDir, file.path).absolutePath;
+          } catch (err) {
+            const pathErr = err as UnsafeProjectPathError;
+            this.logger.error('[project-store.save] REFUSING unsafe generated file path', {
+              event: 'project-store:unsafe-generated-path',
+              projectId: project.id,
+              path: file.path,
+              code: pathErr.code ?? 'UNSAFE_PROJECT_PATH',
+              reason: pathErr.reason ?? 'unknown',
+              error: pathErr.message,
+            });
+            throw new Error(
+              `Cannot save project ${project.id}: unsafe generated file path "${file.path}" (${pathErr.reason ?? 'invalid-path'}).`,
+            );
+          }
           await mkdir(dirname(filePath), { recursive: true });
           await writeFile(filePath, file.content, 'utf-8');
         }
@@ -1235,6 +1328,7 @@ export class ProjectStore {
       const raw = await readFile(metaPath, 'utf-8');
       let project: ProjectRecord;      try {
         project = JSON.parse(raw) as ProjectRecord;
+        this.syncLifecycleFields(project);
       } catch (err) {
         // ── Malformed project.json — recover or quarantine ──
         // Step 1: quarantine the bad file so a subsequent successful
@@ -1274,6 +1368,7 @@ export class ProjectStore {
           try {
             bakRaw = await readFile(bakPath, 'utf-8');
             recovered = JSON.parse(bakRaw) as ProjectRecord;
+            this.syncLifecycleFields(recovered);
           } catch (bakErr) {
             this.logger.error('project.json backup also failed to parse — manual repair required', {
               event: 'project-store:recovery-failed',
@@ -1402,6 +1497,7 @@ export class ProjectStore {
       let current: ProjectRecord;
       try {
         current = JSON.parse(raw) as ProjectRecord;
+        this.syncLifecycleFields(current);
       } catch (err) {
         this.logger.error('update: project.json malformed', {
           event: 'project-store:update-malformed',
@@ -1418,6 +1514,7 @@ export class ProjectStore {
         return current;
       }
       const next = (mutated as ProjectRecord | void) ?? current;
+      this.syncLifecycleFields(next);
       diff = this.applyStateGuards(before, next, opts ?? {});
       // Files tree is expensive to re-emit and most update() callers
       // are touching metadata only (status / validation results /
@@ -1443,7 +1540,23 @@ export class ProjectStore {
                 `update(${projectId}): file "${file.path}" has non-string content (typeof=${typeof file.content}).`,
               );
             }
-            const filePath = join(outputDir, file.path);
+            let filePath: string;
+            try {
+              filePath = resolvePathWithinRoot(outputDir, file.path).absolutePath;
+            } catch (err) {
+              const pathErr = err as UnsafeProjectPathError;
+              this.logger.error('[project-store.update] REFUSING unsafe generated file path', {
+                event: 'project-store:unsafe-generated-path',
+                projectId,
+                path: file.path,
+                code: pathErr.code ?? 'UNSAFE_PROJECT_PATH',
+                reason: pathErr.reason ?? 'unknown',
+                error: pathErr.message,
+              });
+              throw new Error(
+                `update(${projectId}): unsafe generated file path "${file.path}" (${pathErr.reason ?? 'invalid-path'}).`,
+              );
+            }
             await mkdir(dirname(filePath), { recursive: true });
             await writeFile(filePath, file.content, 'utf-8');
           }
@@ -1504,8 +1617,10 @@ export class ProjectStore {
       try {
         const raw = await readFile(metaPath, 'utf-8');
         const project = JSON.parse(raw) as ProjectRecord;
+        this.syncLifecycleFields(project);
         prevPreviewStatus = project.preview?.previewStatus ?? null;
         project.preview = { ...(project.preview ?? {}), ...patch };
+        this.syncLifecycleFields(project);
         nextPreviewStatus = project.preview?.previewStatus ?? null;
         // Bump monotonic counters. updatePreview() is the LEGITIMATE
         // owner of the preview block so it bypasses preview-rebase /
@@ -1568,6 +1683,7 @@ export class ProjectStore {
       try {
         const raw = await readFile(metaPath, 'utf-8');
         const project = JSON.parse(raw) as ProjectRecord;
+        this.syncLifecycleFields(project);
         const { files: _, ...meta } = project;
         projects.push(meta);
       } catch {

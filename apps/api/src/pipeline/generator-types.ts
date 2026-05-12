@@ -5,6 +5,7 @@ import type { AgentRole } from '../../../../packages/agent-core/src/types.js';
 export interface GenerateRequest {
   prompts: string[];
   userId?: string;
+  workspaceId?: string;
   preferences?: Record<string, unknown>;
 }
 

@@ -5,6 +5,7 @@
 
 import { BaseAgent } from '../../../../packages/agent-core/src/base-agent.js';
 import type { Task, MemoryEntry } from '../../../../packages/agent-core/src/types.js';
+import { renderSkillsForPrompt } from '../../../../packages/agent-core/src/skills/index.js';
 import { extractJSON } from './utils.js';
 import { runQaStaticChecks, formatStaticIssuesForPrompt, type StaticIssue } from './qa-static-checks.js';
 
@@ -54,7 +55,16 @@ export class QaAgent extends BaseAgent {
     const staticIssues = runQaStaticChecks(files);
     this.lastStaticIssues = staticIssues;
 
-    let prompt = `## Product Specification\n\n\`\`\`json\n${JSON.stringify(spec, null, 2)}\n\`\`\`\n\n`;
+    let prompt = '';
+    prompt += renderSkillsForPrompt({
+      role: 'qa',
+      spec,
+      files,
+      filesManifest,
+      runtimeFeedback: runtimeFeedback as Record<string, unknown> | undefined,
+      currentSlice,
+    });
+    prompt += `## Product Specification\n\n\`\`\`json\n${JSON.stringify(spec, null, 2)}\n\`\`\`\n\n`;
 
     if (staticIssues.length > 0) {
       prompt += formatStaticIssuesForPrompt(staticIssues) + '\n';

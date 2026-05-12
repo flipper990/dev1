@@ -7,7 +7,7 @@ const sampleProject = {
   id: 'p1',
   sessionId: 's1',
   name: 'Customer portal',
-  status: 'completed',
+  status: 'generated',
   prompts: [],
   totalTokens: 12000,
   totalCostUsd: 2.42,

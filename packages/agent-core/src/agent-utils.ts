@@ -3,6 +3,11 @@
 import type { ModelConfig, TaskError } from './types';
 
 export function classifyError(error: Error): TaskError {
+  const code = (error as Error & { code?: string }).code;
+  if (code === 'COST_LIMIT_EXCEEDED') {
+    return { code, message: error.message, retryable: false };
+  }
+
   const message = error.message.toLowerCase();
 
   if (message.includes('rate limit') || message.includes('429')) {

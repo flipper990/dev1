@@ -1,8 +1,12 @@
-import type { GeneratedProject } from '../../../../types/dashboard';
+import type {
+  GeneratedProject,
+  PreviewHealthStatus as SharedPreviewHealthStatus,
+  PreviewLifecycleStatus,
+} from '../../../../types/dashboard';
 
-export type ProjectStatus = 'generating' | 'completed' | 'failed';
-export type PreviewTransportStatus = 'idle' | 'building' | 'starting' | 'reachable' | 'failed';
-export type PreviewHealthStatus = 'unknown' | 'healthy' | 'placeholder' | 'broken';
+export type ProjectStatus = 'generating' | 'generated' | 'failed';
+export type PreviewTransportStatus = PreviewLifecycleStatus;
+export type PreviewHealthStatus = SharedPreviewHealthStatus;
 export type PreviewTruthTone = 'neutral' | 'active' | 'success' | 'warning' | 'error';
 
 export interface PreviewTruthModel {
@@ -67,21 +71,41 @@ function hasBrokenSignal(project: GeneratedProject | null | undefined) {
   return /Module not found|Can'?t resolve|Cannot resolve|Build Error|Unhandled Runtime Error|Application error|Hydration failed|ChunkLoadError|ReferenceError|TypeError|SyntaxError|failed to compile/i.test(errorText);
 }
 
-function getTransportStatus(project: GeneratedProject | null | undefined): PreviewTransportStatus {
-  const preview = project?.preview;
-  if (!project || !preview) return 'idle';
-  if (preview.overlayDetection || preview.previewStatus === 'ready' || preview.previewReady || hasTruthyProbe(project)) return 'reachable';
-  if (preview.previewStatus === 'failed') return 'failed';
-  if (preview.previewStatus === 'preparing' || preview.previewStatus === 'installing' || preview.previewStatus === 'building') return 'building';
-  if (preview.previewStatus === 'starting') return 'starting';
-  return 'idle';
+function normalizePreviewStatus(status: PreviewTransportStatus): PreviewTransportStatus {
+  switch (status) {
+    case 'idle':
+    case 'preparing':
+    case 'installing':
+    case 'building':
+    case 'starting':
+    case 'reachable':
+    case 'ready':
+    case 'failed':
+      return status;
+    default:
+      return assertNever(status);
+  }
 }
 
-function getHealthStatus(project: GeneratedProject | null | undefined, transport: PreviewTransportStatus): PreviewHealthStatus {
+function getTransportStatus(
+  project: GeneratedProject | null | undefined,
+  health: PreviewHealthStatus,
+): PreviewTransportStatus {
+  const preview = project?.preview;
+  if (!project || !preview) return 'idle';
+  const raw = normalizePreviewStatus(preview.previewStatus);
+
+  if (raw === 'ready' && health !== 'healthy') return 'reachable';
+  if (raw === 'starting' && hasTruthyProbe(project)) return 'reachable';
+  return raw;
+}
+
+function getHealthStatus(project: GeneratedProject | null | undefined): PreviewHealthStatus {
   if (!project?.preview) return 'unknown';
+  if (project.preview.previewHealth) return project.preview.previewHealth;
   if (hasBrokenSignal(project)) return 'broken';
-  if (transport === 'reachable' && hasPlaceholderSignal(project)) return 'placeholder';
-  if (transport === 'reachable' && project.preview.previewReady && project.preview.previewStatus === 'ready') return 'healthy';
+  if (hasPlaceholderSignal(project)) return 'placeholder';
+  if (project.preview.previewStatus === 'ready' && project.preview.previewReady) return 'healthy';
   return 'unknown';
 }
 
@@ -115,8 +139,8 @@ function buildContradictions(project: GeneratedProject | null | undefined, trans
   if (project.status === 'generating' && (transport === 'reachable' || health === 'healthy')) {
     contradictions.push('Build is still generating while preview evidence is reachable. Treat the preview as prior-run evidence until generation completes.');
   }
-  if (project.status === 'completed' && (transport === 'failed' || health === 'broken' || health === 'placeholder')) {
-    contradictions.push('Build completed, but preview evidence is not healthy. Completion does not imply runtime correctness.');
+  if ((project.projectStatus ?? project.status) === 'generated' && (transport === 'failed' || health === 'broken' || health === 'placeholder')) {
+    contradictions.push('Code is generated, but preview evidence is not healthy. Generation does not imply runtime correctness.');
   }
   if (project.status === 'failed' && health === 'healthy') {
     contradictions.push('Build is failed while preview appears healthy. Preview may be stale from an earlier run.');
@@ -130,7 +154,7 @@ function buildContradictions(project: GeneratedProject | null | undefined, trans
 export function derivePreviewTruth(project: GeneratedProject | null | undefined): PreviewTruthModel {
   if (!project) {
     return {
-      projectStatus: 'completed',
+      projectStatus: 'generated',
       previewTransportStatus: 'idle',
       previewHealthStatus: 'unknown',
       label: 'Preview Idle',
@@ -151,10 +175,10 @@ export function derivePreviewTruth(project: GeneratedProject | null | undefined)
     };
   }
 
-  const projectStatus: ProjectStatus = project.status;
+  const projectStatus: ProjectStatus = (project.projectStatus ?? project.status) as ProjectStatus;
   const preview = project?.preview;
-  const previewTransportStatus = getTransportStatus(project);
-  const previewHealthStatus = getHealthStatus(project, previewTransportStatus);
+  const previewHealthStatus = getHealthStatus(project);
+  const previewTransportStatus = getTransportStatus(project, previewHealthStatus);
   const exactReason = getReason(project, previewHealthStatus);
   const runtimeType = preview?.previewRuntime ?? null;
   const previewUrl = preview?.previewUrl ?? null;
@@ -166,6 +190,14 @@ export function derivePreviewTruth(project: GeneratedProject | null | undefined)
   if (projectStatus === 'generating') {
     label = 'Build Generating';
     description = 'A new build is in progress. Prior preview output is not shown as current evidence.';
+    tone = 'active';
+  } else if (previewTransportStatus === 'preparing') {
+    label = 'Preview Preparing';
+    description = 'Preparing runtime workspace and selecting preview backend.';
+    tone = 'active';
+  } else if (previewTransportStatus === 'installing') {
+    label = 'Preview Installing';
+    description = 'Installing dependencies for the preview runtime.';
     tone = 'active';
   } else if (previewTransportStatus === 'building') {
     label = 'Preview Building';
@@ -187,7 +219,7 @@ export function derivePreviewTruth(project: GeneratedProject | null | undefined)
     label = 'Preview Placeholder';
     description = exactReason ?? 'Transport is reachable, but the rendered output appears to be placeholder content.';
     tone = 'warning';
-  } else if (previewTransportStatus === 'reachable' && previewHealthStatus === 'healthy') {
+  } else if (previewTransportStatus === 'ready' && previewHealthStatus === 'healthy') {
     label = 'Preview Ready';
     description = 'Transport is reachable and content health is healthy.';
     tone = 'success';
@@ -197,7 +229,7 @@ export function derivePreviewTruth(project: GeneratedProject | null | undefined)
     tone = 'warning';
   }
 
-  const isHealthy = previewTransportStatus === 'reachable' && previewHealthStatus === 'healthy';
+  const isHealthy = previewTransportStatus === 'ready' && previewHealthStatus === 'healthy';
 
   return {
     projectStatus,
@@ -207,8 +239,13 @@ export function derivePreviewTruth(project: GeneratedProject | null | undefined)
     description,
     tone,
     canRenderIframe: isHealthy && Boolean(previewUrl),
-    canOpenUrl: Boolean(previewUrl) && previewTransportStatus === 'reachable',
-    isLoading: previewTransportStatus === 'building' || previewTransportStatus === 'starting' || projectStatus === 'generating',
+    canOpenUrl: Boolean(previewUrl) && (previewTransportStatus === 'reachable' || previewTransportStatus === 'ready'),
+    isLoading:
+      previewTransportStatus === 'preparing'
+      || previewTransportStatus === 'installing'
+      || previewTransportStatus === 'building'
+      || previewTransportStatus === 'starting'
+      || projectStatus === 'generating',
     isFailure: previewTransportStatus === 'failed',
     isBroken: previewHealthStatus === 'broken',
     isPlaceholder: previewHealthStatus === 'placeholder',
@@ -229,6 +266,10 @@ export function previewToneToStatusDot(tone: PreviewTruthTone) {
   if (tone === 'warning') return 'warning' as const;
   if (tone === 'active') return 'active' as const;
   return 'neutral' as const;
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled preview status: ${String(value)}`);
 }
 
 export function previewToneToBadge(tone: PreviewTruthTone) {

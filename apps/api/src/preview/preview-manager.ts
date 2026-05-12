@@ -18,6 +18,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
+import type { PreviewHealthStatus, PreviewLifecycleStatus } from '@devteam/types';
 import type { ProjectStore } from '../storage/project-store.js';
 import type { DockerRunner } from './docker-runner.js';
 import type { PortAllocator } from './port-allocator.js';
@@ -183,7 +184,7 @@ function composeFailureMessage(ctx: FailureContext): string {
 const SAFE_ENV_KEYS = [
   'PORT', 'HOST', 'HOSTNAME', 'NODE_ENV', 'CI',
   'BROWSER', 'FORCE_COLOR', 'NO_COLOR',
-  'NEXT_TELEMETRY_DISABLED',
+  'NEXT_TELEMETRY_DISABLED', 'NEXT_PUBLIC_API_URL',
 ] as const;
 
 function pickSafeEnv(env: NodeJS.ProcessEnv | Record<string, string | undefined>): Record<string, string> {
@@ -447,8 +448,8 @@ export class PreviewManager {
   ): void {
     const at = new Date().toISOString();
     const prevState = record.state;
-    const prevPublic = this.toPublicPreviewStatus(prevState);
-    const nextPublic = this.toPublicPreviewStatus(nextState);
+    const prevPublic = this.toPublicPreviewStatus(prevState, record);
+    const nextPublic = this.toPublicPreviewStatus(nextState, record);
     record.state = nextState;
     record.lastMeaningfulStep = step;
     if (nextState === 'ready' && !record.readyAtIso) record.readyAtIso = at;
@@ -487,20 +488,47 @@ export class PreviewManager {
   /** Translate internal PreviewState → public previewStatus vocabulary. */
   private toPublicPreviewStatus(
     state: PreviewState,
-  ): NonNullable<NonNullable<Awaited<ReturnType<ProjectStore['get']>>>['preview']>['previewStatus'] {
+    record?: PreviewRecord,
+  ): PreviewLifecycleStatus {
     switch (state) {
-      case 'ready':      return 'ready';
-      case 'failed':     return 'failed';
-      case 'starting':   return 'starting';
-      case 'building':   return 'building';
-      case 'installing': return 'installing';
+      case 'ready':
+        return 'ready';
+      case 'failed':
+      case 'fallback':
+        return 'failed';
+      case 'starting': {
+        const hasReachableSignal = Boolean(
+          record?.timeline?.some((event) => event.event === 'http-probe-ok')
+          || record?.probeAttempts?.some((attempt) => attempt.tcpConnected || attempt.ok || typeof attempt.status === 'number'),
+        );
+        return hasReachableSignal ? 'reachable' : 'starting';
+      }
+      case 'building':
+        return 'building';
+      case 'installing':
+        return 'installing';
       case 'detecting':
-      case 'preparing':  return 'preparing';
+      case 'preparing':
+        return 'preparing';
       case 'idle':
       case 'stopped':
-      case 'fallback':
-      default:           return 'idle';
+      default:
+        return 'idle';
     }
+  }
+
+  private toPublicPreviewHealth(
+    record: PreviewRecord,
+    status: PreviewLifecycleStatus,
+  ): PreviewHealthStatus {
+    if (record.overlayDetection) return 'broken';
+    if (status === 'ready') return 'healthy';
+    const errorText = `${record.error ?? ''}\n${record.log ?? ''}\n${record.exitInfo?.stderrTail ?? ''}`;
+    if (/placeholder|lorem ipsum|coming soon|under construction|not implemented|stub/i.test(errorText)) {
+      return 'placeholder';
+    }
+    if (status === 'failed') return 'broken';
+    return 'unknown';
   }
 
   private async syncPreviewToProject(record: PreviewRecord): Promise<{
@@ -509,7 +537,8 @@ export class PreviewManager {
     nextPreviewStatus: string | null;
     error?: string;
   }> {
-    const previewStatus = this.toPublicPreviewStatus(record.state);
+    const previewStatus = this.toPublicPreviewStatus(record.state, record);
+    const previewHealth = this.toPublicPreviewHealth(record, previewStatus);
     const url = record.state === 'ready' && record.hostPort != null
       ? `/preview/${record.projectId}/`
       : null;
@@ -523,7 +552,8 @@ export class PreviewManager {
     try {
       result = await this.opts.projectStore.updatePreview(record.projectId, {
         previewStatus,
-        previewReady: previewStatus === 'ready',
+        previewHealth,
+        previewReady: previewStatus === 'ready' && previewHealth === 'healthy',
         previewUrl: url,
       previewStartedAt: record.startedAtIso ?? null,
       previewReadyAt: record.readyAtIso ?? null,
@@ -894,7 +924,7 @@ export class PreviewManager {
       event,
       at,
       projectId: record.projectId,
-      previewStatus: this.toPublicPreviewStatus(record.state),
+      previewStatus: this.toPublicPreviewStatus(record.state, record),
       durationMs,
       details: extras?.details,
       stdoutTail: PreviewManager.tail(extras?.stdout),
@@ -1816,7 +1846,7 @@ export class PreviewManager {
       timeoutBudgetMs: PREVIEW_BOOT_TIMEOUT_MS,
       projectId: record.projectId,
       previewId: record.previewId,
-      previewStatus: this.toPublicPreviewStatus(record.state),
+      previewStatus: this.toPublicPreviewStatus(record.state, record),
       previewStep: record.step ?? null,
       previewStepStartedAt: record.stepStartedAt ?? null,
       previewStartedAt: record.startedAtIso ?? null,
@@ -2190,11 +2220,14 @@ export class PreviewManager {
   // ── internals ─────────────────────────────────────────
 
   private toStatus(rec: PreviewRecord): PreviewStatus {
+    const state = this.toPublicPreviewStatus(rec.state, rec);
+    const health = this.toPublicPreviewHealth(rec, state);
     return {
       projectId: rec.projectId,
-      state: rec.state,
+      state,
+      health,
       stack: rec.stack?.kind ?? null,
-      url: rec.state === 'ready' && rec.hostPort != null
+      url: state === 'ready' && rec.hostPort != null
         ? `/preview/${rec.projectId}/`
         : null,
       hostPort: rec.hostPort,

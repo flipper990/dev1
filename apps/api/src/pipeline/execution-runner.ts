@@ -19,10 +19,11 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, isAbsolute } from 'node:path';
+import { dirname, join } from 'node:path';
 import { request as httpRequest } from 'node:http';
 import { URL } from 'node:url';
 import { instrumentChild } from '../preview/spawn-logger.js';
+import { resolvePathWithinRoot } from '../security/safe-path.js';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -639,10 +640,7 @@ function runProcess(spec: RunSpec): Promise<RawRunResult> {
 
 async function writeFiles(targetDir: string, files: ReadonlyArray<ExecutionFile>): Promise<void> {
   for (const f of files) {
-    if (isAbsolute(f.path) || f.path.includes('..')) {
-      throw new Error(`refusing to write file outside project root: ${f.path}`);
-    }
-    const full = join(targetDir, f.path);
+    const full = resolvePathWithinRoot(targetDir, f.path).absolutePath;
     await mkdir(dirname(full), { recursive: true });
     await writeFile(full, f.content, 'utf8');
   }

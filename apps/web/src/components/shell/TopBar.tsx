@@ -6,6 +6,7 @@ import { Badge } from '../../../components/ui/Badge';
 import { IconButton } from '../../../components/ui/IconButton';
 import { cn } from '../../../lib/cn';
 import { ApiError, checkBackendReachable } from '../../../lib/api';
+import { API_BASE } from '../../../lib/api-base';
 import { GlobalCommandBar } from './GlobalCommandBar';
 import { platformHealthToBadge, type PlatformHealthState } from './platformStatus';
 
@@ -41,6 +42,7 @@ export function TopBar({
   className,
 }: TopBarProps) {
   const [detectedPlatformHealth, setDetectedPlatformHealth] = useState<PlatformHealthState>('checking');
+  const [devAuthMode, setDevAuthMode] = useState(false);
 
   useEffect(() => {
     if (platformHealth) return;
@@ -65,6 +67,30 @@ export function TopBar({
       cancelled = true;
     };
   }, [platformHealth]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') {
+      setDevAuthMode(false);
+      return;
+    }
+    let cancelled = false;
+    fetch(`${API_BASE}/health`, { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return await response.json() as { auth?: { devBypassEnabled?: boolean } };
+      })
+      .then((payload) => {
+        if (cancelled) return;
+        setDevAuthMode(Boolean(payload?.auth?.devBypassEnabled));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDevAuthMode(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const platformBadge = platformHealthToBadge(platformHealth ?? detectedPlatformHealth);
 
@@ -113,6 +139,13 @@ export function TopBar({
           <div className="hidden xl:block">
             <Badge variant={platformBadge.variant} title={platformBadge.title}>{platformBadge.label}</Badge>
           </div>
+          {devAuthMode ? (
+            <div className="hidden lg:block">
+              <Badge variant="warning" title="Development-only authentication bypass is enabled">
+                Dev auth mode
+              </Badge>
+            </div>
+          ) : null}
 
           {showContextToggle ? (
             <IconButton

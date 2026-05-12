@@ -1,4 +1,0 @@
-{"ts":"2026-05-06T14:57:34.659Z","projectId":"persist-1778079454654","caller":"persist-seed","reason":"seed","op":"save","stateVersion":1,"fields":{"completedAt":{"prev":null,"next":"2026-05-06T14:57:34.654Z"}}}
-{"ts":"2026-05-06T14:57:34.665Z","projectId":"persist-1778079454654","caller":"preview-manager","reason":"","op":"updatePreview","stateVersion":2,"fields":{"preview.previewStatus":{"prev":null,"next":"starting"}}}
-{"ts":"2026-05-06T14:57:34.670Z","projectId":"persist-1778079454654","caller":"preview-manager","reason":"","op":"updatePreview","stateVersion":3,"fields":{"preview.previewStatus":{"prev":"starting","next":"ready"}}}
-{"ts":"2026-05-06T14:57:34.675Z","projectId":"persist-1778079454654","caller":"preview-manager","reason":"","op":"updatePreview","stateVersion":4,"fields":{"preview.previewStatus":{"prev":"ready","next":"failed"}}}

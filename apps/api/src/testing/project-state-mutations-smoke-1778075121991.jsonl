@@ -1,4 +1,0 @@
-{"ts":"2026-05-06T13:45:21.997Z","projectId":"smoke-1778075121991","caller":"smoke-seed","reason":"seed completed project","op":"save","stateVersion":1,"fields":{"completedAt":{"prev":null,"next":"2026-05-06T13:45:21.992Z"}}}
-{"ts":"2026-05-06T13:45:22.007Z","projectId":"smoke-1778075121991","caller":"preview-dep-preflight","reason":"simulated stale preview-side write","op":"update","stateVersion":2,"fields":{"status_blocked_preview_writer":{"prev":"generating","next":"completed"}}}
-{"ts":"2026-05-06T13:45:22.012Z","projectId":"smoke-1778075121991","caller":"preview-manager","reason":"simulated preview-side failed propagation","op":"update","stateVersion":3,"fields":{"status_blocked_preview_writer":{"prev":"failed","next":"completed"}}}
-{"ts":"2026-05-06T13:45:22.022Z","projectId":"smoke-1778075121991","caller":"project-generator:phase-restart","reason":"legitimate restart","op":"update","stateVersion":5,"fields":{"status":{"prev":"completed","next":"generating"}}}

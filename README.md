@@ -131,6 +131,20 @@ data/
 
 Generated projects are written under `data/projects/<id>/` and built by the per-project preview pipeline as standalone Docker images.
 
+### Clear generated runtime data
+
+Use the cleanup script to remove generated projects, preview/session artifacts, generated memory, cache/export/tmp artifacts, and `apps/api/src/testing/last-*.json` diagnostics:
+
+```bash
+npm run clear:generated -- --dry-run   # inspect targets
+npm run clear:generated                # confirm with CLEAR
+FORCE_CLEAR_GENERATED=true npm run clear:generated
+```
+
+The script checks both repo-local runtime roots (`data/*`, `apps/api/data/*`, `apps/api/.data/*`, `storage/*`) and env-configured storage paths (`STORAGE_PATH`, `PROJECTS_DIR`, `MEMORY_DIR`) with strict allowlisting.
+
+Dashboard project lists are fetched from `/api/projects` and are **not** cached in browser `localStorage` or `IndexedDB`. If UI state still looks stale after cleanup, hard-refresh and restart the API process so it re-reads disk state.
+
 ---
 
 ## Export — what you actually get

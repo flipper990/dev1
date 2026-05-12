@@ -13,6 +13,7 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "type-check": "turbo run type-check",
+    "clear:generated": "tsx scripts/clear-generated-data.ts",
     "test:generations": "tsx apps/api/src/testing/generation-runner.ts",
     "clean": "turbo run clean && rm -rf node_modules"
   },

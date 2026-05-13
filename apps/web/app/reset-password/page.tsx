@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { AuthShell, ResetPasswordForm } from '../../src/components/auth';
 
 export default function ResetPasswordPage() {
@@ -9,11 +10,13 @@ export default function ResetPasswordPage() {
       asideTitle="Protect generated software assets."
       asideItems={[
         'DEVteam workspaces can contain generated source, logs, previews, and export paths.',
-        'Password reset must be token-backed before it can be enabled.',
+        'Password reset uses token-backed validation before password updates.',
         'Use SSO or centralized identity when your organization requires it.',
       ]}
     >
-      <ResetPasswordForm />
+      <Suspense fallback={<div className="text-body-s text-text-secondary">Loading reset form…</div>}>
+        <ResetPasswordForm />
+      </Suspense>
     </AuthShell>
   );
 }

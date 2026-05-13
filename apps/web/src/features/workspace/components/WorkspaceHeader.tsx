@@ -1,5 +1,5 @@
 import type { GeneratedProject } from '../../../../types/dashboard';
-import { Badge, Button, Card, Select } from '../../../../components/ui';
+import { Badge, Button, Select } from '../../../../components/ui';
 import type { UnifiedProjectStatus } from '../../projects/model';
 import { sortProjectsByUpdated } from '../../projects/model';
 
@@ -36,8 +36,8 @@ export function WorkspaceHeader({
   const sortedProjects = sortProjectsByUpdated(projects);
 
   return (
-    <Card className="overflow-hidden bg-surface-base shadow-hairline" padded={false}>
-      <div className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+    <section className="studio-surface-soft overflow-hidden rounded-[var(--radius-panel)] p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h2 className="truncate text-title-s text-text-primary">
@@ -69,11 +69,11 @@ export function WorkspaceHeader({
               ))}
             </Select>
           </div>
-          <Button onClick={onPrimaryAction} disabled={!project} variant="secondary">
+          <Button onClick={onPrimaryAction} disabled={!project} variant="secondary" className="rounded-full">
             {status.nextActionLabel}
           </Button>
         </div>
       </div>
-    </Card>
+    </section>
   );
 }

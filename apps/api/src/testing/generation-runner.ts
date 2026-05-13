@@ -37,6 +37,7 @@ import { detectDevOverlay } from '../preview/preview-content-health.js';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3003';
 const RUN_COUNT = Number.parseInt(process.env.COUNT ?? '10', 10);
+const RUNNER_AUTH_TOKEN = (process.env.RUNNER_AUTH_TOKEN ?? '').trim();
 
 // Adaptive per-generation timeout: timeout = base + (sliceCount * 60s).
 // `sliceCount` is observed from the live project record once spec is done;
@@ -276,9 +277,18 @@ async function http<T = unknown>(
   let attempt = 0;
   // eslint-disable-next-line no-constant-condition
   while (true) {
+    const headers: Record<string, string> = {};
+    if (body !== undefined) {
+      headers['content-type'] = 'application/json';
+    }
+    if (RUNNER_AUTH_TOKEN) {
+      headers.authorization = RUNNER_AUTH_TOKEN.startsWith('Bearer ')
+        ? RUNNER_AUTH_TOKEN
+        : `Bearer ${RUNNER_AUTH_TOKEN}`;
+    }
     const res = await fetch(`${API_URL}${path}`, {
       method,
-      headers: body !== undefined ? { 'content-type': 'application/json' } : undefined,
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
     const raw = await res.text();
@@ -1265,11 +1275,42 @@ async function waitForCompletion(
   let lastProgressAt = startedAt;
   let sliceCount: number | null = null;
   let currentDeadline = startedAt + adaptiveTimeoutMs(null);
+  const pollStats = makePollStats();
+  const consecutiveHealthFailuresRef = { value: 0 };
+
+  // Seed health telemetry once so a mid-poll API restart is detectable.
+  const seedHealth = await getHealth();
+  recordHealthSnapshot(pollStats, seedHealth);
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const project = await getProject(projectId);
-    if (!project) throw new Error(`waitForCompletion: project ${projectId} not found`);
+    const elapsedSinceStart = Date.now() - startedAt;
+    let project: ProjectRecordLite | null;
+    try {
+      project = await resilientGetProject(projectId, pollStats, consecutiveHealthFailuresRef);
+    } catch (err) {
+      const msg = (err as Error).message;
+      throw new Error(`waitForCompletion(${label}:${projectId}) poll failed: ${msg}`);
+    }
+
+    // Newly created projects can briefly return 404 until project.json has
+    // been persisted. Treat this as transient while within the same
+    // "spec never started" window, then fail with a precise classification.
+    if (!project) {
+      if (elapsedSinceStart >= SPEC_NEVER_STARTED_MS) {
+        throw Object.assign(
+          new Error(
+            `project record never became visible for ${label} ${projectId} after ${(elapsedSinceStart / 1000).toFixed(0)}s`,
+          ),
+          { code: 'SPEC_NEVER_STARTED' },
+        );
+      }
+      log.info(
+        `  ↳ ${label} status: project record not visible yet (${(elapsedSinceStart / 1000).toFixed(0)}s elapsed)`,
+      );
+      await sleep(POLL_INTERVAL_MS);
+      continue;
+    }
 
     // Recompute adaptive deadline as soon as slice count is observable.
     const observed = extractSliceCount(project);
@@ -1310,7 +1351,6 @@ async function waitForCompletion(
     // phase — once the runner enters 'spec' or beyond, the regular
     // no-progress watchdog takes over.
     const phase = project.progress?.phase ?? 'init';
-    const elapsedSinceStart = Date.now() - startedAt;
     if (phase === 'init' && elapsedSinceStart >= SPEC_NEVER_STARTED_MS) {
       throw Object.assign(
         new Error(

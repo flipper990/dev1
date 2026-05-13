@@ -72,7 +72,7 @@ export function Tabs({ items, value, onChange, ariaLabel = 'Tabs', autoFocusSele
     <div
       role="tablist"
       aria-label={ariaLabel}
-      className="flex min-h-11 w-full max-w-full items-center gap-1 overflow-x-auto rounded-[var(--radius-control)] border border-border bg-surface-tint p-1 [scrollbar-width:thin]"
+      className="flex min-h-11 w-full max-w-full items-center gap-1 overflow-x-auto rounded-[var(--radius-panel)] border border-border-muted bg-surface-tint/80 p-1 [scrollbar-width:thin]"
     >
       {items.map((item, index) => {
         const selected = item.id === value;

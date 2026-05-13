@@ -15,10 +15,10 @@ function VerifyEmailContent() {
       asideItems={[
         'Workspace membership should be tied to a verified email address.',
         'Preview, diagnostics, and export actions can expose sensitive application details.',
-        'Verification backend contracts are required before this action can be enabled.',
+        'Verification links are token-backed and validated by backend auth contracts.',
       ]}
     >
-      <VerifyEmailPanel email={params.get('email')} />
+      <VerifyEmailPanel email={params.get('email')} token={params.get('token')} />
     </AuthShell>
   );
 }

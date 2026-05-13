@@ -59,7 +59,7 @@ export function AuthShell({
           <div className="rounded-[var(--radius-panel)] border border-border bg-surface-base p-4">
             <p className="text-label-s uppercase tracking-[0.14em] text-text-muted">Auth availability</p>
             <p className="mt-2 text-body-s text-text-secondary">
-              UI is ready. Backend auth contracts are not present in this repository yet, so protected actions are disabled.
+              Authentication uses secure cookies, refresh sessions, and backend guards for protected workspace routes.
             </p>
           </div>
         </section>
@@ -130,13 +130,22 @@ export function AuthField({
   );
 }
 
-export function AuthStatus({ state = 'unavailable' }: { state?: 'checking' | 'unavailable' | 'error' }) {
+export function AuthStatus({ state = 'checking' }: { state?: 'checking' | 'available' | 'unavailable' | 'error' }) {
   if (state === 'checking') {
     return (
       <SystemBanner
         tone="info"
         title="Checking auth availability"
-        description="Checking whether an authentication backend is connected."
+        description="Checking session services and authentication routes."
+      />
+    );
+  }
+  if (state === 'available') {
+    return (
+      <SystemBanner
+        tone="success"
+        title="Authentication service available"
+        description="This form is connected to live backend auth endpoints."
       />
     );
   }
@@ -144,8 +153,8 @@ export function AuthStatus({ state = 'unavailable' }: { state?: 'checking' | 'un
   return (
     <SystemBanner
       tone={state === 'error' ? 'error' : 'warning'}
-      title="Authentication endpoint required"
-      description="Email auth, SSO, password reset, invite acceptance, and workspace session actions are intentionally disabled until real auth contracts are connected."
+      title="Authentication temporarily unavailable"
+      description="Authentication service is unavailable right now. Try again shortly."
     />
   );
 }

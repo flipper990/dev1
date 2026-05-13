@@ -2,17 +2,37 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle2, KeyRound, Mail, UserPlus } from 'lucide-react';
 import { Button, Input, Select, Textarea } from '../../../components/ui';
+import {
+  forgotPassword,
+  resendVerificationEmail,
+  resetPassword,
+  signIn,
+  signUp,
+  verifyEmailToken,
+  type AuthClientError,
+} from '../../../lib/auth';
+import { API_BASE } from '../../../lib/api-base';
 import { AuthField, AuthStatus, DisabledAction } from './AuthShell';
 
-type Availability = 'checking' | 'unavailable';
+type Availability = 'checking' | 'available' | 'error';
 
 function useAuthAvailability() {
   const [state, setState] = useState<Availability>('checking');
   useEffect(() => {
-    const id = window.setTimeout(() => setState('unavailable'), 500);
-    return () => window.clearTimeout(id);
+    let canceled = false;
+    fetch(`${API_BASE}/health`, { cache: 'no-store' })
+      .then((response) => {
+        if (!canceled) setState(response.ok ? 'available' : 'error');
+      })
+      .catch(() => {
+        if (!canceled) setState('error');
+      });
+    return () => {
+      canceled = true;
+    };
   }, []);
   return state;
 }
@@ -26,19 +46,57 @@ function emailError(email: string) {
 function passwordError(password: string) {
   if (!password) return 'Password is required.';
   if (password.length < 10) return 'Use at least 10 characters.';
+  if (!/[A-Z]/.test(password)) return 'Include at least one uppercase letter.';
+  if (!/[a-z]/.test(password)) return 'Include at least one lowercase letter.';
+  if (!/[0-9]/.test(password)) return 'Include at least one number.';
+  if (!/[^A-Za-z0-9]/.test(password)) return 'Include at least one symbol.';
   return undefined;
+}
+
+function nextDestination(params: URLSearchParams, fallback = '/overview') {
+  const raw = params.get('next');
+  if (!raw || !raw.startsWith('/')) return fallback;
+  return raw;
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  const authError = error as AuthClientError;
+  return authError?.message ?? fallback;
 }
 
 export function LoginForm() {
   const availability = useAuthAvailability();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [touched, setTouched] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const errors = { email: emailError(email), password: passwordError(password) };
-  const canSubmit = false;
+  const canSubmit = !errors.email && !errors.password && availability === 'available';
+
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setTouched(true);
+    setSubmitError(null);
+    setSubmitSuccess(null);
+    if (!canSubmit) return;
+    setSubmitting(true);
+    try {
+      await signIn({ email: email.trim(), password });
+      setSubmitSuccess('Signed in successfully. Redirecting…');
+      router.push(nextDestination(searchParams, '/overview'));
+    } catch (error) {
+      setSubmitError(errorMessage(error, 'Unable to sign in.'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
-    <form className="space-y-4" onSubmit={(event) => event.preventDefault()} noValidate>
+    <form className="space-y-4" onSubmit={(event) => { void onSubmit(event); }} noValidate>
       <AuthStatus state={availability} />
       <AuthField id="email" label="Work email" error={touched ? errors.email : undefined}>
         <Input id="email" type="email" autoComplete="email" value={email} onBlur={() => setTouched(true)} onChange={(event) => setEmail(event.target.value)} invalid={touched && Boolean(errors.email)} />
@@ -46,7 +104,11 @@ export function LoginForm() {
       <AuthField id="password" label="Password" error={touched ? errors.password : undefined}>
         <Input id="password" type="password" autoComplete="current-password" value={password} onBlur={() => setTouched(true)} onChange={(event) => setPassword(event.target.value)} invalid={touched && Boolean(errors.password)} />
       </AuthField>
-      {canSubmit ? <Button type="submit" className="w-full">Sign in</Button> : <DisabledAction label="Sign in requires auth endpoint" />}
+      {submitError ? <p className="text-label-s text-status-error">{submitError}</p> : null}
+      {submitSuccess ? <p className="text-label-s text-status-success">{submitSuccess}</p> : null}
+      <Button type="submit" className="w-full" loading={submitting} disabled={!canSubmit}>
+        Sign in
+      </Button>
       <button
         type="button"
         disabled
@@ -55,13 +117,6 @@ export function LoginForm() {
       >
         <KeyRound className="h-4 w-4" /> SSO coming soon
       </button>
-      <div className="rounded-[var(--radius-panel)] border border-border bg-surface-base p-3 text-body-s text-text-secondary">
-        <p>Available now: product overview, workflow docs, and workspace preview pages.</p>
-        <div className="mt-2 flex flex-wrap gap-3 text-label-s">
-          <Link href="/waitlist" className="text-brand-primary hover:text-brand-primary-hover">Join early access</Link>
-          <Link href="/docs" className="text-brand-primary hover:text-brand-primary-hover">Open docs</Link>
-        </div>
-      </div>
       <div className="flex flex-wrap justify-between gap-3 text-label-s text-text-secondary">
         <Link href="/forgot-password" className="hover:text-text-primary">Forgot password?</Link>
         <Link href="/signup" className="hover:text-text-primary">Create account</Link>
@@ -72,19 +127,47 @@ export function LoginForm() {
 
 export function SignupForm() {
   const availability = useAuthAvailability();
+  const router = useRouter();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [touched, setTouched] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const errors = {
     name: name.trim() ? undefined : 'Name is required.',
     email: emailError(email),
     password: passwordError(password),
   };
-  const canSubmit = false;
+  const canSubmit = !errors.name && !errors.email && !errors.password && availability === 'available';
+
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setTouched(true);
+    setSubmitError(null);
+    setSubmitSuccess(null);
+    if (!canSubmit) return;
+    setSubmitting(true);
+    try {
+      const result = await signUp({ fullName: name.trim(), email: email.trim(), password });
+      setSubmitSuccess('Account created successfully. Redirecting…');
+      if (result.emailVerification?.required) {
+        const params = new URLSearchParams({ email: email.trim() });
+        if (result.emailVerification.token) params.set('token', result.emailVerification.token);
+        router.push(`/verify-email?${params.toString()}`);
+      } else {
+        router.push('/overview');
+      }
+    } catch (error) {
+      setSubmitError(errorMessage(error, 'Unable to create account.'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
-    <form className="space-y-4" onSubmit={(event) => event.preventDefault()} noValidate>
+    <form className="space-y-4" onSubmit={(event) => { void onSubmit(event); }} noValidate>
       <AuthStatus state={availability} />
       <AuthField id="name" label="Full name" error={touched ? errors.name : undefined}>
         <Input id="name" autoComplete="name" value={name} onBlur={() => setTouched(true)} onChange={(event) => setName(event.target.value)} invalid={touched && Boolean(errors.name)} />
@@ -92,17 +175,14 @@ export function SignupForm() {
       <AuthField id="email" label="Work email" error={touched ? errors.email : undefined}>
         <Input id="email" type="email" autoComplete="email" value={email} onBlur={() => setTouched(true)} onChange={(event) => setEmail(event.target.value)} invalid={touched && Boolean(errors.email)} />
       </AuthField>
-      <AuthField id="password" label="Password" hint="Use at least 10 characters." error={touched ? errors.password : undefined}>
+      <AuthField id="password" label="Password" hint="Use at least 10 characters, with uppercase, lowercase, number, and symbol." error={touched ? errors.password : undefined}>
         <Input id="password" type="password" autoComplete="new-password" value={password} onBlur={() => setTouched(true)} onChange={(event) => setPassword(event.target.value)} invalid={touched && Boolean(errors.password)} />
       </AuthField>
-      {canSubmit ? <Button type="submit" className="w-full">Create account</Button> : <DisabledAction label="Create account requires auth endpoint" />}
-      <div className="rounded-[var(--radius-panel)] border border-border bg-surface-base p-3 text-body-s text-text-secondary">
-        <p>Account creation is planned, but no signup, email verification, or session endpoint is connected yet.</p>
-        <div className="mt-2 flex flex-wrap gap-3 text-label-s">
-          <Link href="/waitlist" className="text-brand-primary hover:text-brand-primary-hover">Join early access</Link>
-          <Link href="/docs" className="text-brand-primary hover:text-brand-primary-hover">Open docs</Link>
-        </div>
-      </div>
+      {submitError ? <p className="text-label-s text-status-error">{submitError}</p> : null}
+      {submitSuccess ? <p className="text-label-s text-status-success">{submitSuccess}</p> : null}
+      <Button type="submit" className="w-full" loading={submitting} disabled={!canSubmit}>
+        Create account
+      </Button>
       <p className="text-label-s text-text-secondary">Already have an account? <Link href="/login" className="text-brand-primary hover:text-brand-primary-hover">Sign in</Link></p>
     </form>
   );
@@ -112,16 +192,48 @@ export function ForgotPasswordForm() {
   const availability = useAuthAvailability();
   const [email, setEmail] = useState('');
   const [touched, setTouched] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+  const [devToken, setDevToken] = useState<string | null>(null);
   const error = emailError(email);
-  const canSubmit = false;
+  const canSubmit = !error && availability === 'available';
+
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setTouched(true);
+    setSubmitError(null);
+    setSubmitSuccess(null);
+    setDevToken(null);
+    if (!canSubmit) return;
+    setSubmitting(true);
+    try {
+      const response = await forgotPassword(email.trim());
+      setSubmitSuccess(response.message);
+      setDevToken(response.token ?? null);
+    } catch (err) {
+      setSubmitError(errorMessage(err, 'Unable to process password reset request.'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
-    <form className="space-y-4" onSubmit={(event) => event.preventDefault()} noValidate>
+    <form className="space-y-4" onSubmit={(event) => { void onSubmit(event); }} noValidate>
       <AuthStatus state={availability} />
       <AuthField id="email" label="Account email" error={touched ? error : undefined}>
         <Input id="email" type="email" autoComplete="email" value={email} onBlur={() => setTouched(true)} onChange={(event) => setEmail(event.target.value)} invalid={touched && Boolean(error)} />
       </AuthField>
-      {canSubmit ? <Button type="submit" className="w-full">Send reset link</Button> : <DisabledAction label="Reset link requires email endpoint" />}
+      {submitError ? <p className="text-label-s text-status-error">{submitError}</p> : null}
+      {submitSuccess ? <p className="text-label-s text-status-success">{submitSuccess}</p> : null}
+      {devToken ? (
+        <p className="text-label-s text-text-secondary">
+          Dev token: <Link href={`/reset-password?token=${encodeURIComponent(devToken)}`} className="text-brand-primary hover:text-brand-primary-hover">Open reset password</Link>
+        </p>
+      ) : null}
+      <Button type="submit" className="w-full" loading={submitting} disabled={!canSubmit}>
+        Send reset link
+      </Button>
       <Link href="/login" className="block text-label-s text-text-secondary hover:text-text-primary">Return to sign in</Link>
     </form>
   );
@@ -129,29 +241,104 @@ export function ForgotPasswordForm() {
 
 export function ResetPasswordForm() {
   const availability = useAuthAvailability();
+  const params = useSearchParams();
+  const [token, setToken] = useState(params.get('token') ?? '');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [touched, setTouched] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const passwordMessage = passwordError(password);
   const confirmMessage = confirm && confirm !== password ? 'Passwords must match.' : !confirm ? 'Confirm your password.' : undefined;
-  const canSubmit = false;
+  const tokenMessage = token.trim() ? undefined : 'Reset token is required.';
+  const canSubmit = !passwordMessage && !confirmMessage && !tokenMessage && availability === 'available';
+
+  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setTouched(true);
+    setSubmitError(null);
+    setSubmitSuccess(null);
+    if (!canSubmit) return;
+    setSubmitting(true);
+    try {
+      const response = await resetPassword({ token: token.trim(), password });
+      setSubmitSuccess(response.message);
+    } catch (err) {
+      setSubmitError(errorMessage(err, 'Unable to reset password.'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
-    <form className="space-y-4" onSubmit={(event) => event.preventDefault()} noValidate>
+    <form className="space-y-4" onSubmit={(event) => { void onSubmit(event); }} noValidate>
       <AuthStatus state={availability} />
+      <AuthField id="token" label="Reset token" error={touched ? tokenMessage : undefined}>
+        <Input id="token" value={token} onBlur={() => setTouched(true)} onChange={(event) => setToken(event.target.value)} invalid={touched && Boolean(tokenMessage)} />
+      </AuthField>
       <AuthField id="password" label="New password" error={touched ? passwordMessage : undefined}>
         <Input id="password" type="password" autoComplete="new-password" value={password} onBlur={() => setTouched(true)} onChange={(event) => setPassword(event.target.value)} invalid={touched && Boolean(passwordMessage)} />
       </AuthField>
       <AuthField id="confirm-password" label="Confirm password" error={touched ? confirmMessage : undefined}>
         <Input id="confirm-password" type="password" autoComplete="new-password" value={confirm} onBlur={() => setTouched(true)} onChange={(event) => setConfirm(event.target.value)} invalid={touched && Boolean(confirmMessage)} />
       </AuthField>
-      {canSubmit ? <Button type="submit" className="w-full">Reset password</Button> : <DisabledAction label="Reset password requires auth endpoint" />}
+      {submitError ? <p className="text-label-s text-status-error">{submitError}</p> : null}
+      {submitSuccess ? <p className="text-label-s text-status-success">{submitSuccess}</p> : null}
+      <Button type="submit" className="w-full" loading={submitting} disabled={!canSubmit}>
+        Reset password
+      </Button>
+      <Link href="/login" className="block text-label-s text-text-secondary hover:text-text-primary">Back to sign in</Link>
     </form>
   );
 }
 
-export function VerifyEmailPanel({ email }: { email?: string | null }) {
+export function VerifyEmailPanel({ email, token }: { email?: string | null; token?: string | null }) {
   const availability = useAuthAvailability();
+  const [working, setWorking] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [resendToken, setResendToken] = useState<string | null>(null);
+
+  async function onVerify() {
+    if (!token) {
+      setError('Verification token missing. Request a new verification email.');
+      return;
+    }
+    setWorking(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await verifyEmailToken(token);
+      setSuccess('Email verified successfully. You can continue to your workspace.');
+    } catch (err) {
+      setError(errorMessage(err, 'Unable to verify email.'));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function onResend() {
+    if (!email) {
+      setError('Email address is required to resend verification.');
+      return;
+    }
+    setResending(true);
+    setError(null);
+    setSuccess(null);
+    setResendToken(null);
+    try {
+      const result = await resendVerificationEmail(email);
+      setSuccess(result.message);
+      setResendToken(result.token ?? null);
+    } catch (err) {
+      setError(errorMessage(err, 'Unable to resend verification email.'));
+    } finally {
+      setResending(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <AuthStatus state={availability} />
@@ -159,10 +346,26 @@ export function VerifyEmailPanel({ email }: { email?: string | null }) {
         <Mail className="h-5 w-5 text-brand-primary" />
         <h2 className="mt-3 text-title-s text-text-primary">Check your inbox</h2>
         <p className="mt-2 text-body-s text-text-secondary">
-          {email ? `A verification link would be sent to ${email}.` : 'A verification link would be sent to the account email.'} Email verification requires backend email/auth contracts.
+          {email ? `Use the verification link sent to ${email}.` : 'Use the verification link from your inbox.'}
         </p>
+        {token ? <p className="mt-2 text-label-s text-text-muted">Verification token detected in URL.</p> : null}
       </div>
-      <DisabledAction label="Resend verification requires email endpoint" />
+      {error ? <p className="text-label-s text-status-error">{error}</p> : null}
+      {success ? <p className="text-label-s text-status-success">{success}</p> : null}
+      {resendToken ? (
+        <p className="text-label-s text-text-secondary">
+          Dev token generated. Reload with token:{' '}
+          <Link href={`/verify-email?email=${encodeURIComponent(email ?? '')}&token=${encodeURIComponent(resendToken)}`} className="text-brand-primary hover:text-brand-primary-hover">
+            verify now
+          </Link>
+        </p>
+      ) : null}
+      <Button type="button" className="w-full" onClick={() => { void onVerify(); }} loading={working} disabled={!token || availability !== 'available'}>
+        Verify email
+      </Button>
+      <Button type="button" variant="secondary" className="w-full" onClick={() => { void onResend(); }} loading={resending} disabled={!email || availability !== 'available'}>
+        Resend verification email
+      </Button>
       <Link href="/login" className="block text-label-s text-text-secondary hover:text-text-primary">Back to sign in</Link>
     </div>
   );
@@ -225,7 +428,7 @@ export function CreateWorkspaceForm() {
           <option>Dashboards</option>
         </Select>
       </AuthField>
-      {canSubmit ? <Button type="submit" className="w-full">Create workspace</Button> : <DisabledAction label="Create workspace requires auth endpoint" />}
+      {canSubmit ? <Button type="submit" className="w-full">Create workspace</Button> : <DisabledAction label="Create workspace requires workspace endpoint" />}
     </form>
   );
 }
@@ -286,3 +489,4 @@ export function FirstProjectSetupForm() {
     </form>
   );
 }
+

@@ -13,7 +13,7 @@ export function Card({ children, interactive, highlight, padded = true, classNam
     <div
       {...rest}
       className={cn(
-        'rounded-[var(--radius-card)] border border-border bg-surface-raised text-text-primary shadow-card',
+        'rounded-[var(--radius-card)] border border-border-muted bg-surface-base text-text-primary shadow-card',
         'transition-[background-color,border-color,box-shadow,transform] duration-160 ease-ledger',
         interactive && 'cursor-pointer hover:-translate-y-px hover:border-border-strong hover:bg-surface-base hover:shadow-card-lg',
         highlight && 'border-brand-primary bg-brand-primary-subtle shadow-card-lg',

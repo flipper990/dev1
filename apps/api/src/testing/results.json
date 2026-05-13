@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-05-13T01:03:21.080Z",
+  "completedAt": "2026-05-13T01:05:24.846Z",
+  "apiUrl": "http://localhost:3003",
+  "count": 1,
+  "results": [
+    {
+      "index": 0,
+      "projectId": "YgwXt16xRe49",
+      "prompt": "Build a counter app with increment, decrement, and reset buttons. Persist the count to localStorage.",
+      "startedAt": "2026-05-13T01:03:21.081Z",
+      "completedAt": "2026-05-13T01:05:24.839Z",
+      "totalDurationMs": 123758,
+      "status": "fail-update-no-progress",
+      "fixAttempts": 1,
+      "attempts": [
+        {
+          "iteration": 0,
+          "success": false,
+          "buildErrors": [
+            "project output directory missing: C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\YgwXt16xRe49\\output"
+          ],
+          "runtimeErrors": [],
+          "failedSteps": [
+            "install",
+            "build",
+            "dev"
+          ],
+          "failureReasons": [
+            "no project output directory"
+          ],
+          "httpStatus": null,
+          "bodyBytes": null,
+          "durationMs": 0
+        }
+      ],
+      "finalError": "No progress in 120s for update YgwXt16xRe49 (state=status=generating|phase=slice-1/1|step=step:spec|llm=2|files=0|slices=0|stepStarted=2026-05-13T01:03:21.345Z|stepCompleted=-, heartbeatAge=123s)",
+      "diagnostics": {
+        "failedPhase": "slice-1/1",
+        "lastSuccessfulPhase": "spec",
+        "errorName": "Error",
+        "errorMessage": "[builder-empty] slice-1/1 → single-pass:builder slice 1/1: orchestrator status=failed (Critical step \"Specification\" failed: All models exhausted after 1ms. Tried: [openai/gpt-4.1, openai/gpt-4o-mini]. Last error: unknown)",
+        "stack": "Error: [builder-empty] slice-1/1 → single-pass:builder slice 1/1: orchestrator status=failed (Critical step \"Specification\" failed: All models exhausted after 1ms. Tried: [openai/gpt-4.1, openai/gpt-4o-mini]. Last error: unknown)\n    at assertBuilderProducedFiles (/app/apps/api/src/pipeline/slice-runner.ts:287:9)\n    at ProjectGenerator.assertBuilderProducedFiles (/app/apps/api/src/pipeline/project-generator.ts:3540:5)\n    at ProjectGenerator.runPipelineBody (/app/apps/api/src/pipeline/project-generator.ts:2273:14)\n    at async ProjectGenerator.generate (/app/apps/api/src/pipeline/project-generator.ts:1781:22)\n    at async ProjectGenerator.runReserved (/app/apps/api/src/pipeline/project-generator.ts:534:22)",
+        "failedAt": "2026-05-13T01:03:21.348Z",
+        "llmCallCount": 2,
+        "anyLlmCallMade": true
+      }
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "succeeded": 0,
+    "failed": 1,
+    "averageFixAttempts": 1,
+    "failureBreakdown": {
+      "fail-update-no-progress": 1
+    },
+    "preview": {
+      "attempted": 0,
+      "ready": 0,
+      "failed": 0,
+      "timedOut": 0,
+      "noBackend": 0,
+      "averageReadyMs": null,
+      "maxReadyMs": null,
+      "minReadyMs": null
+    },
+    "recordIntegrity": {
+      "attempted": 0,
+      "passed": 0,
+      "failed": 0
+    },
+    "previewContentHealth": {
+      "attempted": 0,
+      "passed": 0,
+      "failed": 0,
+      "failureBreakdown": {}
+    }
+  }
+}

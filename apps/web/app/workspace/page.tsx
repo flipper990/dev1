@@ -14,6 +14,7 @@ import {
 import { LogEvidenceView } from '../../src/features/logs/components';
 import { ProductionTimeline } from '../../src/features/agents/components';
 import {
+  AgentPipelineRail,
   DiagnosticsSummary,
   ExportActionPanel,
   TrustRail,
@@ -314,8 +315,9 @@ function WorkspacePageContent() {
       canAct={Boolean(projectState.selectedProject)}
       onPrimaryAction={actions.handlePrimaryAction}
       liveMessage={generationState.liveMessage}
+      pipelineContent={<AgentPipelineRail events={projectState.pipelineEvents} status={projectState.status} />}
     >
-      <div className="space-y-3">
+      <div className="space-y-4">
         <WorkspaceStatusArea
           workspaceBanner={workspaceBanner}
           project={projectState.selectedProject}

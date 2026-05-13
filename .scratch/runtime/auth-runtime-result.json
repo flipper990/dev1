@@ -1,0 +1,37 @@
+{
+    "email":  "runtime.auth.1778623689083@local.test",
+    "checks":  [
+                   "anonymous_protected_route_redirect",
+                   "signup_success",
+                   "auth_cookie_creation",
+                   "duplicate_email_rejected",
+                   "invalid_password_rejected",
+                   "signin_success",
+                   "session_endpoint_success",
+                   "protected_route_allows_authenticated",
+                   "session_persists_after_reload",
+                   "refresh_token_rotation",
+                   "email_verification_confirm",
+                   "forgot_password_success",
+                   "reset_password_success",
+                   "old_password_rejected_after_reset",
+                   "signin_with_new_password_success",
+                   "signout_success",
+                   "signed_out_session_invalid",
+                   "protected_route_redirect_after_signout",
+                   "database_persistence_verified"
+               ],
+    "runtime":  {
+                    "postgres_started_by_script":  true,
+                    "api_started_by_script":  true,
+                    "web_started_by_script":  true,
+                    "api_url":  "http://127.0.0.1:3003",
+                    "web_url":  "http://127.0.0.1:3100",
+                    "db_port":  55432
+                },
+    "db":  {
+               "user_count":  1,
+               "email_verified":  true,
+               "refresh_token_rows":  4
+           }
+}

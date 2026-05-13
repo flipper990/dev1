@@ -10,6 +10,7 @@ interface WorkspacePageShellProps {
   canAct: boolean;
   onPrimaryAction: () => void;
   liveMessage: string;
+  pipelineContent: ReactNode;
   children: ReactNode;
 }
 
@@ -20,18 +21,22 @@ export function WorkspacePageShell({
   canAct,
   onPrimaryAction,
   liveMessage,
+  pipelineContent,
   children,
 }: WorkspacePageShellProps) {
   return (
     <AppShell
-      title="Workspace / Builder"
-      subtitle="Preview, change, verify, and export generated applications."
+      title="AI Engineering Runtime"
+      subtitle="Persistent operational workspace for build orchestration, evidence, runtime verification, and shipping."
       breadcrumbs={[{ label: 'Workspace', href: '/workspace' }, selectedProjectId ? { label: selectedProjectId } : { label: 'No project selected' }]}
-      actions={<Button onClick={onPrimaryAction} disabled={!canAct}>{nextActionLabel}</Button>}
-      secondaryActions={<Link href="/projects"><Button variant="secondary">Projects</Button></Link>}
-      workspaceName="DEVteam Studio"
+      actions={<Button onClick={onPrimaryAction} disabled={!canAct} className="rounded-full">{nextActionLabel}</Button>}
+      secondaryActions={<Link href="/projects"><Button variant="secondary" className="rounded-full">Projects</Button></Link>}
+      workspaceName="DEVteam Command"
       projectName={selectedProjectName}
       compactHeader
+      contextTitle="Agent Pipeline"
+      contextDescription="Live execution graph, runtime checks, and verification stream."
+      contextContent={pipelineContent}
     >
       <section aria-live="polite" className="sr-only">{liveMessage}</section>
       {children}

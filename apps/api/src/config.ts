@@ -100,6 +100,10 @@ export const config = {
     devBypassRequested: envBool(process.env.DEV_AUTH_BYPASS, false),
     devBypass: ((process.env.NODE_ENV ?? 'development') === 'development') && envBool(process.env.DEV_AUTH_BYPASS, false),
     tokenSecret: process.env.AUTH_TOKEN_SECRET ?? '',
+    accessTokenTtlSec: parseInt(process.env.AUTH_ACCESS_TOKEN_TTL_SEC ?? '900', 10),
+    refreshTokenTtlSec: parseInt(process.env.AUTH_REFRESH_TOKEN_TTL_SEC ?? '2592000', 10),
+    passwordResetTokenTtlSec: parseInt(process.env.AUTH_PASSWORD_RESET_TOKEN_TTL_SEC ?? '3600', 10),
+    verifyEmailTokenTtlSec: parseInt(process.env.AUTH_VERIFY_EMAIL_TOKEN_TTL_SEC ?? '86400', 10),
     devUserId: process.env.DEV_USER_ID ?? process.env.DEV_AUTH_BYPASS_USER_ID ?? 'dev-user',
     devWorkspaceId: process.env.DEV_WORKSPACE_ID ?? process.env.DEV_AUTH_BYPASS_WORKSPACE_ID ?? 'dev-workspace',
     devUserEmail: process.env.DEV_USER_EMAIL ?? process.env.DEV_AUTH_BYPASS_USER_EMAIL ?? 'dev@local.test',
@@ -120,6 +124,9 @@ export function validateProductionConfig(): void {
   }
   if (!process.env.ALLOWED_ORIGINS) {
     missing.push('ALLOWED_ORIGINS');
+  }
+  if (!process.env.AUTH_TOKEN_SECRET) {
+    missing.push('AUTH_TOKEN_SECRET');
   }
   if (missing.length > 0) {
     throw new Error(`Missing required production environment variables: ${missing.join(', ')}`);

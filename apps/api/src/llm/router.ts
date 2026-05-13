@@ -41,17 +41,23 @@ export function createLLMRouter(logger: Logger, routerConfig?: Partial<RouterCon
 
   // Register Azure OpenAI if key + endpoint are set
   if (config.llm.azure.apiKey && config.llm.azure.endpoint) {
-    registry.register(
-      new AzureOpenAIClient(
-        {
-          apiKey: config.llm.azure.apiKey,
-          endpoint: config.llm.azure.endpoint,
-          apiVersion: config.llm.azure.apiVersion,
-          healthCheckDeployment: config.llm.azure.healthCheckDeployment || undefined,
-        },
-        logger,
-      ),
-    );
+    try {
+      registry.register(
+        new AzureOpenAIClient(
+          {
+            apiKey: config.llm.azure.apiKey,
+            endpoint: config.llm.azure.endpoint,
+            apiVersion: config.llm.azure.apiVersion,
+            healthCheckDeployment: config.llm.azure.healthCheckDeployment || undefined,
+          },
+          logger,
+        ),
+      );
+    } catch (error) {
+      logger.warn(
+        `Azure OpenAI client initialization failed, provider disabled: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   } else if (config.llm.azure.apiKey || config.llm.azure.endpoint) {
     logger.warn('Azure OpenAI partially configured â€” need both AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT');
   }

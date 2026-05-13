@@ -60,7 +60,7 @@ export function AppShell({
   const [leftNavOpen, setLeftNavOpen] = useState(false);
   const [leftNavCollapsed, setLeftNavCollapsed] = useState(false);
   const [contextOpen, setContextOpen] = useState(defaultContextOpen);
-  const [themeDark, setThemeDark] = useState(false);
+  const [themeDark, setThemeDark] = useState(true);
   const keyboardTrackedRef = useRef(false);
   const variantTrackedRef = useRef(false);
   const mobileNavRef = useRef<HTMLDivElement | null>(null);
@@ -214,7 +214,7 @@ export function AppShell({
   }, [pathname, themeDark, trackEvent]);
 
   return (
-    <div className={cn('min-h-screen overflow-x-hidden bg-surface-canvas text-text-primary', className)}>
+    <div className={cn('studio-canvas min-h-screen overflow-x-hidden bg-surface-canvas text-text-primary', className)}>
       <TopBar
         workspaceName={workspaceName}
         projectName={projectName}
@@ -229,49 +229,62 @@ export function AppShell({
         showContextToggle={hasContext}
       />
 
-      <div className="mx-auto flex w-full max-w-[1600px] min-w-0">
-        <div className="hidden min-h-[calc(100vh-4rem)] shrink-0 lg:block">
-          <div className="sticky top-16 h-[calc(100vh-4rem)]">
+      <div className="mx-auto w-full max-w-[1760px] px-3 py-3 sm:px-4 sm:py-4 lg:px-6">
+        <div className={cn('grid min-w-0 gap-3 xl:grid-cols-[auto_minmax(0,1fr)_minmax(300px,360px)]', hasContext ? '' : 'xl:grid-cols-[auto_minmax(0,1fr)]')}>
+          <div className="hidden min-h-[calc(100vh-4.5rem)] shrink-0 lg:block">
+            <div className="sticky top-[4.65rem] h-[calc(100vh-5.1rem)]">
             <LeftNav
               currentPath={pathname}
               collapsed={leftNavCollapsed}
               onToggleCollapsed={() => setLeftNavCollapsed((prev) => !prev)}
             />
-          </div>
-        </div>
-
-        {leftNavOpen ? (
-          <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-label="Navigation menu" aria-modal="true">
-            <button
-              type="button"
-              className="absolute inset-0 bg-text-primary/25 backdrop-blur-[2px]"
-              aria-label="Close navigation menu"
-              onClick={() => setLeftNavOpen(false)}
-            />
-            <div ref={mobileNavRef} className="absolute inset-y-0 left-0 flex w-[304px] max-w-[88vw] flex-col bg-surface-raised shadow-overlay">
-              <div className="flex items-center justify-between border-b border-border-muted px-4 py-3">
-                <span className="text-label-m text-text-primary">Navigation</span>
-                <IconButton icon={<X className="h-4 w-4" />} label="Close navigation menu" onClick={() => setLeftNavOpen(false)} />
-              </div>
-              <LeftNav currentPath={pathname} onNavigate={() => setLeftNavOpen(false)} className="w-full flex-1 border-r-0" />
             </div>
           </div>
-        ) : null}
 
-        <main className="min-w-0 flex-1">
-          <section className="mx-auto min-h-[calc(100vh-4rem)] w-full max-w-[1240px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8 xl:px-10">
-            <PageHeader
-              title={title}
-              subtitle={subtitle}
-              lifecycle={lifecycle}
-              actions={actions}
-              secondaryActions={secondaryActions}
-              breadcrumbs={breadcrumbs}
-              compact={compactHeader}
-            />
-            <div className={cn('min-w-0', compactHeader ? 'pt-4' : 'pt-6 sm:pt-7')}>{children}</div>
-          </section>
-        </main>
+          {leftNavOpen ? (
+            <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-label="Navigation menu" aria-modal="true">
+              <button
+                type="button"
+                className="absolute inset-0 bg-text-primary/45 backdrop-blur-[2px]"
+                aria-label="Close navigation menu"
+                onClick={() => setLeftNavOpen(false)}
+              />
+              <div ref={mobileNavRef} className="studio-glass absolute inset-y-2 left-2 flex w-[304px] max-w-[88vw] flex-col rounded-[var(--radius-modal)]">
+                <div className="flex items-center justify-between border-b border-border-muted px-4 py-3">
+                  <span className="text-label-m text-text-primary">Navigation</span>
+                  <IconButton icon={<X className="h-4 w-4" />} label="Close navigation menu" onClick={() => setLeftNavOpen(false)} />
+                </div>
+                <LeftNav currentPath={pathname} onNavigate={() => setLeftNavOpen(false)} className="w-full flex-1 border-r-0 shadow-none" />
+              </div>
+            </div>
+          ) : null}
+
+          <main className="studio-surface min-w-0 overflow-hidden rounded-[var(--radius-modal)]">
+            <section className="studio-scroll mx-auto min-h-[calc(100vh-5.1rem)] w-full max-w-[1320px] overflow-y-auto px-4 pb-28 pt-5 sm:px-6 sm:pt-6 lg:px-8 lg:pt-8 xl:px-10">
+              <PageHeader
+                title={title}
+                subtitle={subtitle}
+                lifecycle={lifecycle}
+                actions={actions}
+                secondaryActions={secondaryActions}
+                breadcrumbs={breadcrumbs}
+                compact={compactHeader}
+                className="border-border px-0 pb-5"
+              />
+              <div className={cn('min-w-0', compactHeader ? 'pt-4' : 'pt-6 sm:pt-7')}>{children}</div>
+            </section>
+          </main>
+
+          {hasContext ? (
+            <aside className="studio-surface-soft studio-scroll hidden min-h-[calc(100vh-5.1rem)] overflow-y-auto rounded-[var(--radius-modal)] p-4 xl:block">
+              <div className="mb-4 border-b border-border-muted pb-3">
+                <h2 className="text-label-m text-text-primary">{contextTitle}</h2>
+                {contextDescription ? <p className="mt-1 text-body-s text-text-secondary">{contextDescription}</p> : null}
+              </div>
+              {contextContent}
+            </aside>
+          ) : null}
+        </div>
       </div>
 
       {hasContext ? (

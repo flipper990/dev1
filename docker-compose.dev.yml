@@ -4,6 +4,23 @@ version: '3.9'
 # Active stack: apps/api + apps/web. Use this with `docker compose -f docker-compose.dev.yml up`.
 
 services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: devteam
+      POSTGRES_DB: devteam
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - '55432:5432'
+    volumes:
+      - devteam_pg_auth_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U devteam -d devteam']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   api:
     image: node:20-alpine
     working_dir: /app
@@ -13,20 +30,26 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3003
+      API_PORT: 3003
       STORAGE_PATH: /app/data
+      DATABASE_URL: postgresql://devteam@postgres:5432/devteam
     env_file: .env
     volumes:
       - .:/app
       - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   web:
     image: node:20-alpine
     working_dir: /app
-    command: sh -c "npm install && npm run dev --workspace=@devteam/web"
+    command: sh -c "npm install && npm run build --workspace=@devteam/web && npm run start --workspace=@devteam/web -- --port 3000"
     ports:
-      - '3000:3000'
+      - '3100:3000'
     environment:
+      NODE_ENV: production
       NEXT_PUBLIC_API_BASE: http://localhost:3003
       NEXT_PUBLIC_WS_BASE: ws://localhost:3003
     env_file: .env
@@ -34,4 +57,10 @@ services:
       - .:/app
       - /app/node_modules
     depends_on:
-      - api
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+volumes:
+  devteam_pg_auth_data:

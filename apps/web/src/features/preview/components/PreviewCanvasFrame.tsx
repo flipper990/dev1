@@ -150,8 +150,8 @@ export function PreviewCanvasFrame({
     <section
       aria-label={title}
       className={cn(
-        'relative overflow-hidden rounded-[var(--radius-modal)] border border-border-strong bg-surface-raised p-2 shadow-lg sm:p-3',
-        'before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,255,255,0)_22%)] before:content-[""]',
+        'studio-surface relative overflow-hidden rounded-[calc(var(--radius-modal)+4px)] p-2 sm:p-3',
+        'before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(65%_80%_at_50%_0%,rgba(136,172,255,0.16),transparent_70%)] before:content-[""]',
         className,
       )}
     >
@@ -166,7 +166,7 @@ export function PreviewCanvasFrame({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div role="tablist" aria-label="Preview viewport" className="inline-flex max-w-full items-center overflow-x-auto rounded-[var(--radius-control)] border border-border bg-surface-tint p-1">
+          <div role="tablist" aria-label="Preview viewport" className="inline-flex max-w-full items-center overflow-x-auto rounded-full border border-border bg-surface-tint p-1">
             {(Object.keys(DEVICE_LAYOUT) as PreviewDevice[]).map((key) => {
               const Icon = DEVICE_LAYOUT[key].icon;
               const active = key === device;
@@ -209,12 +209,12 @@ export function PreviewCanvasFrame({
         </div>
       </div>
 
-      <div className="relative rounded-[var(--radius-panel)] border border-border bg-surface-tint p-1.5 sm:p-2">
+      <div className="relative rounded-[var(--radius-panel)] border border-border-muted bg-surface-tint/85 p-1.5 sm:p-2">
         <div
           className="mx-auto overflow-hidden rounded-[var(--radius-preview)] border border-border-strong bg-surface-raised shadow-overlay"
           style={{ maxWidth: DEVICE_LAYOUT[device].maxWidth }}
         >
-          <div className="flex items-center gap-2 border-b border-border bg-surface-tint px-3 py-2">
+          <div className="flex items-center gap-2 border-b border-border-muted bg-surface-overlay px-3 py-2">
             <span className="h-2.5 w-2.5 rounded-full bg-status-error" />
             <span className="h-2.5 w-2.5 rounded-full bg-status-warning" />
             <span className="h-2.5 w-2.5 rounded-full bg-status-success" />

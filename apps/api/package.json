@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch --ignore \"data/**\" --ignore \"./data/**\" --ignore \"**/data/**\" src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "tsx src/server.ts",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test:auth": "tsx --test src/security/auth.test.ts",

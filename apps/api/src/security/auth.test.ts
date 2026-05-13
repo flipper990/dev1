@@ -58,6 +58,7 @@ function makeApp(
   app.get('/api/projects', { preHandler: [auth.requireRole('viewer')] }, async (request) => ({ userId: request.auth?.userId ?? null }));
   app.post('/api/projects/:id/mutate', { preHandler: [auth.requireProjectAccess('member')] }, async () => ({ ok: true }));
   app.get('/api/projects/:id/read', { preHandler: [auth.requireProjectAccess('viewer')] }, async () => ({ ok: true }));
+  app.post('/api/write', { preHandler: [auth.requireRole('viewer')] }, async () => ({ ok: true }));
   return app;
 }
 
@@ -168,6 +169,31 @@ test('signed cookie token grants access', async () => {
   });
 
   assert.equal(response.statusCode, 200);
+  await app.close();
+});
+
+test('cookie-authenticated mutation requires csrf token', async () => {
+  const app = makeApp([makeProject('p1', 'ws-1', 'u-owner')]);
+  const token = createAuthToken({ sub: 'u-owner', workspaceId: 'ws-1', role: 'owner', type: 'access' }, 'test-secret');
+
+  const denied = await app.inject({
+    method: 'POST',
+    url: '/api/write',
+    headers: {
+      cookie: `devteam_access_token=${encodeURIComponent(token)}`,
+    },
+  });
+  assert.equal(denied.statusCode, 403);
+
+  const allowed = await app.inject({
+    method: 'POST',
+    url: '/api/write',
+    headers: {
+      cookie: `devteam_access_token=${encodeURIComponent(token)}; devteam_csrf_token=csrf123`,
+      'x-csrf-token': 'csrf123',
+    },
+  });
+  assert.equal(allowed.statusCode, 200);
   await app.close();
 });
 

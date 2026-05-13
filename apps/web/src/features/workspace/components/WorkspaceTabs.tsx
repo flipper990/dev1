@@ -3,13 +3,13 @@
 import { Tabs, type TabItem } from '../../../../components/ui';
 
 export const WORKSPACE_TABS: TabItem[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'preview', label: 'Preview details' },
-  { id: 'build', label: 'Build' },
-  { id: 'verify', label: 'Verify' },
-  { id: 'activity', label: 'Activity' },
-  { id: 'logs', label: 'Logs' },
-  { id: 'export', label: 'Export / Launch' },
+  { id: 'overview', label: 'Runtime' },
+  { id: 'preview', label: 'Preview state' },
+  { id: 'build', label: 'Build graph' },
+  { id: 'verify', label: 'Verification' },
+  { id: 'activity', label: 'Activity feed' },
+  { id: 'logs', label: 'Logs + evidence' },
+  { id: 'export', label: 'Ship / export' },
 ];
 
 export type WorkspaceTabId = (typeof WORKSPACE_TABS)[number]['id'];

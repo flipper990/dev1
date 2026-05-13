@@ -22,12 +22,14 @@ import { ProjectGenerator } from './pipeline/project-generator.js';
 import { registerRoutes } from './routes/api.js';
 import { registerWebSocket } from './routes/websocket.js';
 import { registerPreviewRoutes } from './routes/preview-routes.js';
+import { registerAuthRoutes } from './routes/auth-routes.js';
 import { createDockerRunner } from './preview/docker-runner.js';
 import { PortAllocator } from './preview/port-allocator.js';
 import { PreviewManager } from './preview/preview-manager.js';
 import { LocalPreviewRunner } from './preview/local-runner.js';
 import { appendBudgetDiagnostic } from './llm/generation-budget.js';
 import { createAuthGuards } from './security/auth.js';
+import { AuthStore } from './security/auth-store.js';
 
 export async function buildApp() {
   const logger = createLogger('server');
@@ -40,6 +42,8 @@ export async function buildApp() {
 
   const memoryStore = new FileMemoryStore(config.storage.memoryDir, createLogger('memory-store'));
   await memoryStore.init();
+  const authStore = new AuthStore(config.db.url, createLogger('auth-store'));
+  await authStore.ensureSchema();
 
   // ── Initialize Learning Engine ──────────────────────
 
@@ -178,7 +182,7 @@ export async function buildApp() {
   await app.register(fastifyCors, {
     origin: config.isDev ? true : allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-devteam-user-id', 'x-devteam-user-email', 'x-devteam-workspace-id', 'x-devteam-role'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token', 'x-devteam-user-id', 'x-devteam-user-email', 'x-devteam-workspace-id', 'x-devteam-role'],
     credentials: true,
   });
 
@@ -279,6 +283,7 @@ export async function buildApp() {
   // ── Register routes ─────────────────────────────────
 
   registerRoutes(app as unknown as import('fastify').FastifyInstance, { generator, projectStore, sessionManager, memoryStore, llm, logger, preview: previewManager, auth });
+  registerAuthRoutes(app as unknown as import('fastify').FastifyInstance, { authStore, auth });
   registerWebSocket(app as unknown as import('fastify').FastifyInstance, { sessionManager, projectStore, logger, auth });
   registerPreviewRoutes(app as unknown as import('fastify').FastifyInstance, {
     preview: previewManager,
@@ -314,6 +319,9 @@ export async function buildApp() {
   app.addHook('onClose', async () => {
     clearInterval(cleanupInterval);
     clearInterval(decayInterval);
+    await authStore.close().catch((err) => {
+      logger.error('Auth store shutdown failed', { error: (err as Error).message });
+    });
     await previewManager.shutdown().catch((err) => {
       logger.error('Preview manager shutdown failed', { error: (err as Error).message });
     });

@@ -13,16 +13,6 @@ import { API_BASE, wsBaseFromApiBase } from './api-base';
  *  over 20 s for a simple GET is almost certainly unreachable. */
 const DEFAULT_TIMEOUT_MS = 20_000;
 
-const AUTH_TOKEN_STORAGE_KEYS = [
-  'devteam:authToken',
-  'devteam.authToken',
-  'authToken',
-  'accessToken',
-  'auth_token',
-  'token',
-  'jwt',
-] as const;
-
 const DEV_AUTH_BYPASS_ENABLED = /^(1|true|yes|on)$/i.test(
   process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS ?? process.env.DEV_AUTH_BYPASS ?? '',
 );
@@ -43,8 +33,11 @@ const DEV_AUTH_ROLE =
   ?? process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS_ROLE
   ?? 'owner';
 const AUTH_TOKEN_COOKIE_NAME = 'devteam_auth_token';
+const CSRF_COOKIE_NAME = 'devteam_csrf_token';
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 let runtimeAuthToken: string | null = null;
+let refreshPromise: Promise<boolean> | null = null;
 
 function isBrowser(): boolean {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
@@ -58,28 +51,13 @@ function normalizeToken(value: string | null | undefined): string | null {
   return trimmed;
 }
 
-function readStorageToken(storage: Storage | undefined): string | null {
-  if (!storage) return null;
-  try {
-    for (const key of AUTH_TOKEN_STORAGE_KEYS) {
-      const token = normalizeToken(storage.getItem(key));
-      if (token) return token;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
 function readAuthToken(): string | null {
   const override = normalizeToken(runtimeAuthToken);
   if (override) return override;
 
   const envToken = normalizeToken(process.env.NEXT_PUBLIC_AUTH_TOKEN);
   if (envToken) return envToken;
-
-  if (!isBrowser()) return null;
-  return readStorageToken(window.localStorage) ?? readStorageToken(window.sessionStorage);
+  return null;
 }
 
 function syncAuthCookie(token: string | null): void {
@@ -106,7 +84,7 @@ function applyAuthHeaders(headers: Headers): void {
   }
 
   syncAuthCookie(null);
-  const allowDevHeaders = DEV_AUTH_BYPASS_ENABLED || process.env.NODE_ENV !== 'production';
+  const allowDevHeaders = DEV_AUTH_BYPASS_ENABLED;
   if (!allowDevHeaders) return;
   if (!headers.has('x-devteam-user-id')) headers.set('x-devteam-user-id', DEV_AUTH_USER_ID);
   if (!headers.has('x-devteam-user-email')) headers.set('x-devteam-user-email', DEV_AUTH_USER_EMAIL);
@@ -117,35 +95,73 @@ function applyAuthHeaders(headers: Headers): void {
 function buildRequestHeaders(
   source: HeadersInit | undefined,
   includeJsonHeaders: boolean,
+  method: string,
+  includeAuthHeaders = true,
 ): Headers {
   const headers = new Headers(source ?? {});
   if (includeJsonHeaders) {
     if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
     if (!headers.has('Accept')) headers.set('Accept', 'application/json');
   }
-  applyAuthHeaders(headers);
+  if (includeAuthHeaders) {
+    applyAuthHeaders(headers);
+  }
+  if (!SAFE_METHODS.has(method.toUpperCase()) && !headers.has('x-csrf-token') && isBrowser()) {
+    const cookiePrefix = `${CSRF_COOKIE_NAME}=`;
+    const csrfCookie = document.cookie
+      .split(';')
+      .map((chunk) => chunk.trim())
+      .find((chunk) => chunk.startsWith(cookiePrefix));
+    if (csrfCookie) {
+      const raw = csrfCookie.slice(cookiePrefix.length);
+      if (raw) {
+        try {
+          headers.set('x-csrf-token', decodeURIComponent(raw));
+        } catch {
+          headers.set('x-csrf-token', raw);
+        }
+      }
+    }
+  }
   return headers;
 }
 
 async function fetchWithAuth(
   url: string,
   init: RequestInit,
-  options?: { includeJsonHeaders?: boolean },
+  options?: { includeJsonHeaders?: boolean; includeAuthHeaders?: boolean },
 ): Promise<Response> {
   const includeJsonHeaders = options?.includeJsonHeaders ?? true;
-  const headers = buildRequestHeaders(init.headers, includeJsonHeaders);
-  const usesHeaderAuth =
-    headers.has('Authorization') ||
-    headers.has('x-devteam-user-id') ||
-    headers.has('x-devteam-user-email') ||
-    headers.has('x-devteam-workspace-id') ||
-    headers.has('x-devteam-role');
+  const method = init.method ?? 'GET';
+  const includeAuthHeaders = options?.includeAuthHeaders ?? true;
+  const headers = buildRequestHeaders(init.headers, includeJsonHeaders, method, includeAuthHeaders);
   return fetch(url, {
     ...init,
     headers,
     cache: init.cache ?? 'no-store',
-    credentials: init.credentials ?? (usesHeaderAuth ? 'same-origin' : 'include'),
+    credentials: init.credentials ?? 'include',
   });
+}
+
+async function tryRefreshSession(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/api/auth/refresh`, {
+        method: 'POST',
+        body: '{}',
+      }, {
+        includeJsonHeaders: true,
+        includeAuthHeaders: false,
+      });
+      return response.ok;
+    } catch {
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
 }
 
 /** Optional runtime injection point for auth/session layers.
@@ -187,6 +203,14 @@ export class ApiError extends Error {
  * NEVER resolves with undefined. Always either a valid T or throws ApiError.
  */
 async function request<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
+  return requestInternal<T>(path, init, true);
+}
+
+async function requestInternal<T>(
+  path: string,
+  init: (RequestInit & { timeoutMs?: number }) | undefined,
+  allowRefreshRetry: boolean,
+): Promise<T> {
   const { timeoutMs = DEFAULT_TIMEOUT_MS, ...rest } = init ?? {};
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -209,6 +233,12 @@ async function request<T>(path: string, init?: RequestInit & { timeoutMs?: numbe
   clearTimeout(timer);
 
   if (!response.ok) {
+    if (response.status === 401 && allowRefreshRetry) {
+      const refreshed = await tryRefreshSession();
+      if (refreshed) {
+        return requestInternal<T>(path, init, false);
+      }
+    }
     let detail = `HTTP ${response.status}`;
     let body: unknown;
     try {

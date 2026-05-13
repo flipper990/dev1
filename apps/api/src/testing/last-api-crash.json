@@ -1,31 +1,31 @@
 {
-  "timestamp": "2026-05-12T15:30:47.945Z",
+  "timestamp": "2026-05-13T01:09:48.758Z",
   "kind": "signal",
-  "signal": "SIGHUP",
-  "message": "Process received signal SIGHUP",
-  "stack": "Error: Process received signal SIGHUP\n    at recordSignal (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\crash-logger.ts:430:12)\n    at process.<anonymous> (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\crash-logger.ts:451:36)\n    at process.emit (node:events:508:28)\n    at process.emit (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\node_modules\\tsx\\dist\\suppress-warnings.cjs:1:472)",
+  "signal": "SIGTERM",
+  "message": "Process received signal SIGTERM",
+  "stack": "Error: Process received signal SIGTERM\n    at recordSignal (/app/apps/api/src/crash-logger.ts:430:12)\n    at process.<anonymous> (/app/apps/api/src/crash-logger.ts:446:27)\n    at process.emit (node:events:536:35)\n    at process.emit (/app/node_modules/tsx/dist/suppress-warnings.cjs:1:472)",
   "errorName": "Error",
-  "pid": 17600,
-  "uptimeSeconds": 1758,
+  "pid": 74,
+  "uptimeSeconds": 5931,
   "watchMode": true,
   "pidInfo": {
-    "pid": 17600,
-    "startedAt": "2026-05-12T15:01:31.508Z",
+    "pid": 74,
+    "startedAt": "2026-05-12T23:31:05.374Z",
     "argv": [
-      "C:\\Program Files\\nodejs\\node.exe",
-      "C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\server.ts"
+      "/usr/local/bin/node",
+      "/app/apps/api/src/server.ts"
     ],
     "watchMode": true,
-    "reloadedFromPid": null,
-    "reloadedFromStartedAt": null
+    "reloadedFromPid": 36616,
+    "reloadedFromStartedAt": "2026-05-12T23:28:01.545Z"
   },
   "activeGenerations": [],
   "memoryUsage": {
-    "rss": 206815232,
-    "heapTotal": 69857280,
-    "heapUsed": 68061688,
-    "external": 38826119,
-    "arrayBuffers": 38598151
+    "rss": 184676352,
+    "heapTotal": 66019328,
+    "heapUsed": 60726424,
+    "external": 40760621,
+    "arrayBuffers": 4561523
   },
   "rawErrorJson": {}
 }

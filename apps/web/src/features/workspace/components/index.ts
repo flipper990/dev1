@@ -9,3 +9,4 @@ export { WorkspacePageShell } from './WorkspacePageShell';
 export { WorkspaceMainPanel } from './WorkspaceMainPanel';
 export { WorkspaceSidePanel } from './WorkspaceSidePanel';
 export { WorkspaceStatusArea } from './WorkspaceStatusArea';
+export { AgentPipelineRail } from './AgentPipelineRail';

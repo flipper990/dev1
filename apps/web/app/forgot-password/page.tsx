@@ -8,7 +8,7 @@ export default function ForgotPasswordPage() {
       subtitle="Enter the work email associated with your DEVteam account."
       asideTitle="Secure recovery for production workspaces."
       asideItems={[
-        'Password reset requires backend email delivery and token verification.',
+        'Password reset uses token issuance and verification on backend auth endpoints.',
         'Workspace and project access should remain protected by verified identity.',
         'Generated source and diagnostics should only be visible to authorized members.',
       ]}

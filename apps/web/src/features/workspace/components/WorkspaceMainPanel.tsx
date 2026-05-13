@@ -72,7 +72,7 @@ export function WorkspaceMainPanel({
         onSubmit={onCommandSubmit}
       />
 
-      <section className="rounded-[var(--radius-panel)] border border-border-muted bg-surface-raised shadow-hairline">
+      <section className="studio-surface-soft rounded-[var(--radius-panel)]">
         <button
           type="button"
           className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none sm:px-5"
@@ -81,9 +81,9 @@ export function WorkspaceMainPanel({
           onClick={onEvidenceToggle}
         >
           <span className="min-w-0">
-            <span className="block text-label-m text-text-primary">Project evidence, logs, and export</span>
+            <span className="block text-label-m text-text-primary">Evidence deck, logs, and launch controls</span>
             <span className="mt-0.5 block text-body-s text-text-secondary">
-              Secondary details are collapsed by default so the generated app remains the main workspace artifact.
+              Secondary operational details stay collapsible to keep runtime output as the dominant visual stage.
             </span>
           </span>
           <ChevronDown

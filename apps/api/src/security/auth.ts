@@ -2,21 +2,31 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { FastifyReply, FastifyRequest, preHandlerHookHandler } from 'fastify';
 import type { ProjectRecord, ProjectStore } from '../storage/project-store.js';
 import { config } from '../config.js';
+import { AUTH_COOKIE_NAMES } from './auth-cookies.js';
 
 export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'viewer';
+export type AccountRole = 'user' | 'admin';
 
 export interface AuthPrincipal {
   userId: string;
   email?: string;
   workspaceId: string;
   role: WorkspaceRole;
+  accountRole: AccountRole;
+  tokenExpiresAt?: number;
 }
 
-interface AuthTokenClaims {
+export interface AuthTokenClaims {
   sub: string;
   workspaceId: string;
   role: WorkspaceRole;
+  accountRole?: AccountRole;
+  email?: string;
+  type?: 'access';
   exp?: number;
+  iat?: number;
+  sid?: string;
+  jti?: string;
 }
 
 const ROLE_ORDER: Record<WorkspaceRole, number> = {
@@ -25,6 +35,18 @@ const ROLE_ORDER: Record<WorkspaceRole, number> = {
   admin: 2,
   owner: 3,
 };
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+const PUBLIC_AUTH_PATHS = new Set([
+  '/api/auth/signup',
+  '/api/auth/signin',
+  '/api/auth/refresh',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/auth/verify-email/confirm',
+  '/api/auth/verify-email/resend',
+]);
 
 function roleAtLeast(actual: WorkspaceRole, required: WorkspaceRole): boolean {
   return ROLE_ORDER[actual] >= ROLE_ORDER[required];
@@ -39,7 +61,7 @@ function parseRole(value: string | undefined): WorkspaceRole | null {
   return null;
 }
 
-function parseCookieHeader(cookieHeader: string | undefined): Record<string, string> {
+export function parseCookieHeader(cookieHeader: string | undefined): Record<string, string> {
   if (!cookieHeader || !cookieHeader.trim()) return {};
   const out: Record<string, string> = {};
   const parts = cookieHeader.split(';');
@@ -99,7 +121,9 @@ function verifySignedToken(token: string, secret: string): AuthTokenClaims | nul
   }
   const claims = parsed as Partial<AuthTokenClaims>;
   const role = parseRole(claims.role);
+  const accountRole = claims.accountRole === 'admin' ? 'admin' : 'user';
   if (!claims.sub || !claims.workspaceId || !role) return null;
+  if (claims.type && claims.type !== 'access') return null;
   if (typeof claims.exp === 'number' && Number.isFinite(claims.exp) && claims.exp < Math.floor(Date.now() / 1000)) {
     return null;
   }
@@ -107,7 +131,13 @@ function verifySignedToken(token: string, secret: string): AuthTokenClaims | nul
     sub: claims.sub,
     workspaceId: claims.workspaceId,
     role,
+    accountRole,
+    email: claims.email,
+    type: 'access',
     exp: claims.exp,
+    iat: claims.iat,
+    sid: claims.sid,
+    jti: claims.jti,
   };
 }
 
@@ -149,17 +179,25 @@ function resolveDevHeaderPrincipal(request: FastifyRequest): AuthPrincipal | nul
       : undefined,
   );
   if (!userId || !workspaceId || !role) return null;
-  return { userId, email: email || undefined, workspaceId, role };
+  return {
+    userId,
+    email: email || undefined,
+    workspaceId,
+    role,
+    accountRole: role === 'admin' ? 'admin' : 'user',
+  };
 }
 
-function resolvePrincipal(request: FastifyRequest, settings: AuthSettings): AuthPrincipal | null {
+function resolvePrincipal(
+  request: FastifyRequest,
+  settings: AuthSettings,
+  cookieBag: Record<string, string>,
+): AuthPrincipal | null {
   const authHeader = request.headers.authorization;
   const headerToken = normalizeBearerToken(authHeader);
-  const cookieBag = parseCookieHeader(
-    typeof request.headers.cookie === 'string' ? request.headers.cookie : undefined,
-  );
   const cookieToken = normalizeBearerToken(
-    cookieBag.devteam_auth_token
+    cookieBag[AUTH_COOKIE_NAMES.accessToken]
+      ?? cookieBag[AUTH_COOKIE_NAMES.legacyAccessToken]
       ?? cookieBag.auth_token
       ?? cookieBag.access_token
       ?? cookieBag.token,
@@ -171,8 +209,11 @@ function resolvePrincipal(request: FastifyRequest, settings: AuthSettings): Auth
     if (claims) {
       return {
         userId: claims.sub,
+        email: claims.email,
         workspaceId: claims.workspaceId,
         role: claims.role,
+        accountRole: claims.accountRole === 'admin' ? 'admin' : 'user',
+        tokenExpiresAt: claims.exp,
       };
     }
   }
@@ -185,19 +226,45 @@ function resolvePrincipal(request: FastifyRequest, settings: AuthSettings): Auth
       email: settings.devUserEmail,
       workspaceId: settings.devWorkspaceId,
       role: settings.devRole,
+      accountRole: settings.devRole === 'admin' ? 'admin' : 'user',
     };
   }
 
   return null;
 }
 
+function normalizePath(url: string): string {
+  const withoutQuery = url.split('?')[0] ?? url;
+  if (withoutQuery.length > 1 && withoutQuery.endsWith('/')) {
+    return withoutQuery.slice(0, -1);
+  }
+  return withoutQuery;
+}
+
 function isProtectedPath(url: string): boolean {
-  if (url === '/health') return false;
-  if (url.startsWith('/api/')) return true;
-  if (url.startsWith('/preview/')) return true;
-  if (url.startsWith('/ws/')) return true;
-  if (url === '/debug/runtime') return true;
+  const path = normalizePath(url);
+  if (path === '/health') return false;
+  if (path.startsWith('/api/auth/')) return !PUBLIC_AUTH_PATHS.has(path);
+  if (path.startsWith('/api/')) return true;
+  if (path.startsWith('/preview/')) return true;
+  if (path.startsWith('/ws/')) return true;
+  if (path === '/debug/runtime') return true;
   return false;
+}
+
+function requiresCsrfValidation(
+  request: FastifyRequest,
+  cookieBag: Record<string, string>,
+): boolean {
+  if (SAFE_METHODS.has(request.method.toUpperCase())) return false;
+  if (request.headers.authorization) return false;
+  return Boolean(
+    cookieBag[AUTH_COOKIE_NAMES.accessToken]
+    || cookieBag[AUTH_COOKIE_NAMES.legacyAccessToken]
+    || cookieBag.auth_token
+    || cookieBag.access_token
+    || cookieBag.token,
+  );
 }
 
 function unauthorized(reply: FastifyReply, message = 'Authentication required') {
@@ -288,10 +355,23 @@ export function createAuthGuardsWithSettings(
   const authenticate: preHandlerHookHandler = async (request, reply) => {
     if (request.method === 'OPTIONS') return;
     if (!isProtectedPath(request.url)) return;
-    const principal = resolvePrincipal(request, settings);
+    const cookieBag = parseCookieHeader(
+      typeof request.headers.cookie === 'string' ? request.headers.cookie : undefined,
+    );
+    const principal = resolvePrincipal(request, settings, cookieBag);
     if (!principal) {
       await unauthorized(reply);
       return;
+    }
+    if (requiresCsrfValidation(request, cookieBag)) {
+      const csrfCookie = cookieBag[AUTH_COOKIE_NAMES.csrfToken] ?? '';
+      const csrfHeader = typeof request.headers['x-csrf-token'] === 'string'
+        ? request.headers['x-csrf-token'].trim()
+        : '';
+      if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
+        await forbidden(reply, 'Invalid CSRF token');
+        return;
+      }
     }
     request.auth = principal;
   };
@@ -412,3 +492,4 @@ declare module 'fastify' {
     project?: ProjectRecord;
   }
 }
+

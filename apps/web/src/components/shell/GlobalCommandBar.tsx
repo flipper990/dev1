@@ -34,13 +34,13 @@ export function GlobalCommandBar({
         onChange={(event) => onChange?.(event.target.value)}
         placeholder={placeholder}
         className={cn(
-          'h-10 w-full rounded-[var(--radius-control)] border border-border bg-surface-base pl-9 pr-24 text-body-s text-text-primary shadow-hairline',
+          'h-10 w-full rounded-full border border-border-muted bg-surface-base/80 pl-9 pr-24 text-body-s text-text-primary shadow-hairline',
           'placeholder:text-text-muted transition-[background-color,border-color,box-shadow] duration-120 ease-ledger',
           'hover:border-border-strong focus-visible:border-brand-primary focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]',
         )}
       />
       <span
-        className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded-[var(--radius-control)] border border-border-muted bg-surface-tint px-2 py-1 text-label-s text-text-muted sm:inline-flex"
+        className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded-full border border-border-muted bg-surface-tint px-2 py-1 text-label-s text-text-muted sm:inline-flex"
         aria-hidden="true"
       >
         <Command className="h-3 w-3" />

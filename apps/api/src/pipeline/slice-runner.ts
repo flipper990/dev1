@@ -11,6 +11,7 @@ import {
 } from '../../../../packages/agent-core/src/implementation-completeness.js';
 import { normalizeTechStack, stackViolationsAsIssues, validateStackCompliance } from '../../../../packages/agent-core/src/tech-stack.js';
 import { uiSystemViolationsAsIssues, validateUiSystemCompliance } from '../../../../packages/agent-core/src/ui-system.js';
+import { enforceDeterministicGenerationContract } from './deterministic-generation-contract.js';
 
 export function applyDependencyAutoFix(
   artifacts: Map<AgentRole, Record<string, unknown>>,
@@ -147,71 +148,44 @@ export function runPostSliceQuickValidation(
   patched: Array<{ path: string; content: string; language?: string }>;
   fixes: { synthesizedPackageJson: boolean; addedScripts: string[]; touchedPackageJson: string | null };
 } {
-  const issues: string[] = [];
-  const patched: Array<{ path: string; content: string; language?: string }> = [];
-  const REQUIRED_SCRIPTS = ['build', 'dev'] as const;
+  const contract = enforceDeterministicGenerationContract(cumulativeFiles);
+  const priorByPath = new Map(cumulativeFiles.map((f) => [f.path.replace(/\\/g, '/'), f]));
+  const patched = contract.files.filter((f) => {
+    const prev = priorByPath.get(f.path);
+    return !prev || prev.content !== f.content || (prev.language ?? '') !== (f.language ?? '');
+  });
 
-  const pkgFiles = cumulativeFiles.filter(
-    (f) => /(^|\/)package\.json$/i.test(f.path) && !f.path.includes('node_modules/'),
-  );
+  const synthesizedPackageJson = contract.addedPaths.includes('package.json');
+  const touchedPackageJson = synthesizedPackageJson || contract.patchedPaths.includes('package.json')
+    ? 'package.json'
+    : null;
+  const addedScripts = touchedPackageJson ? ['dev', 'build', 'start', 'preview', 'typecheck'] : [];
+  const issues = [...contract.warnings, ...contract.blockingViolations];
+  const ok = contract.blockingViolations.length === 0;
 
-  let synthesizedPackageJson = false;
-  const addedScripts: string[] = [];
-  let touchedPath: string | null = null;
-
-  if (pkgFiles.length === 0) {
-    issues.push('no package.json in codebase');
-    const stub = {
-      name: 'generated-app',
-      version: '0.0.0',
-      private: true,
-      scripts: { dev: 'vite', build: 'vite build', start: 'vite preview' },
-    };
-    const content = JSON.stringify(stub, null, 2) + '\n';
-    patched.push({ path: 'package.json', content, language: 'json' });
-    synthesizedPackageJson = true;
-    touchedPath = 'package.json';
-  } else {
-    const root = pkgFiles.slice().sort((a, b) => a.path.length - b.path.length)[0]!;
-    let parsed: Record<string, unknown> | null = null;
-    try {
-      parsed = JSON.parse(root.content) as Record<string, unknown>;
-    } catch {
-      issues.push(`root package.json (${root.path}) is not valid JSON`);
-    }
-    if (parsed) {
-      const scripts = (parsed.scripts && typeof parsed.scripts === 'object'
-        ? (parsed.scripts as Record<string, unknown>)
-        : {}) as Record<string, unknown>;
-      let mutated = false;
-      for (const name of REQUIRED_SCRIPTS) {
-        const v = scripts[name];
-        if (typeof v !== 'string' || v.trim().length === 0) {
-          issues.push(`root package.json missing required script: '${name}'`);
-          scripts[name] = name === 'dev' ? 'vite' : 'vite build';
-          addedScripts.push(name);
-          mutated = true;
-        }
-      }
-      if (mutated) {
-        parsed.scripts = scripts;
-        const content = JSON.stringify(parsed, null, 2) + '\n';
-        patched.push({ path: root.path, content, language: root.language ?? 'json' });
-        touchedPath = root.path;
-      }
-    }
-  }
-
-  const ok = issues.length === 0;
-  if (ok) {
-    logger.info(`[quick-check] Slice ${sliceLabel}: PASS (package.json present, scripts ok)`, { event: 'quick-check:pass', sliceLabel });
+  if (ok && issues.length === 0) {
+    logger.info(`[quick-check] Slice ${sliceLabel}: PASS (deterministic generation contract)`, {
+      event: 'quick-check:pass',
+      sliceLabel,
+      manifestFiles: contract.manifest.files.length,
+      manifestRoutes: contract.manifest.routes.length,
+    });
   } else {
     logger.warn(
-      `[quick-check] Slice ${sliceLabel}: ${issues.length} issue(s) — auto-patched before next slice`,
-      { event: 'quick-check:auto-fix', sliceLabel, issues, synthesizedPackageJson, addedScripts, touchedPackageJson: touchedPath },
+      `[quick-check] Slice ${sliceLabel}: contract enforced with ${issues.length} issue(s); ${patched.length} file(s) patched`,
+      {
+        event: 'quick-check:auto-fix',
+        sliceLabel,
+        issues,
+        synthesizedPackageJson,
+        touchedPackageJson,
+        addedScripts,
+        patchedPaths: contract.patchedPaths,
+        addedPaths: contract.addedPaths,
+      },
     );
   }
-  return { ok, issues, patched, fixes: { synthesizedPackageJson, addedScripts, touchedPackageJson: touchedPath } };
+  return { ok, issues, patched, fixes: { synthesizedPackageJson, addedScripts, touchedPackageJson } };
 }
 
 export function applySimplifiedFallback(
@@ -266,7 +240,21 @@ export function assertBuilderProducedFiles(
   const builder = sliceState.artifacts.get('builder') as { files?: unknown[] } | undefined;
   const files = Array.isArray(builder?.files) ? builder!.files! : [];
   const orchFailed = sliceState.status === 'failed';
-  if (!orchFailed && files.length > 0) return;
+  if (files.length > 0) {
+    if (orchFailed) {
+      logger.warn('[builder-empty] orchestrator failed but builder emitted files; preserving builder artifacts', {
+        event: 'gen:builder-orchestrator-mismatch',
+        phase: ctx.phase,
+        step: ctx.step,
+        sliceLabel: ctx.sliceLabel,
+        sliceId: ctx.sliceId ?? null,
+        orchestratorStatus: sliceState.status ?? 'unknown',
+        orchestratorError: sliceState.error ?? null,
+        builderFileCount: files.length,
+      });
+    }
+    return;
+  }
   const reason = orchFailed ? `orchestrator status=failed (${sliceState.error ?? 'no error message'})` : 'builder artifact has 0 files';
   const sliceCoord = typeof ctx.sliceIndex === 'number' && typeof ctx.sliceCount === 'number' ? ` slice ${ctx.sliceIndex + 1}/${ctx.sliceCount}` : '';
   const sliceTag = ctx.sliceId ? ` [slice=${ctx.sliceId}]` : '';

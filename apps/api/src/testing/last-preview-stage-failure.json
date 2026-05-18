@@ -1,0 +1,519 @@
+{
+  "timestamp": "2026-05-16T22:28:54.180Z",
+  "projectId": "4cL9d4cKKlc_",
+  "totalFiles": 53,
+  "skippedCount": 1,
+  "skipped": [
+    {
+      "path": "src/app/layout.tsx",
+      "reason": "invalid-global-css-import",
+      "typeofContent": "string"
+    }
+  ],
+  "filesInspected": [
+    {
+      "index": 0,
+      "path": "package.json",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 565,
+      "preview": "{\n  \"name\": \"simple-pricing-page\",\n  \"version\": \"1.0.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"dev\": \"next dev\",\n    \"build\": \"next build\",\n    \"start\": \"next start\",\n    \"lint\": \"next lint\"\n  },\n  \""
+    },
+    {
+      "index": 1,
+      "path": "tsconfig.json",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 730,
+      "preview": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"lib\": [\"DOM\", \"DOM.Iterable\", \"ES2022\"],\n    \"allowJs\": false,\n    \"skipLibCheck\": true,\n    \"strict\": true,\n    \"forceConsistentCasingInFileNames"
+    },
+    {
+      "index": 2,
+      "path": "next.config.mjs",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 828,
+      "preview": "import path from 'path';\n\n/** @type {import('next').NextConfig} */\nconst nextConfig = {\n  reactStrictMode: true,\n  swcMinify: true,\n  experimental: {\n    appDir: true\n  },\n  images: {\n    remotePatter"
+    },
+    {
+      "index": 3,
+      "path": "src/app/layout.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 393,
+      "preview": "'use client';\nimport type { ReactNode } from \"react\";\nimport { AppShell } from \"@/components/layout/AppShell\";\n\nexport default function RootLayout({ children }: { children: ReactNode }) {\n  return (\n "
+    },
+    {
+      "index": 4,
+      "path": "src/app/page.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 3813,
+      "preview": "'use client';\nimport { useState } from \"react\";\nimport { PricingHero } from \"@/components/pricing/PricingHero\";\nimport { PricingPlanCard } from \"@/components/pricing/PricingPlanCard\";\nimport { Feature"
+    },
+    {
+      "index": 5,
+      "path": "src/app/about/page.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 536,
+      "preview": "import Link from \"next/link\";\n\nexport default function AboutPage() {\n  return (\n    <main className=\"max-w-2xl mx-auto p-6\">\n      <section>\n        <h1 className=\"text-2xl font-semibold mb-2\">About</"
+    },
+    {
+      "index": 6,
+      "path": "src/app/globals.css",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 1535,
+      "preview": "@tailwind base;\n@tailwind components;\n@tailwind utilities;\n\n@layer base {\n  :root {\n    --background: 0 0% 100%;\n    --foreground: 222 47% 11%;\n    --card: 0 0% 100%;\n    --card-foreground: 222 47% 11"
+    },
+    {
+      "index": 7,
+      "path": "IMPLEMENTATION_CHECKLIST.md",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 323,
+      "preview": "## Pages\n- [ ] /\n\n## Components\n- [ ] PricingHero\n- [ ] PricingPlanCard\n- [ ] FeatureComparisonTable\n- [ ] PrimaryCTA\n\n## API contracts\n- [x] (none declared)\n\n## User flows\n- [ ] visitor-views-pricing"
+    },
+    {
+      "index": 8,
+      "path": "src/components/pricing/PricingHero.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 381,
+      "preview": "import { ReactNode } from \"react\";\nimport { PageHeader } from \"@/components/ui/PageHeader\";\n\ninterface PricingHeroProps {\n  title: string;\n  description: string;\n  children?: ReactNode;\n}\n\nexport func"
+    },
+    {
+      "index": 9,
+      "path": "src/components/pricing/PricingPlanCard.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 1751,
+      "preview": "import { Card } from \"@/components/ui/Card\";\nimport { Badge } from \"@/components/ui/Badge\";\nimport { PrimaryCTA } from \"@/components/pricing/PrimaryCTA\";\n\ninterface Plan {\n  id: string;\n  name: string"
+    },
+    {
+      "index": 10,
+      "path": "src/components/pricing/FeatureComparisonTable.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 2765,
+      "preview": "import { Card } from \"@/components/ui/Card\";\nimport { Badge } from \"@/components/ui/Badge\";\n\ninterface Plan {\n  id: string;\n  name: string;\n  price: string;\n  period: string;\n  features: string[];\n  r"
+    },
+    {
+      "index": 11,
+      "path": "src/components/pricing/PrimaryCTA.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 386,
+      "preview": "import Link from \"next/link\";\nimport { Button } from \"@/components/ui/Button\";\n\ninterface PrimaryCTAProps {\n  label: string;\n  href: string;\n}\n\nexport function PrimaryCTA({ label, href }: PrimaryCTAPr"
+    },
+    {
+      "index": 12,
+      "path": "src/components/ui/Skeleton.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 350,
+      "preview": "import { cn } from \"@/lib/cn\";\nimport React from \"react\";\n\nexport interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {}\n\nexport function Skeleton({ className, ...props }: SkeletonPro"
+    },
+    {
+      "index": 13,
+      "path": "src/components/ui/EmptyState.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 941,
+      "preview": "'use client';\n\nimport { Button } from \"@/components/ui/Button\";\n\nexport interface EmptyStateProps {\n  title: string;\n  description?: string;\n  actionLabel?: string;\n  onAction?: () => void;\n}\n\nexport "
+    },
+    {
+      "index": 14,
+      "path": "src/components/ui/PageHeader.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 511,
+      "preview": "import { ReactNode } from \"react\";\n\nexport interface PageHeaderProps {\n  title: string;\n  description?: string;\n  children?: ReactNode;\n}\n\nexport function PageHeader({ title, description, children }: "
+    },
+    {
+      "index": 15,
+      "path": "src/components/ui/Card.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 354,
+      "preview": "import React from \"react\";\nimport { cn } from \"@/lib/cn\";\n\nexport interface CardProps extends React.HTMLAttributes<HTMLDivElement> {}\n\nexport function Card({ className, ...props }: CardProps) {\n  retu"
+    },
+    {
+      "index": 16,
+      "path": "src/components/ui/Badge.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 818,
+      "preview": "import React from \"react\";\nimport { cn } from \"@/lib/cn\";\n\nexport type BadgeVariant = \"default\" | \"accent\" | \"success\" | \"warning\" | \"destructive\";\n\nexport interface BadgeProps extends React.HTMLAttri"
+    },
+    {
+      "index": 17,
+      "path": "src/components/ui/Button.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 990,
+      "preview": "import React from \"react\";\nimport { cn } from \"@/lib/cn\";\n\nexport interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {\n  asChild?: boolean;\n  size?: \"sm\" | \"md\" | \"lg\";\n}\n\ncon"
+    },
+    {
+      "index": 18,
+      "path": "src/lib/cn.ts",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 120,
+      "preview": "export function cn(...args: (string | undefined | false | null)[]): string {\n  return args.filter(Boolean).join(\" \");\n}\n"
+    },
+    {
+      "index": 19,
+      "path": "tailwind.config.js",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 2348,
+      "preview": "const { fontFamily } = require('tailwindcss/defaultTheme');\n\nmodule.exports = {\n  content: [\n    './src/app/**/*.{js,ts,jsx,tsx}',\n    './src/components/**/*.{js,ts,jsx,tsx}'\n  ],\n  theme: {\n    exten"
+    },
+    {
+      "index": 20,
+      "path": "postcss.config.js",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 83,
+      "preview": "module.exports = {\n  plugins: {\n    tailwindcss: {},\n    autoprefixer: {},\n  },\n};\n"
+    },
+    {
+      "index": 21,
+      "path": ".env.example",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 54,
+      "preview": "# No environment variables required for this project.\n"
+    },
+    {
+      "index": 22,
+      "path": ".gitignore",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 58,
+      "preview": "node_modules/\n.next/\ndist/\n.env*\n.DS_Store\nout/\ncoverage/\n"
+    },
+    {
+      "index": 23,
+      "path": "src/components/layout/AppShell.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 590,
+      "preview": "import { ReactNode } from \"react\";\nimport { Sidebar } from \"@/components/layout/Sidebar\";\nimport { Topbar } from \"@/components/layout/Topbar\";\n\ninterface AppShellProps {\n  children: ReactNode;\n}\n\nexpo"
+    },
+    {
+      "index": 24,
+      "path": "src/components/layout/Sidebar.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 667,
+      "preview": "import Link from \"next/link\";\n\nexport function Sidebar() {\n  return (\n    <aside className=\"hidden md:flex flex-col w-64 shrink-0 bg-card border-r border-border min-h-screen p-6\">\n      <nav className"
+    },
+    {
+      "index": 25,
+      "path": "src/components/layout/Topbar.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 272,
+      "preview": "export function Topbar() {\n  return (\n    <header className=\"h-14 flex items-center px-4 sm:px-6 md:px-8 border-b border-border bg-background sticky top-0 z-30\">\n      <span className=\"text-lg font-se"
+    },
+    {
+      "index": 26,
+      "path": "src/lib/design-tokens.ts",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 1660,
+      "preview": "// Design tokens for the Simple Pricing Page\nexport const colors = {\n  background: '#F8FAFC',\n  card: '#FFFFFF',\n  primary: '#2563EB',\n  'primary-foreground': '#FFFFFF',\n  secondary: '#E0E7EF',\n  'sec"
+    },
+    {
+      "index": 27,
+      "path": "src/components/ui/Input.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 2069,
+      "preview": "import { cn } from \"@/lib/cn\";\nimport React from \"react\";\n\nexport interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {\n  label?: string;\n  hint?: string;\n  error?: string;\n  icon"
+    },
+    {
+      "index": 28,
+      "path": "src/components/ui/Dialog.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 1798,
+      "preview": "'use client';\n\nimport React, { ReactNode, useRef, useEffect } from \"react\";\nimport { cn } from \"@/lib/cn\";\n\ninterface DialogProps {\n  open: boolean;\n  onOpenChange: (open: boolean) => void;\n  children"
+    },
+    {
+      "index": 29,
+      "path": "src/components/ui/Toast.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 1989,
+      "preview": "'use client';\n\nimport { useState, useCallback, createContext, useContext, ReactNode } from \"react\";\n\ninterface Toast {\n  id: number;\n  message: string;\n  type?: \"success\" | \"error\" | \"info\";\n}\n\ninterf"
+    },
+    {
+      "index": 30,
+      "path": ".env.local",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 30,
+      "preview": "# Local environment overrides\n"
+    },
+    {
+      "index": 31,
+      "path": "next-env.d.ts",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 81,
+      "preview": "/// <reference types=\"next\" />\n/// <reference types=\"next/image-types/global\" />\n"
+    },
+    {
+      "index": 32,
+      "path": ".dockerignore",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 60,
+      "preview": "node_modules\n.next\ndist\n.git\n.env\n.env.*\n*.log\ncoverage\ntmp\n"
+    },
+    {
+      "index": 33,
+      "path": "Dockerfile",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 316,
+      "preview": "FROM node:22-alpine AS builder\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci\nCOPY . .\nRUN npm run build\n\nFROM node:22-alpine AS runner\nWORKDIR /app\nENV NODE_ENV=production\nCOPY --from=builder /app/pac"
+    },
+    {
+      "index": 34,
+      "path": "docker-compose.yml",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 290,
+      "preview": "services:\n  app:\n    build: .\n    ports:\n      - \"3000:3000\"\n    env_file:\n      - .env\n    restart: unless-stopped\n    healthcheck:\n      test: [\"CMD\", \"wget\", \"--spider\", \"-q\", \"http://localhost:300"
+    },
+    {
+      "index": 35,
+      "path": "scripts/deploy.sh",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 293,
+      "preview": "#!/usr/bin/env bash\nset -euo pipefail\n\nif [[ ! -f .env ]]; then\n  echo \"Missing .env file. Copy .env.example to .env and configure values.\"\n  exit 1\nfi\n\ndocker compose pull || true\ndocker compose buil"
+    },
+    {
+      "index": 36,
+      "path": "scripts/deploy.ps1",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 286,
+      "preview": "$ErrorActionPreference = \"Stop\"\n\nif (-not (Test-Path .env)) {\n  Write-Error \"Missing .env file. Copy .env.example to .env and configure values.\"\n}\n\ndocker compose pull\ndocker compose build --pull\ndock"
+    },
+    {
+      "index": 37,
+      "path": "scripts/validate-env.sh",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 296,
+      "preview": "#!/usr/bin/env bash\nset -euo pipefail\n\nrequired=(\"NODE_ENV\" \"PORT\")\nmissing=0\nfor name in \"${required[@]}\"; do\n  if [[ -z \"${!name:-}\" ]]; then\n    echo \"Missing required env var: ${name}\"\n    missing"
+    },
+    {
+      "index": 38,
+      "path": "scripts/validate-env.ps1",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 369,
+      "preview": "$ErrorActionPreference = \"Stop\"\n$required = @('NODE_ENV', 'PORT')\n$missing = @()\nforeach ($name in $required) {\n  if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {\n    "
+    },
+    {
+      "index": 39,
+      "path": ".github/workflows/deploy.yml",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 780,
+      "preview": "name: Deploy\n\non:\n  workflow_dispatch:\n  push:\n    branches: [\"main\"]\n\njobs:\n  build-and-publish:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Checkout\n        uses: actions/checkout@v4\n      -"
+    },
+    {
+      "index": 40,
+      "path": "vercel.json",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 139,
+      "preview": "{\n  \"$schema\": \"https://openapi.vercel.sh/vercel.json\",\n  \"version\": 2,\n  \"buildCommand\": \"npm run build\",\n  \"devCommand\": \"npm run dev\"\n}\n"
+    },
+    {
+      "index": 41,
+      "path": "infra/aws/cloudformation.yaml",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 260,
+      "preview": "AWSTemplateFormatVersion: \"2010-09-09\"\nDescription: Basic ECS Fargate scaffold for generated project\nResources:\n  Cluster:\n    Type: AWS::ECS::Cluster\n    Properties:\n      ClusterName: generated-proj"
+    },
+    {
+      "index": 42,
+      "path": "tailwind.config.ts",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 2157,
+      "preview": "import type { Config } from 'tailwindcss';\n\nconst config: Config = {\n  content: ['./src/**/*.{ts,tsx}', './app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],\n  darkMode: 'class',\n  theme: { extend: {\n"
+    },
+    {
+      "index": 43,
+      "path": "src/components/ui/Spinner.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 721,
+      "preview": "import * as React from 'react';\nimport { cn } from '@/lib/cn';\n\nexport interface SpinnerProps extends React.SVGAttributes<SVGElement> { size?: 'sm' | 'md' | 'lg'; }\nconst sizeMap = { sm: 'w-4 h-4', md"
+    },
+    {
+      "index": 44,
+      "path": "src/components/ui/AppShell.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 4177,
+      "preview": "import * as React from 'react';\nimport { cn } from '@/lib/cn';\n\nexport interface NavItem {\n  label: string;\n  href?: string;\n  icon?: React.ReactNode;\n  active?: boolean;\n  onClick?: () => void;\n  bad"
+    },
+    {
+      "index": 45,
+      "path": "src/components/ui/Textarea.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 1500,
+      "preview": "import * as React from 'react';\nimport { cn } from '@/lib/cn';\n\nexport interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {\n  label?: string; error?: string; helperText?"
+    },
+    {
+      "index": 46,
+      "path": "src/components/ui/Select.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 1499,
+      "preview": "import * as React from 'react';\nimport { cn } from '@/lib/cn';\n\nexport interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {\n  label?: string; error?: string; helperText?: stri"
+    },
+    {
+      "index": 47,
+      "path": "src/components/ui/Alert.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 1499,
+      "preview": "import * as React from 'react';\nimport { cva, type VariantProps } from 'class-variance-authority';\nimport { cn } from '@/lib/cn';\n\nconst alertVariants = cva('relative w-full rounded-lg border p-4 text"
+    },
+    {
+      "index": 48,
+      "path": "src/components/ui/Separator.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 457,
+      "preview": "import * as React from 'react';\nimport { cn } from '@/lib/cn';\n\nexport interface SeparatorProps extends React.HTMLAttributes<HTMLDivElement> { orientation?: 'horizontal' | 'vertical'; }\nexport functio"
+    },
+    {
+      "index": 49,
+      "path": "src/components/ui/Avatar.tsx",
+      "hasContent": true,
+      "hasContents": false,
+      "typeofContent": "string",
+      "typeofContents": "undefined",
+      "contentBytes": 822,
+      "preview": "import * as React from 'react';\nimport { cn } from '@/lib/cn';\n\nexport function Avatar({ className, ...props }: React.HTMLAttributes<HTMLSpanElement>) {\n  return <span className={cn('relative flex h-1"
+    }
+  ],
+  "error": {
+    "message": "Invalid global CSS import in \"src/app/layout.tsx\": Root layout must import \"./globals.css\"..",
+    "stack": "Error: Invalid global CSS import in \"src/app/layout.tsx\": Root layout must import \"./globals.css\"..\n    at PreviewManager.runIntegrityGate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:2138:7)\n    at async PreviewManager.start (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\preview-manager.ts:1079:24)\n    at async validatePreview (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\preview-validator.ts:95:14)\n    at async validateAndAutoFix (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\auto-fix.ts:129:14)\n    at async Immediate.<anonymous> (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\preview-scheduler.ts:207:23)"
+  }
+}

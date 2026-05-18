@@ -176,6 +176,14 @@ export function useWorkspaceProject(params: {
   const logEntries = useMemo(() => buildLogEntries(selectedProject, selectedProjectId), [selectedProject, selectedProjectId]);
 
   const workspaceBanner = useMemo(() => {
+    const loadingError = projectsState.error ?? projectState.error ?? previewStateLive.error ?? activityState.error;
+    if (loadingError) {
+      return {
+        tone: 'error' as const,
+        title: 'Unable to load project data',
+        description: loadingError,
+      };
+    }
     if (projectsState.reconnecting || projectState.reconnecting || previewStateLive.reconnecting || activityState.reconnecting) {
       return { tone: 'warning' as const, title: 'Reconnecting to backend', description: 'Live project, preview, or activity feeds are reconnecting. Showing last known state.' };
     }
@@ -191,13 +199,17 @@ export function useWorkspaceProject(params: {
     return null;
   }, [
     activityState.reconnecting,
+    activityState.error,
     activityState.stale,
+    previewStateLive.error,
     previewStateLive.reconnecting,
     previewStateLive.stale,
     projectLoading,
+    projectState.error,
     projectState.reconnecting,
     projectState.stale,
     projectsLoading,
+    projectsState.error,
     projectsState.reconnecting,
     projectsState.stale,
     selectedProject,

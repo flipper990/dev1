@@ -1,0 +1,389 @@
+﻿{
+    "startedAt":  "2026-05-16T12:00:37.114Z",
+    "completedAt":  "2026-05-16T13:31:14.337Z",
+    "summary":  {
+                    "total":  10,
+                    "succeeded":  3,
+                    "failed":  7,
+                    "successRate":  0.3,
+                    "averageCompletionMs":  382796,
+                    "retryFrequency":  0.3,
+                    "previewStartupSuccess":  0.3,
+                    "exportSuccessRate":  0.3,
+                    "failureCategories":  {
+                                              "orchestration_failure":  5,
+                                              "empty_generation":  2
+                                          },
+                    "reliabilityByTier":  [
+                                              {
+                                                  "tier":  "tier1",
+                                                  "total":  0,
+                                                  "succeeded":  0,
+                                                  "failed":  0,
+                                                  "successRate":  0
+                                              },
+                                              {
+                                                  "tier":  "tier2",
+                                                  "total":  0,
+                                                  "succeeded":  0,
+                                                  "failed":  0,
+                                                  "successRate":  0
+                                              },
+                                              {
+                                                  "tier":  "tier3",
+                                                  "total":  0,
+                                                  "succeeded":  0,
+                                                  "failed":  0,
+                                                  "successRate":  0
+                                              }
+                                          ]
+                },
+    "missions":  [
+                     {
+                         "index":  0,
+                         "missionId":  "U6SWcGQt0-HEHodu",
+                         "projectId":  "QeSL6Iek1Lce",
+                         "prompt":  "Build a simple landing page with hero section, features, and CTA.",
+                         "finalStatus":  "pass",
+                         "durationMs":  391969,
+                         "filesCount":  49,
+                         "retryCount":  0,
+                         "previewState":  "ready",
+                         "exportState":  "ok",
+                         "failureCategory":  null,
+                         "failurePhase":  null,
+                         "failureReason":  null,
+                         "failedStep":  null,
+                         "zeroFileClassification":  null,
+                         "failureCluster":  null,
+                         "contractViolations":  {
+                                                    "deterministicFailure":  null,
+                                                    "integrityPackageViolations":  [
+
+                                                                                   ],
+                                                    "count":  0
+                                                },
+                         "buildDiagnostics":  {
+                                                  "status":  "warning",
+                                                  "finalVerdict":  "fail",
+                                                  "buildErrorsCount":  2,
+                                                  "runtimeErrorsCount":  0,
+                                                  "reason":  "no-progress"
+                                              },
+                         "previewDiagnostics":  {
+                                                    "previewStatus":  "idle",
+                                                    "previewHealth":  "unknown",
+                                                    "previewError":  null,
+                                                    "overlayErrorType":  null,
+                                                    "lastStep":  "container stopped"
+                                                },
+                         "exportDiagnostics":  {
+                                                   "exportOk":  true,
+                                                   "exportState":  "ok"
+                                               }
+                     },
+                     {
+                         "index":  1,
+                         "missionId":  "00tTrwdtD9xiEZXK",
+                         "projectId":  "1J-JhsBGjqSk",
+                         "prompt":  "Build a simple SaaS dashboard with sidebar, KPI cards, and recent activity.",
+                         "finalStatus":  "fail",
+                         "durationMs":  690160,
+                         "filesCount":  36,
+                         "retryCount":  0,
+                         "previewState":  null,
+                         "exportState":  "not_attempted",
+                         "failureCategory":  "orchestration_failure",
+                         "failurePhase":  "final-assembly",
+                         "failureReason":  "Deterministic generation contract FAILED: dangling internal import: src/app/logout/page.test.tsx -\u003e \u0027./page\u0027",
+                         "failedStep":  "final-assembly:deterministic-contract",
+                         "zeroFileClassification":  null,
+                         "failureCluster":  "orchestration_failure",
+                         "contractViolations":  {
+                                                    "deterministicFailure":  "dangling internal import: src/app/logout/page.test.tsx -\u003e \u0027./page\u0027",
+                                                    "integrityPackageViolations":  [
+
+                                                                                   ],
+                                                    "count":  0
+                                                },
+                         "buildDiagnostics":  null,
+                         "previewDiagnostics":  null,
+                         "exportDiagnostics":  {
+                                                   "exportOk":  false,
+                                                   "exportState":  "not_attempted"
+                                               }
+                     },
+                     {
+                         "index":  2,
+                         "missionId":  "GxSkeMoYmDA2fcy-",
+                         "projectId":  "Soj8JTjgMe25",
+                         "prompt":  "Build a simple marketing website with home, features, and contact sections.",
+                         "finalStatus":  "fail",
+                         "durationMs":  634313,
+                         "filesCount":  51,
+                         "retryCount":  1,
+                         "previewState":  null,
+                         "exportState":  "not_attempted",
+                         "failureCategory":  "empty_generation",
+                         "failurePhase":  "qa-gate",
+                         "failureReason":  "Pipeline did not reach \u0027completed\u0027 state (state=failed, error=Critical step \"Build\" failed: Builder produced 0 files in primary attempts (VALIDATION_ERROR: Validation: builder produced no files) AND in the reduced-prompt fallback (Validation: builder produced no files). Slice cannot proceed.)",
+                         "failedStep":  "qa-gate:pipeline-not-completed",
+                         "zeroFileClassification":  null,
+                         "failureCluster":  "empty_generation",
+                         "contractViolations":  {
+                                                    "deterministicFailure":  null,
+                                                    "integrityPackageViolations":  [
+
+                                                                                   ],
+                                                    "count":  0
+                                                },
+                         "buildDiagnostics":  null,
+                         "previewDiagnostics":  null,
+                         "exportDiagnostics":  {
+                                                   "exportOk":  false,
+                                                   "exportState":  "not_attempted"
+                                               }
+                     },
+                     {
+                         "index":  3,
+                         "missionId":  "tjZfi-ogxfm0AYdG",
+                         "projectId":  "njfwxAWw5YPw",
+                         "prompt":  "Build a simple portfolio site with about, projects list, and contact section.",
+                         "finalStatus":  "fail",
+                         "durationMs":  591920,
+                         "filesCount":  53,
+                         "retryCount":  1,
+                         "previewState":  null,
+                         "exportState":  "not_attempted",
+                         "failureCategory":  "empty_generation",
+                         "failurePhase":  "qa-gate",
+                         "failureReason":  "Pipeline did not reach \u0027completed\u0027 state (state=failed, error=Critical step \"Build\" failed: Builder produced 0 files in primary attempts (VALIDATION_ERROR: Validation: builder produced no files) AND in the reduced-prompt fallback (Validation: builder produced no files). Slice cannot proceed.)",
+                         "failedStep":  "qa-gate:pipeline-not-completed",
+                         "zeroFileClassification":  null,
+                         "failureCluster":  "empty_generation",
+                         "contractViolations":  {
+                                                    "deterministicFailure":  null,
+                                                    "integrityPackageViolations":  [
+
+                                                                                   ],
+                                                    "count":  0
+                                                },
+                         "buildDiagnostics":  null,
+                         "previewDiagnostics":  null,
+                         "exportDiagnostics":  {
+                                                   "exportOk":  false,
+                                                   "exportState":  "not_attempted"
+                                               }
+                     },
+                     {
+                         "index":  4,
+                         "missionId":  "-6SrXV9mCXOmgKHh",
+                         "projectId":  "oot50wM8dB07",
+                         "prompt":  "Build a simple product page with product details, features, and buy CTA.",
+                         "finalStatus":  "pass",
+                         "durationMs":  422631,
+                         "filesCount":  50,
+                         "retryCount":  0,
+                         "previewState":  "ready",
+                         "exportState":  "ok",
+                         "failureCategory":  null,
+                         "failurePhase":  null,
+                         "failureReason":  null,
+                         "failedStep":  null,
+                         "zeroFileClassification":  null,
+                         "failureCluster":  null,
+                         "contractViolations":  {
+                                                    "deterministicFailure":  null,
+                                                    "integrityPackageViolations":  [
+
+                                                                                   ],
+                                                    "count":  0
+                                                },
+                         "buildDiagnostics":  {
+                                                  "status":  "warning",
+                                                  "finalVerdict":  "fail",
+                                                  "buildErrorsCount":  2,
+                                                  "runtimeErrorsCount":  0,
+                                                  "reason":  "no-progress"
+                                              },
+                         "previewDiagnostics":  {
+                                                    "previewStatus":  "idle",
+                                                    "previewHealth":  "unknown",
+                                                    "previewError":  null,
+                                                    "overlayErrorType":  null,
+                                                    "lastStep":  "container stopped"
+                                                },
+                         "exportDiagnostics":  {
+                                                   "exportOk":  true,
+                                                   "exportState":  "ok"
+                                               }
+                     },
+                     {
+                         "index":  5,
+                         "missionId":  "cTxxcKrzp-sP4cWN",
+                         "projectId":  "IVxGokIB-J-5",
+                         "prompt":  "Build a simple admin overview page with summary cards and recent updates.",
+                         "finalStatus":  "fail",
+                         "durationMs":  882231,
+                         "filesCount":  47,
+                         "retryCount":  0,
+                         "previewState":  null,
+                         "exportState":  "not_attempted",
+                         "failureCategory":  "orchestration_failure",
+                         "failurePhase":  "final-assembly",
+                         "failureReason":  "Deterministic generation contract FAILED: dangling internal import: src/app/api/users/route.test.ts -\u003e \u0027@/lib/db\u0027 | dangling internal import: src/app/api/users/route.test.ts -\u003e \u0027@/lib/auth\u0027",
+                         "failedStep":  "final-assembly:deterministic-contract",
+                         "zeroFileClassification":  null,
+                         "failureCluster":  "orchestration_failure",
+                         "contractViolations":  {
+                                                    "deterministicFailure":  "dangling internal import: src/app/api/users/route.test.ts -\u003e \u0027@/lib/db\u0027 | dangling internal import: src/app/api/users/route.test.ts -\u003e \u0027@/lib/auth\u0027",
+                                                    "integrityPackageViolations":  [
+
+                                                                                   ],
+                                                    "count":  0
+                                                },
+                         "buildDiagnostics":  null,
+                         "previewDiagnostics":  null,
+                         "exportDiagnostics":  {
+                                                   "exportOk":  false,
+                                                   "exportState":  "not_attempted"
+                                               }
+                     },
+                     {
+                         "index":  6,
+                         "missionId":  "AjpdbLi7t_5JCoQL",
+                         "projectId":  "BBFpwKZtyWHb",
+                         "prompt":  "Build a simple docs/help center page with search box and article list.",
+                         "finalStatus":  "fail",
+                         "durationMs":  343260,
+                         "filesCount":  56,
+                         "retryCount":  0,
+                         "previewState":  null,
+                         "exportState":  "not_attempted",
+                         "failureCategory":  "orchestration_failure",
+                         "failurePhase":  "qa-gate",
+                         "failureReason":  "QA gate failed: score 95/100 (blockers=none)",
+                         "failedStep":  "qa-gate:report-not-passed",
+                         "zeroFileClassification":  null,
+                         "failureCluster":  "orchestration_failure",
+                         "contractViolations":  {
+                                                    "deterministicFailure":  null,
+                                                    "integrityPackageViolations":  [
+
+                                                                                   ],
+                                                    "count":  0
+                                                },
+                         "buildDiagnostics":  null,
+                         "previewDiagnostics":  null,
+                         "exportDiagnostics":  {
+                                                   "exportOk":  false,
+                                                   "exportState":  "not_attempted"
+                                               }
+                     },
+                     {
+                         "index":  7,
+                         "missionId":  "snktMGOrBl2EYpoR",
+                         "projectId":  "B323YQdDkYFp",
+                         "prompt":  "Build a simple pricing page with three plans and feature comparison.",
+                         "finalStatus":  "pass",
+                         "durationMs":  333787,
+                         "filesCount":  51,
+                         "retryCount":  0,
+                         "previewState":  "ready",
+                         "exportState":  "ok",
+                         "failureCategory":  null,
+                         "failurePhase":  null,
+                         "failureReason":  null,
+                         "failedStep":  null,
+                         "zeroFileClassification":  null,
+                         "failureCluster":  null,
+                         "contractViolations":  {
+                                                    "deterministicFailure":  null,
+                                                    "integrityPackageViolations":  [
+
+                                                                                   ],
+                                                    "count":  0
+                                                },
+                         "buildDiagnostics":  {
+                                                  "status":  "warning",
+                                                  "finalVerdict":  "fail",
+                                                  "buildErrorsCount":  1,
+                                                  "runtimeErrorsCount":  0,
+                                                  "reason":  "max-iterations"
+                                              },
+                         "previewDiagnostics":  {
+                                                    "previewStatus":  "idle",
+                                                    "previewHealth":  "unknown",
+                                                    "previewError":  null,
+                                                    "overlayErrorType":  null,
+                                                    "lastStep":  "container stopped"
+                                                },
+                         "exportDiagnostics":  {
+                                                   "exportOk":  true,
+                                                   "exportState":  "ok"
+                                               }
+                     },
+                     {
+                         "index":  8,
+                         "missionId":  "awZJAsHaCLsPKzJg",
+                         "projectId":  "lHGph30_xe5Z",
+                         "prompt":  "Build a simple waitlist page with email capture form and confirmation state.",
+                         "finalStatus":  "fail",
+                         "durationMs":  280709,
+                         "filesCount":  49,
+                         "retryCount":  1,
+                         "previewState":  null,
+                         "exportState":  "not_attempted",
+                         "failureCategory":  "orchestration_failure",
+                         "failurePhase":  "final-assembly",
+                         "failureReason":  "Deterministic generation contract FAILED: dangling internal import: app/page.tsx -\u003e \u0027../components/HeroBanner\u0027 | dangling internal import: app/page.tsx -\u003e \u0027../components/ConfirmationState\u0027 | dangling internal import: app/page.tsx -\u003e \u0027../components/ErrorAlert\u0027 | dangling internal import: app/page.tsx -\u003e \u0027../components/LoadingSpinner\u0027 | dangling internal import: app/page.tsx -\u003e \u0027../components/ui/Button\u0027",
+                         "failedStep":  "final-assembly:deterministic-contract",
+                         "zeroFileClassification":  null,
+                         "failureCluster":  "orchestration_failure",
+                         "contractViolations":  {
+                                                    "deterministicFailure":  "dangling internal import: app/page.tsx -\u003e \u0027../components/HeroBanner\u0027 | dangling internal import: app/page.tsx -\u003e \u0027../components/ConfirmationState\u0027 | dangling internal import: app/page.tsx -\u003e \u0027../components/ErrorAlert\u0027 | dangling internal import: app/page.tsx -\u003e \u0027../components/LoadingSpinner\u0027 | dangling internal import: app/page.tsx -\u003e \u0027../components/ui/Button\u0027",
+                                                    "integrityPackageViolations":  [
+
+                                                                                   ],
+                                                    "count":  0
+                                                },
+                         "buildDiagnostics":  null,
+                         "previewDiagnostics":  null,
+                         "exportDiagnostics":  {
+                                                   "exportOk":  false,
+                                                   "exportState":  "not_attempted"
+                                               }
+                     },
+                     {
+                         "index":  9,
+                         "missionId":  "nI9bP-y1iaSlE5zW",
+                         "projectId":  "junlM8QtIiUH",
+                         "prompt":  "Build a simple analytics dashboard with charts placeholders, metrics, and filters.",
+                         "finalStatus":  "fail",
+                         "durationMs":  866114,
+                         "filesCount":  53,
+                         "retryCount":  0,
+                         "previewState":  null,
+                         "exportState":  "not_attempted",
+                         "failureCategory":  "orchestration_failure",
+                         "failurePhase":  "final-assembly",
+                         "failureReason":  "Deterministic generation contract FAILED: dangling internal import: src/app/api/metrics.kpis/route.test.ts -\u003e \u0027./route\u0027",
+                         "failedStep":  "final-assembly:deterministic-contract",
+                         "zeroFileClassification":  null,
+                         "failureCluster":  "orchestration_failure",
+                         "contractViolations":  {
+                                                    "deterministicFailure":  "dangling internal import: src/app/api/metrics.kpis/route.test.ts -\u003e \u0027./route\u0027",
+                                                    "integrityPackageViolations":  [
+
+                                                                                   ],
+                                                    "count":  0
+                                                },
+                         "buildDiagnostics":  null,
+                         "previewDiagnostics":  null,
+                         "exportDiagnostics":  {
+                                                   "exportOk":  false,
+                                                   "exportState":  "not_attempted"
+                                               }
+                     }
+                 ]
+}

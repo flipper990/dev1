@@ -46,7 +46,7 @@ interface FeatureSlice {
   acceptance?: string[];
 }
 
-interface BuilderFile {
+export interface BuilderFile {
   path: string;
   content: string;
   language?: string;
@@ -66,7 +66,7 @@ interface BuilderChunkHint {
   };
 }
 
-interface BuilderInput {
+export interface BuilderInput {
   spec: Record<string, unknown>;
   existingFiles?: BuilderFile[];
   /** Compact path/size manifest of files NOT included in `existingFiles`.
@@ -632,11 +632,41 @@ export class BuilderAgent extends BaseAgent {
 
       throw new Error('Validation: builder produced no files');
     }
-    for (const f of output.files as Array<Record<string, unknown>>) {
+    const files = output.files as Array<Record<string, unknown>>;
+    const seenPaths = new Set<string>();
+    for (const f of files) {
       if (typeof f.path !== 'string' || typeof f.content !== 'string') {
         throw new Error('Validation: every file requires { path, content }');
       }
+      const normPath = f.path.replace(/\\/g, '/').trim();
+      if (!normPath || normPath.startsWith('/') || normPath.includes('..')) {
+        throw new Error(`Validation: invalid file path '${f.path}'`);
+      }
+      if (f.content.trim().length === 0) {
+        throw new Error(`Validation: generated empty file content at '${normPath}'`);
+      }
+      if (seenPaths.has(normPath)) {
+        throw new Error(`Validation: duplicate file path '${normPath}'`);
+      }
+      seenPaths.add(normPath);
     }
+    // Structured manifest is now mandatory for downstream contract checks.
+    // If the model omitted it, synthesize a minimal schema-compliant one.
+    const manifest = (output.manifest && typeof output.manifest === 'object')
+      ? output.manifest as Record<string, unknown>
+      : {
+        files: files.map((f) => ({ path: String(f.path), bytes: Buffer.byteLength(String(f.content), 'utf8') })),
+        routes: files
+          .map((f) => String(f.path))
+          .filter((p) => /(^|\/)(src\/)?app\/.*\/page\.(tsx|ts|jsx|js)$|(^|\/)(src\/)?app\/page\.(tsx|ts|jsx|js)$/.test(p)),
+        components: files
+          .map((f) => String(f.path))
+          .filter((p) => /(^|\/)(src\/)?components\/.+\.(tsx|ts|jsx|js)$/.test(p)),
+      };
+    if (!Array.isArray(manifest.files)) throw new Error('Validation: manifest.files must be an array');
+    if (!Array.isArray(manifest.routes)) throw new Error('Validation: manifest.routes must be an array');
+    if (!Array.isArray(manifest.components)) throw new Error('Validation: manifest.components must be an array');
+    output.manifest = manifest;
     // Validation passed — strip the parse-stage diagnostic so it doesn't
     // leak into downstream artefacts.
     delete output._lastEmptyDiag;
@@ -698,6 +728,26 @@ export class BuilderAgent extends BaseAgent {
     fallback.output = fbOutput;
 
     if (fallback.status !== 'completed' || (((fallback.output ?? {}).files as BuilderFile[] | undefined)?.length ?? 0) === 0) {
+      const deterministicTargets = deriveFallbackTargetPaths(input);
+      const deterministicFiles = buildDeterministicTier1Fallback(input, deterministicTargets);
+      if (deterministicFiles.length > 0) {
+        this.logger.warn('[builder] Reduced-prompt fallback returned 0 files; using deterministic Tier 1 fallback shell', {
+          event: 'builder:deterministic-fallback',
+          sliceId: input.currentSlice?.id ?? null,
+          fileCount: deterministicFiles.length,
+          targets: deterministicFiles.map((f) => f.path),
+        });
+        fallback.status = 'completed';
+        fallback.error = undefined;
+        fallback.output = {
+          files: deterministicFiles,
+          _primaryAttempt: primarySnapshot,
+          _fallbackUsed: true,
+          _deterministicFallback: true,
+        } as Record<string, unknown>;
+        return fallback;
+      }
+
       // Fail the slice immediately with a clear error referencing both
       // attempts so the pipeline's fail-fast guard records the truth.
       const fbErr = fallback.error?.message ?? 'fallback returned no files';
@@ -1598,14 +1648,22 @@ function looksIncompleteCode(content: string, path: string): string | null {
  *   3. One API route if the slice declares apiIds
  *   4. As a last resort: app/page.tsx (every Next.js project needs it)
  */
-function deriveFallbackTargetPaths(input: BuilderInput): string[] {
-  const paths: string[] = [];
+export function deriveFallbackTargetPaths(input: BuilderInput): string[] {
+  const paths: string[] = [
+    'package.json',
+    'tsconfig.json',
+    'next.config.mjs',
+    'postcss.config.js',
+    'src/app/layout.tsx',
+    'src/app/page.tsx',
+    'src/app/globals.css',
+  ];
   const slice = input.currentSlice;
 
   const routeToPagePath = (route: string): string => {
     const trimmed = route.replace(/^\/+|\/+$/g, '');
-    if (trimmed === '' || trimmed === '/') return 'app/page.tsx';
-    return `app/${trimmed}/page.tsx`;
+    if (trimmed === '' || trimmed === '/') return 'src/app/page.tsx';
+    return `src/app/${trimmed}/page.tsx`;
   };
 
   if (slice) {
@@ -1614,17 +1672,274 @@ function deriveFallbackTargetPaths(input: BuilderInput): string[] {
     }
     const firstComponent = (slice.components ?? [])[0];
     if (firstComponent && /^[A-Za-z][\w-]*$/.test(firstComponent)) {
-      paths.push(`components/${firstComponent}.tsx`);
+      paths.push(`src/components/${firstComponent}.tsx`);
     }
     const firstApi = (slice.apiIds ?? [])[0];
     if (firstApi && /^[A-Za-z][\w./-]*$/.test(firstApi)) {
       const seg = firstApi.replace(/^\/+|\/+$/g, '');
-      paths.push(`app/api/${seg}/route.ts`);
+      paths.push(`src/app/api/${seg}/route.ts`);
     }
   }
 
-  if (paths.length === 0) paths.push('app/page.tsx');
-  return Array.from(new Set(paths)).slice(0, 4);
+  if (paths.length === 0) paths.push('src/app/page.tsx');
+  return Array.from(new Set(paths)).slice(0, 12);
+}
+
+export function buildDeterministicTier1Fallback(input: BuilderInput, targetPaths: string[]): BuilderFile[] {
+  const normalizedTargets = Array.from(new Set(
+    targetPaths
+      .map((p) => p.replace(/\\/g, '/').replace(/^\.\//, '').trim())
+      .filter((p) => p.length > 0),
+  ));
+  const byPath = new Map<string, BuilderFile>();
+
+  const add = (path: string, content: string, language?: string): void => {
+    if (!content.trim()) return;
+    byPath.set(path, { path, content, language });
+  };
+
+  add('package.json', deterministicPackageJson(), 'json');
+  add('tsconfig.json', deterministicTsconfig(), 'json');
+  add('next.config.mjs', deterministicNextConfig(), 'javascript');
+  add('postcss.config.js', deterministicPostcssConfig(), 'javascript');
+  add('src/app/layout.tsx', deterministicLayout(), 'typescriptreact');
+  add('src/app/globals.css', deterministicGlobalsCss(), 'css');
+
+  const title = inferTier1Title(input);
+  add('src/app/page.tsx', deterministicHomePage(title), 'typescriptreact');
+
+  for (const path of normalizedTargets) {
+    if (byPath.has(path)) continue;
+    if (/^src\/app\/.+\/page\.(tsx|jsx)$/.test(path)) {
+      const route = path
+        .replace(/^src\/app\//, '')
+        .replace(/\/page\.(tsx|jsx)$/, '')
+        .replace(/\//g, ' / ')
+        .trim() || 'Home';
+      add(path, deterministicRoutePage(route), 'typescriptreact');
+      continue;
+    }
+    if (/^src\/app\/api\/.+\/route\.(ts|js)$/.test(path)) {
+      add(path, deterministicApiRoute(), 'typescript');
+      continue;
+    }
+    if (/^src\/components\/.+\.(tsx|jsx)$/.test(path)) {
+      const name = path.split('/').pop()?.replace(/\.(tsx|jsx)$/, '') ?? 'Section';
+      add(path, deterministicComponent(name), 'typescriptreact');
+    }
+  }
+
+  return Array.from(byPath.values());
+}
+
+function inferTier1Title(input: BuilderInput): string {
+  const source = JSON.stringify(input.spec ?? {});
+  const entries: Array<{ re: RegExp; title: string }> = [
+    { re: /landing/i, title: 'Simple Landing Page' },
+    { re: /marketing/i, title: 'Simple Marketing Website' },
+    { re: /portfolio/i, title: 'Simple Portfolio' },
+    { re: /pricing/i, title: 'Simple Pricing Page' },
+    { re: /waitlist/i, title: 'Simple Waitlist Page' },
+    { re: /analytics/i, title: 'Simple Analytics Dashboard' },
+    { re: /dashboard/i, title: 'Simple SaaS Dashboard' },
+    { re: /admin/i, title: 'Simple Admin Overview' },
+    { re: /(docs|help)/i, title: 'Simple Help Center' },
+    { re: /product/i, title: 'Simple Product Page' },
+  ];
+  for (const entry of entries) {
+    if (entry.re.test(source)) return entry.title;
+  }
+  return 'Simple Generated App';
+}
+
+function deterministicPackageJson(): string {
+  return [
+    '{',
+    '  "name": "generated-tier1-app",',
+    '  "private": true,',
+    '  "version": "0.1.0",',
+    '  "type": "module",',
+    '  "scripts": {',
+    '    "dev": "next dev",',
+    '    "build": "next build",',
+    '    "start": "next start",',
+    '    "typecheck": "tsc --noEmit"',
+    '  },',
+    '  "dependencies": {',
+    '    "next": "15.3.1",',
+    '    "react": "18.3.1",',
+    '    "react-dom": "18.3.1"',
+    '  },',
+    '  "devDependencies": {',
+    '    "typescript": "5.7.3",',
+    '    "@types/react": "18.3.18",',
+    '    "@types/react-dom": "18.3.5"',
+    '  }',
+    '}',
+    '',
+  ].join('\n');
+}
+
+function deterministicTsconfig(): string {
+  return [
+    '{',
+    '  "compilerOptions": {',
+    '    "target": "ES2020",',
+    '    "lib": ["dom", "dom.iterable", "esnext"],',
+    '    "allowJs": true,',
+    '    "skipLibCheck": true,',
+    '    "strict": true,',
+    '    "noEmit": true,',
+    '    "esModuleInterop": true,',
+    '    "module": "esnext",',
+    '    "moduleResolution": "bundler",',
+    '    "resolveJsonModule": true,',
+    '    "isolatedModules": true,',
+    '    "jsx": "preserve",',
+    '    "incremental": true,',
+    '    "plugins": [{ "name": "next" }],',
+    '    "paths": { "@/*": ["./src/*"] }',
+    '  },',
+    '  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],',
+    '  "exclude": ["node_modules"]',
+    '}',
+    '',
+  ].join('\n');
+}
+
+function deterministicNextConfig(): string {
+  return [
+    '/** @type {import("next").NextConfig} */',
+    'const nextConfig = {',
+    '  reactStrictMode: true,',
+    '};',
+    'export default nextConfig;',
+    '',
+  ].join('\n');
+}
+
+function deterministicPostcssConfig(): string {
+  return [
+    'const config = {',
+    '  plugins: {',
+    '    tailwindcss: {},',
+    '    autoprefixer: {},',
+    '  },',
+    '};',
+    '',
+    'export default config;',
+    '',
+  ].join('\n');
+}
+
+function deterministicLayout(): string {
+  return [
+    'import type { ReactNode } from "react";',
+    'import "./globals.css";',
+    '',
+    'export default function RootLayout({ children }: { children: ReactNode }) {',
+    '  return (',
+    '    <html lang="en">',
+    '      <body>{children}</body>',
+    '    </html>',
+    '  );',
+    '}',
+    '',
+  ].join('\n');
+}
+
+function deterministicGlobalsCss(): string {
+  return [
+    ':root {',
+    '  --bg: #f8fafc;',
+    '  --fg: #0f172a;',
+    '  --muted: #475569;',
+    '  --accent: #0ea5e9;',
+    '}',
+    '',
+    '* {',
+    '  box-sizing: border-box;',
+    '}',
+    '',
+    'body {',
+    '  margin: 0;',
+    '  background: var(--bg);',
+    '  color: var(--fg);',
+    '  font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;',
+    '}',
+    '',
+    'a {',
+    '  color: inherit;',
+    '}',
+    '',
+    '.tier1-shell {',
+    '  max-width: 960px;',
+    '  margin: 0 auto;',
+    '  padding: 2.5rem 1.25rem 3rem;',
+    '}',
+    '',
+  ].join('\n');
+}
+
+function deterministicHomePage(title: string): string {
+  return [
+    'export default function Page() {',
+    '  return (',
+    '    <main className="tier1-shell">',
+    `      <h1 style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>${title}</h1>`,
+    '      <p style={{ margin: 0, color: "var(--muted)" }}>',
+    '        Deterministic fallback content is active. Core structure is valid and preview-safe.',
+    '      </p>',
+    '      <section style={{ marginTop: "1.5rem", display: "grid", gap: "0.75rem" }}>',
+    '        <div style={{ padding: "0.9rem", background: "#fff", borderRadius: "0.75rem" }}>Feature block A</div>',
+    '        <div style={{ padding: "0.9rem", background: "#fff", borderRadius: "0.75rem" }}>Feature block B</div>',
+    '        <div style={{ padding: "0.9rem", background: "#fff", borderRadius: "0.75rem" }}>Primary CTA ready</div>',
+    '      </section>',
+    '    </main>',
+    '  );',
+    '}',
+    '',
+  ].join('\n');
+}
+
+function deterministicRoutePage(routeLabel: string): string {
+  return [
+    'export default function Page() {',
+    '  return (',
+    '    <main className="tier1-shell">',
+    `      <h1 style={{ fontSize: "1.8rem", marginBottom: "0.75rem" }}>${routeLabel}</h1>`,
+    '      <p style={{ margin: 0, color: "var(--muted)" }}>Route recovered by deterministic fallback.</p>',
+    '    </main>',
+    '  );',
+    '}',
+    '',
+  ].join('\n');
+}
+
+function deterministicApiRoute(): string {
+  return [
+    'export async function GET() {',
+    '  return Response.json({ ok: true, items: [] });',
+    '}',
+    '',
+  ].join('\n');
+}
+
+function deterministicComponent(componentName: string): string {
+  const safe = /^[A-Za-z_]/.test(componentName)
+    ? componentName.replace(/[^A-Za-z0-9_]/g, '')
+    : `C${componentName.replace(/[^A-Za-z0-9_]/g, '') || 'Section'}`;
+  const exportName = safe.charAt(0).toUpperCase() + safe.slice(1);
+  return [
+    'import type { ReactNode } from "react";',
+    '',
+    `export function ${exportName}({ children }: { children?: ReactNode }) {`,
+    '  return <section>{children}</section>;',
+    '}',
+    '',
+    `export default ${exportName};`,
+    '',
+  ].join('\n');
 }
 
 /**

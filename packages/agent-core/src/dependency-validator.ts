@@ -164,6 +164,7 @@ const KNOWN_VERSIONS: Record<string, string> = {
   'next-auth':             '^4.24.0',
   '@auth/core':            '^0.37.0',
   'jsonwebtoken':          '^9.0.0',
+  'bcrypt':                '^5.1.1',
   'bcryptjs':              '^2.4.3',
   // Misc runtime
   'dotenv':                '^16.4.0',
@@ -180,6 +181,7 @@ const KNOWN_VERSIONS: Record<string, string> = {
   '@types/node':           '^22.0.0',
   '@types/express':        '^5.0.0',
   '@types/jsonwebtoken':   '^9.0.0',
+  '@types/bcrypt':         '^5.0.2',
   '@types/bcryptjs':       '^2.4.0',
 };
 

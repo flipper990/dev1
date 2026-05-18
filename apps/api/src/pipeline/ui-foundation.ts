@@ -109,15 +109,44 @@ export function injectUIFoundation(
         "    sm: 'h-8 px-3 text-xs', md: 'h-10 px-4 py-2', lg: 'h-11 px-6 text-base', icon: 'h-10 w-10',",
         "  } }, defaultVariants: { variant: 'primary', size: 'md' } },",
         ');', '',
-        'export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {',
+        "type ButtonBaseProps = VariantProps<typeof buttonVariants> & {",
         '  loading?: boolean; leftIcon?: React.ReactNode; rightIcon?: React.ReactNode;',
-        '}', '',
-        'export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(',
-        '  ({ className, variant, size, loading, leftIcon, rightIcon, children, disabled, ...props }, ref) => (',
-        '    <button ref={ref} className={cn(buttonVariants({ variant, size }), className)} disabled={disabled || loading} {...props}>',
-        '      {loading ? <Spinner size="sm" /> : leftIcon}{children}{!loading && rightIcon}',
-        '    </button>',
-        '  ),',
+        '  className?: string; children?: React.ReactNode;',
+        '};',
+        '',
+        "type ButtonAsButtonProps = ButtonBaseProps & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'className'> & { as?: 'button' };",
+        "type ButtonAsAnchorProps = ButtonBaseProps & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'className'> & { as: 'a' };",
+        'export type ButtonProps = ButtonAsButtonProps | ButtonAsAnchorProps;',
+        '',
+        'export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonProps>(',
+        '  ({ className, variant, size, loading, leftIcon, rightIcon, children, as, ...props }, ref) => {',
+        "    if (as === 'a') {",
+        '      const { disabled, ...anchorProps } = props as ButtonAsAnchorProps & { disabled?: boolean };',
+        '      return (',
+        '        <a',
+        '          ref={ref as React.Ref<HTMLAnchorElement>}',
+        '          className={cn(buttonVariants({ variant, size }), className)}',
+        '          aria-disabled={disabled || loading}',
+        '          {...anchorProps}',
+        '        >',
+        '          {loading ? <Spinner size="sm" /> : leftIcon}{children}{!loading && rightIcon}',
+        '        </a>',
+        '      );',
+        '    }',
+        '',
+        '    const { disabled, type, ...buttonProps } = props as ButtonAsButtonProps;',
+        '    return (',
+        '      <button',
+        '        ref={ref as React.Ref<HTMLButtonElement>}',
+        '        type={type ?? "button"}',
+        '        className={cn(buttonVariants({ variant, size }), className)}',
+        '        disabled={disabled || loading}',
+        '        {...buttonProps}',
+        '      >',
+        '        {loading ? <Spinner size="sm" /> : leftIcon}{children}{!loading && rightIcon}',
+        '      </button>',
+        '    );',
+        '  },',
         ");\nButton.displayName = 'Button';\n",
       ].join('\n'),
       language: 'typescriptreact',
@@ -914,6 +943,12 @@ export function sanitizeUIFoundation(fileMap: Map<string, ProjectFile>): void {
   );
   if (!hasFrontend) return;
 
+  // Keep generated Alert primitive contract compatible with common usage
+  // (`<Alert className=...>`). QA/polish can occasionally emit an Alert
+  // interface without className support, causing deterministic TS failures.
+  repairBrokenButtonContract(fileMap);
+  repairBrokenAlertContract(fileMap);
+
   // ── 1. tailwind.config.{ts,js} ────────────────────────────────────
   // Broken if: missing `content:` array (Tailwind v3 hard requirement) OR
   // imports a design-tokens module whose file isn't present OR spreads
@@ -923,6 +958,7 @@ export function sanitizeUIFoundation(fileMap: Map<string, ProjectFile>): void {
     if (!cfg) continue;
     const text = cfg.content ?? '';
     const missingContent = !/\bcontent\s*:\s*\[/.test(text);
+    const unsafeTypographyFontWeightAlias = /\bfontWeight\s*:\s*typography\.fontWeight\b/.test(text);
     const importsDesignTokens = /from\s+['"](\.\.?\/.+?design-tokens)['"]/.exec(text);
     let designTokensBroken = false;
     if (importsDesignTokens) {
@@ -944,7 +980,7 @@ export function sanitizeUIFoundation(fileMap: Map<string, ProjectFile>): void {
         }
       }
     }
-    if (missingContent || designTokensBroken) {
+    if (missingContent || designTokensBroken || unsafeTypographyFontWeightAlias) {
       fileMap.set(cfgPath, {
         path: cfgPath,
         content: [
@@ -1143,6 +1179,139 @@ export function sanitizeUIFoundation(fileMap: Map<string, ProjectFile>): void {
       fileMap.set(layoutPath, { ...layout, content: text });
     }
   }
+}
+
+function repairBrokenButtonContract(fileMap: Map<string, ProjectFile>): void {
+  const buttonPath = 'src/components/ui/Button.tsx';
+  const button = fileMap.get(buttonPath);
+  if (!button) return;
+
+  const text = button.content ?? '';
+  const hasAsSupport = /\bas\s*\??\s*:/.test(text) || /\basChild\b/.test(text);
+  const hasVariantSupport =
+    /\bVariantProps<\s*typeof\s+buttonVariants\s*>/.test(text)
+    || /\bvariant\s*\??\s*:/.test(text);
+  const hasSizeSupport = /\bsize\s*\??\s*:/.test(text);
+  if (hasAsSupport && hasVariantSupport && hasSizeSupport) return;
+
+  fileMap.set(buttonPath, {
+    ...button,
+    content: [
+      "import * as React from 'react';",
+      "import { cva, type VariantProps } from 'class-variance-authority';",
+      "import { cn } from '@/lib/cn';",
+      "import { Spinner } from './Spinner';",
+      '',
+      "const buttonVariants = cva('inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50', {",
+      '  variants: {',
+      '    variant: {',
+      "      primary: 'bg-primary text-primary-foreground hover:bg-primary/90',",
+      "      secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',",
+      "      outline: 'border border-border bg-background hover:bg-muted hover:text-foreground',",
+      "      ghost: 'hover:bg-muted hover:text-foreground',",
+      "      destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',",
+      "      link: 'text-primary underline-offset-4 hover:underline',",
+      '    },',
+      '    size: {',
+      "      sm: 'h-8 px-3 text-xs',",
+      "      md: 'h-10 px-4 py-2',",
+      "      lg: 'h-11 px-6 text-base',",
+      "      icon: 'h-10 w-10',",
+      '    },',
+      '  },',
+      "  defaultVariants: { variant: 'primary', size: 'md' },",
+      '});',
+      '',
+      "type ButtonBaseProps = VariantProps<typeof buttonVariants> & {",
+      '  loading?: boolean; leftIcon?: React.ReactNode; rightIcon?: React.ReactNode;',
+      '  className?: string; children?: React.ReactNode;',
+      '};',
+      '',
+      "type ButtonAsButtonProps = ButtonBaseProps & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'className'> & { as?: 'button' };",
+      "type ButtonAsAnchorProps = ButtonBaseProps & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'className'> & { as: 'a' };",
+      'export type ButtonProps = ButtonAsButtonProps | ButtonAsAnchorProps;',
+      '',
+      'export const Button = React.forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonProps>(',
+      '  ({ className, variant, size, loading, leftIcon, rightIcon, children, as, ...props }, ref) => {',
+      "    if (as === 'a') {",
+      '      const { disabled, ...anchorProps } = props as ButtonAsAnchorProps & { disabled?: boolean };',
+      '      return (',
+      '        <a',
+      '          ref={ref as React.Ref<HTMLAnchorElement>}',
+      '          className={cn(buttonVariants({ variant, size }), className)}',
+      '          aria-disabled={disabled || loading}',
+      '          {...anchorProps}',
+      '        >',
+      '          {loading ? <Spinner size="sm" /> : leftIcon}{children}{!loading && rightIcon}',
+      '        </a>',
+      '      );',
+      '    }',
+      '',
+      '    const { disabled, type, ...buttonProps } = props as ButtonAsButtonProps;',
+      '    return (',
+      '      <button',
+      '        ref={ref as React.Ref<HTMLButtonElement>}',
+      '        type={type ?? "button"}',
+      '        className={cn(buttonVariants({ variant, size }), className)}',
+      '        disabled={disabled || loading}',
+      '        {...buttonProps}',
+      '      >',
+      '        {loading ? <Spinner size="sm" /> : leftIcon}{children}{!loading && rightIcon}',
+      '      </button>',
+      '    );',
+      '  },',
+      ");",
+      "Button.displayName = 'Button';",
+      '',
+    ].join('\n'),
+    language: button.language ?? 'typescriptreact',
+  });
+}
+
+function repairBrokenAlertContract(fileMap: Map<string, ProjectFile>): void {
+  const alertPath = 'src/components/ui/Alert.tsx';
+  const alert = fileMap.get(alertPath);
+  if (!alert) return;
+
+  const text = alert.content ?? '';
+  const hasClassNameSupport =
+    /\bclassName\s*\??\s*:/.test(text)
+    || /extends\s+React\.HTMLAttributes\s*<\s*HTMLDivElement\s*>/.test(text)
+    || /React\.HTMLAttributes\s*<\s*HTMLDivElement\s*>/.test(text);
+
+  if (hasClassNameSupport) return;
+
+  fileMap.set(alertPath, {
+    ...alert,
+    content: [
+      "import * as React from 'react';",
+      "import { cva, type VariantProps } from 'class-variance-authority';",
+      "import { cn } from '@/lib/cn';",
+      '',
+      "const alertVariants = cva('relative w-full rounded-lg border p-4 text-sm [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg+div]:translate-y-[-3px] [&:has(svg)]:pl-11', {",
+      '  variants: { variant: {',
+      "    default: 'bg-background text-foreground border-border',",
+      "    info: 'bg-primary/5 text-foreground border-primary/30 [&>svg]:text-primary',",
+      "    success: 'bg-green-500/5 text-foreground border-green-500/30 [&>svg]:text-green-600',",
+      "    warning: 'bg-amber-500/5 text-foreground border-amber-500/30 [&>svg]:text-amber-600',",
+      "    destructive: 'bg-destructive/5 text-foreground border-destructive/40 [&>svg]:text-destructive',",
+      "  } }, defaultVariants: { variant: 'default' },",
+      '});',
+      '',
+      'export interface AlertProps extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof alertVariants> {}',
+      'export function Alert({ className, variant, ...props }: AlertProps) {',
+      '  return <div role="alert" className={cn(alertVariants({ variant }), className)} {...props} />;',
+      '}',
+      'export function AlertTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {',
+      '  return <h5 className={cn("mb-1 font-medium leading-none tracking-tight", className)} {...props} />;',
+      '}',
+      'export function AlertDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {',
+      '  return <div className={cn("text-sm text-muted-foreground [&_p]:leading-relaxed", className)} {...props} />;',
+      '}',
+      '',
+    ].join('\n'),
+    language: alert.language ?? 'typescriptreact',
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

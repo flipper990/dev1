@@ -14,6 +14,14 @@ function serializeProgress(p: SessionProgress) {
     sessionId: p.sessionId,
     status: p.status,
     progress: p.progress,
+    executionPhase: p.executionPhase,
+    providerStatus: p.providerStatus,
+    retryAttempt: p.retryAttempt,
+    activeWorker: p.activeWorker,
+    lastHeartbeatAt: p.lastHeartbeatAt,
+    timeoutAt: p.timeoutAt,
+    timeoutRemainingMs: p.timeoutRemainingMs,
+    failureReason: p.failureReason,
     currentStep: p.currentStep
       ? {
           stepId: p.currentStep.stepId,

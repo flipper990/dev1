@@ -376,6 +376,7 @@ function checkFunctionalE2E(files: ProjectFile[]): QAFinding[] {
   // Collect backend route paths.
   const backendRoutes = new Set<string>();
   const ROUTE_RE = /\b(?:app|router|server|fastify)\.(?:get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)['"`]/gi;
+  const NEXT_HANDLER_RE = /\bexport\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE)\b|\bexport\s+const\s+(GET|POST|PUT|PATCH|DELETE)\s*=/gi;
   for (const f of files.filter(isBackendFile)) {
     let m: RegExpExecArray | null;
     const re = new RegExp(ROUTE_RE.source, 'gi');
@@ -385,6 +386,12 @@ function checkFunctionalE2E(files: ProjectFile[]): QAFinding[] {
       // Defensive: guard against zero-length matches from any future
       // regex change that would otherwise loop forever.
       if (m.index === re.lastIndex) re.lastIndex++;
+    }
+    const path = safePath(f);
+    NEXT_HANDLER_RE.lastIndex = 0;
+    if (NEXT_HANDLER_RE.test(c)) {
+      const derived = deriveNextRoutePath(path);
+      if (derived) backendRoutes.add(derived);
     }
   }
 
@@ -435,6 +442,15 @@ function checkFunctionalE2E(files: ProjectFile[]): QAFinding[] {
   }
 
   return findings;
+}
+
+function deriveNextRoutePath(path: string): string | null {
+  const p = String(path ?? '').replace(/\\/g, '/');
+  const appMatch = p.match(/^(?:src\/)?app\/api\/(.+)\/route\.(?:ts|tsx|js|jsx)$/i);
+  if (appMatch?.[1]) return `/api/${appMatch[1]}`;
+  const pagesMatch = p.match(/^(?:src\/)?pages\/api\/(.+)\.(?:ts|tsx|js|jsx)$/i);
+  if (pagesMatch?.[1]) return `/api/${pagesMatch[1]}`;
+  return null;
 }
 
 // ── Auto-repair ────────────────────────────────────────────

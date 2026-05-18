@@ -6,13 +6,15 @@ import archiver from 'archiver';
 import { z } from 'zod';
 import type { ProjectGenerator } from '../pipeline/project-generator.js';
 import type { ProjectStore } from '../storage/project-store.js';
-import { ProjectRecordCorruptError } from '../storage/project-store.js';
+import { ProjectRecordCorruptError, ProjectStorePersistenceError } from '../storage/project-store.js';
 import type { SessionManager } from '../pipeline/session-manager.js';
 import type { FileMemoryStore } from '../storage/memory-store.js';
 import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import type { SmartLLMRouter } from '../llm/smart-router.js';
 import type { PreviewManager } from '../preview/preview-manager.js';
 import { config } from '../config.js';
+import { MODEL_CONFIG } from '../config/models.js';
+import type { LLMProvider } from '../../../../packages/agent-core/src/types.js';
 import { registerLLMRoutes } from './llm-routes.js';
 import { registerVersionRoutes } from './version-routes.js';
 import {
@@ -39,6 +41,15 @@ function safeDownloadName(value: string): string {
   return normalized || 'devteam-project';
 }
 
+function requiredModelProviders(): LLMProvider[] {
+  const set = new Set<LLMProvider>();
+  for (const cfg of Object.values(MODEL_CONFIG)) {
+    set.add(cfg.primary.provider);
+    if (cfg.fallback) set.add(cfg.fallback.provider);
+  }
+  return [...set];
+}
+
 export function registerRoutes(
   app: FastifyInstance,
   deps: {
@@ -54,6 +65,45 @@ export function registerRoutes(
   },
 ): void {
   const { generator, projectStore, sessionManager, memoryStore, llm, preview, auth } = deps;
+  const providerSet = requiredModelProviders();
+  let exportAttempts = 0;
+  let exportSuccesses = 0;
+  let exportFailures = 0;
+  let preflightBlocks = 0;
+  let missionsAccepted = 0;
+
+  const runPreflightChecks = async () => {
+    const checkedAt = new Date().toISOString();
+    const services: Record<string, { ok: boolean; reason: string }> = {};
+    try {
+      await projectStore.list();
+      services.storage = { ok: true, reason: 'ok' };
+    } catch (err) {
+      services.storage = { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+    try {
+      preview?.listAll();
+      services.preview = { ok: true, reason: 'ok' };
+    } catch (err) {
+      services.preview = { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+    const providerPreflight = await llm.getProviderRegistry().preflight(providerSet, { timeoutMs: 5_000 });
+    const unhealthyServices = Object.entries(services).filter(([, status]) => !status.ok);
+    const ok = providerPreflight.ok && unhealthyServices.length === 0;
+    return {
+      ok,
+      checkedAt,
+      requiredProviders: providerSet,
+      providerPreflight,
+      services,
+      reason: ok
+        ? null
+        : [
+            providerPreflight.ok ? null : `providers: ${providerPreflight.reason ?? 'unhealthy'}`,
+            ...unhealthyServices.map(([name, status]) => `${name}: ${status.reason}`),
+          ].filter(Boolean).join(' | '),
+    };
+  };
 
   app.get('/health', async () => {
     const hb = getHeartbeat();
@@ -127,6 +177,88 @@ export function registerRoutes(
     };
   });
 
+  app.get('/api/runtime/preflight', { preHandler: [auth.requireRole('viewer')] }, async () => {
+    return runPreflightChecks();
+  });
+
+  app.get('/api/runtime/metrics', { preHandler: [auth.requireRole('viewer')] }, async () => {
+    const projects = await projectStore.list();
+    const completedMissions = projects.filter((p) => p.status === 'generated');
+    const failedMissions = projects.filter((p) => p.status === 'failed');
+    const terminalMissions = completedMissions.length + failedMissions.length;
+    const successRate = terminalMissions > 0 ? completedMissions.length / terminalMissions : null;
+    const durationSamples = completedMissions
+      .map((p) => p.durationMs)
+      .filter((v) => Number.isFinite(v) && v > 0);
+    const avgCompletionMs = durationSamples.length > 0
+      ? Math.round(durationSamples.reduce((sum, value) => sum + value, 0) / durationSamples.length)
+      : null;
+    const preflight = await runPreflightChecks();
+    const providerStatuses = Object.values(preflight.providerPreflight.providers);
+    const providerFailureRate = providerStatuses.length > 0
+      ? providerStatuses.filter((status) => !status.healthy).length / providerStatuses.length
+      : null;
+    const progressSnapshots = sessionManager.listProgressSnapshots();
+    const retryFrequency = progressSnapshots.length > 0
+      ? progressSnapshots.reduce((sum, item) => sum + item.retryAttempt, 0) / progressSnapshots.length
+      : null;
+    const previewsReady = projects.filter((p) => p.preview?.previewStatus === 'ready').length;
+    const previewsAttempted = projects.filter((p) => {
+      const status = p.preview?.previewStatus;
+      return status && status !== 'idle';
+    }).length;
+    const previewStartupSuccessRate = previewsAttempted > 0 ? previewsReady / previewsAttempted : null;
+    const exportSuccessRate = exportAttempts > 0 ? exportSuccesses / exportAttempts : null;
+    const failuresByCategory: Record<string, number> = {};
+    const failuresByPhase: Record<string, number> = {};
+    for (const failed of failedMissions) {
+      const category = failed.failure?.classification?.category ?? 'unknown';
+      failuresByCategory[category] = (failuresByCategory[category] ?? 0) + 1;
+      const failedPhase = failed.failure?.failedPhase ?? 'unknown';
+      failuresByPhase[failedPhase] = (failuresByPhase[failedPhase] ?? 0) + 1;
+    }
+    const artifactCorruptionRate = terminalMissions > 0
+      ? (failuresByCategory.artifact_corruption ?? 0) / terminalMissions
+      : null;
+
+    return {
+      observedAt: new Date().toISOString(),
+      missions: {
+        accepted: missionsAccepted,
+        terminal: terminalMissions,
+        completed: completedMissions.length,
+        failed: failedMissions.length,
+        successRate,
+        avgCompletionMs,
+      },
+      reliability: {
+        failuresByCategory,
+        failuresByPhase,
+        artifactCorruptionRate,
+      },
+      providers: {
+        preflightBlockedLaunches: preflightBlocks,
+        requiredProviders: preflight.requiredProviders,
+        currentStatus: preflight.providerPreflight.providers,
+        failureRate: providerFailureRate,
+      },
+      retries: {
+        averageRetriesPerSession: retryFrequency,
+      },
+      preview: {
+        attempted: previewsAttempted,
+        ready: previewsReady,
+        startupSuccessRate: previewStartupSuccessRate,
+      },
+      export: {
+        attempts: exportAttempts,
+        successes: exportSuccesses,
+        failures: exportFailures,
+        successRate: exportSuccessRate,
+      },
+    };
+  });
+
   const GenerateOrPromptSchema = z.union([
     GenerateSchema,
     z.object({
@@ -155,6 +287,27 @@ export function registerRoutes(
       return reply.status(400).send({ error: 'At least one prompt is required' });
     }
 
+    const preflight = await runPreflightChecks();
+    if (!preflight.ok) {
+      preflightBlocks += 1;
+      request.log.warn(
+        {
+          event: 'route:generate:blocked-by-preflight',
+          reqId: request.id,
+          reason: preflight.reason,
+          providerPreflight: preflight.providerPreflight,
+          services: preflight.services,
+        },
+        '[route:generate] blocked - runtime preflight failed',
+      );
+      return reply.status(503).send({
+        error: 'Mission launch blocked by runtime preflight checks',
+        code: 'RUNTIME_PREFLIGHT_FAILED',
+        reason: preflight.reason,
+        preflight,
+      });
+    }
+
     // Reserve IDs up-front so we can respond immediately and the WS client can
     // subscribe before the pipeline starts emitting events.
     const reservation = generator.reserve({
@@ -163,7 +316,39 @@ export function registerRoutes(
       workspaceId: principal.workspaceId,
       preferences: data.preferences,
     });
-    await projectStore.update(reservation.projectId, (project) => {
+    try {
+      await reservation.placeholderSaved;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const persistenceCode = err instanceof ProjectStorePersistenceError
+        ? err.code
+        : 'PROJECT_PERSISTENCE_FAILURE';
+      sessionManager.markProviderUnavailable(
+        reservation.sessionId,
+        `project persistence failed during reservation: ${message}`,
+      );
+      return reply.status(503).send({
+        error: 'Mission launch failed: project persistence failed',
+        code: persistenceCode,
+        projectId: reservation.projectId,
+        sessionId: reservation.sessionId,
+        reason: message,
+      });
+    }
+    const providerStatus: Record<string, boolean> = {};
+    for (const [provider, status] of Object.entries(preflight.providerPreflight.providers)) {
+      providerStatus[provider] = status.healthy;
+    }
+    sessionManager.setProviderStatus(reservation.sessionId, providerStatus);
+    const missionTimeoutMs = Number(process.env.MISSION_TIMEOUT_MS) || 45 * 60 * 1000;
+    sessionManager.markHeartbeat(reservation.sessionId, {
+      phase: 'queued',
+      step: 'mission:accepted',
+      activeWorker: 'system',
+      providerStatus,
+      timeoutAt: new Date(Date.now() + missionTimeoutMs).toISOString(),
+    });
+    const ownershipUpdated = await projectStore.update(reservation.projectId, (project) => {
       const withMeta = withOwnership(project, principal);
       project.ownership = withMeta.ownership;
     }, {
@@ -171,10 +356,23 @@ export function registerRoutes(
       caller: 'routes:api:generate',
       reason: `set ownership from authenticated principal ${principal.userId}`,
     });
+    if (!ownershipUpdated) {
+      sessionManager.markProviderUnavailable(
+        reservation.sessionId,
+        `project persistence failed: reserved project ${reservation.projectId} missing during ownership init`,
+      );
+      return reply.status(503).send({
+        error: 'Mission launch failed: project persistence missing after reservation',
+        code: 'PROJECT_PERSISTENCE_FAILURE',
+        projectId: reservation.projectId,
+        sessionId: reservation.sessionId,
+      });
+    }
     request.log.info(
       { event: 'route:generate:reserved', projectId: reservation.projectId, sessionId: reservation.sessionId, promptCount: prompts.length },
       '[route:generate] project reserved \u2014 launching background runner',
     );
+    missionsAccepted += 1;
 
     // Kick off the pipeline in the background. Errors are surfaced to the
     // session/WS stream by the generator itself; we never want this promise
@@ -373,13 +571,19 @@ export function registerRoutes(
   });
 
   app.get('/api/projects/:id/export', { preHandler: [auth.requireProjectAccess('viewer')] }, async (request, reply) => {
+    exportAttempts += 1;
     const { id } = request.params as { id: string };
     const project = request.project ?? await projectStore.get(id);
-    if (!project) return reply.status(404).send({ error: 'Project not found' });
+    if (!project) {
+      exportFailures += 1;
+      return reply.status(404).send({ error: 'Project not found' });
+    }
     if (project.status !== 'generated') {
+      exportFailures += 1;
       return reply.status(409).send({ error: 'Export is available only after code generation completes (projectStatus=generated).' });
     }
     if (!project.files.length) {
+      exportFailures += 1;
       return reply.status(404).send({ error: 'Project has no source files to export' });
     }
 
@@ -398,6 +602,7 @@ export function registerRoutes(
       }
     }
     if (unsafePaths.length > 0) {
+      exportFailures += 1;
       request.log.error(
         {
           event: 'route:export-project:unsafe-paths',
@@ -454,6 +659,7 @@ export function registerRoutes(
       .header('Content-Disposition', `attachment; filename="${safeDownloadName(project.name ?? id)}-${id}-export.zip"`);
 
     void archive.finalize();
+    exportSuccesses += 1;
     return reply.send(archive);
   });
 
@@ -467,6 +673,12 @@ export function registerRoutes(
   app.get('/api/sessions/:id/progress', async (request, reply) => {
     const { id } = request.params as { id: string };
     const principal = getAuthPrincipal(request);
+    const directSession = sessionManager.get(id);
+    const directSessionOwnedByPrincipal = Boolean(
+      directSession
+      && typeof directSession.userId === 'string'
+      && directSession.userId === principal.userId,
+    );
     const projects = await projectStore.list();
     const allowedSessionIds = new Set(
       projects
@@ -474,13 +686,21 @@ export function registerRoutes(
         .map((project) => project.sessionId)
         .filter((sessionId): sessionId is string => typeof sessionId === 'string' && sessionId.length > 0),
     );
-    if (!allowedSessionIds.has(id)) {
+    if (!allowedSessionIds.has(id) && !directSessionOwnedByPrincipal) {
       return reply.status(403).send({ error: 'Session belongs to a different workspace' });
     }
     const progress = sessionManager.getProgress(id);
     if (!progress) return reply.status(404).send({ error: 'Session not found' });
     return {
       sessionId: progress.sessionId, status: progress.status, progress: progress.progress,
+      executionPhase: progress.executionPhase,
+      providerStatus: progress.providerStatus,
+      retryAttempt: progress.retryAttempt,
+      activeWorker: progress.activeWorker,
+      lastHeartbeatAt: progress.lastHeartbeatAt,
+      timeoutAt: progress.timeoutAt,
+      timeoutRemainingMs: progress.timeoutRemainingMs,
+      failureReason: progress.failureReason,
       currentStep: progress.currentStep ? {
         stepId: progress.currentStep.stepId, name: progress.currentStep.name,
         agent: progress.currentStep.agent, description: progress.currentStep.description,

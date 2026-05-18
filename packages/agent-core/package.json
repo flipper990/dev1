@@ -2,5 +2,10 @@
   "name": "@devteam/agent-core",
   "version": "1.0.0",
   "type": "module",
-  "private": true
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "type-check": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test src/skills/registry.test.ts"
+  }
 }

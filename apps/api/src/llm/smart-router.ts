@@ -238,7 +238,18 @@ export class SmartLLMRouter implements LLMClient {
 
     const totalMs = Date.now() - overallStart;
     const tried = models.map(m => `${m.provider}/${m.model}`).join(', ');
-    throw new Error(`All models exhausted after ${totalMs}ms. Tried: [${tried}]. Last error: ${lastError?.message ?? 'unknown'}`);
+    const fallbackDetail = (() => {
+      if (!lastError) return 'unavailable';
+      const tagged = lastError as unknown as { message?: string; code?: unknown; provider?: unknown; model?: unknown };
+      const parts = [
+        tagged.message ?? lastError.message,
+        typeof tagged.code === 'string' ? `code=${tagged.code}` : null,
+        typeof tagged.provider === 'string' ? `provider=${tagged.provider}` : null,
+        typeof tagged.model === 'string' ? `model=${tagged.model}` : null,
+      ].filter((p): p is string => Boolean(p && p.trim().length > 0));
+      return parts.join('; ');
+    })();
+    throw new Error(`All models exhausted after ${totalMs}ms. Tried: [${tried}]. Last error: ${fallbackDetail}`);
   }
 
   private findOverride(role?: AgentRole, category?: TaskCategory): ModelConfig | undefined {

@@ -1,0 +1,123 @@
+{
+  "timestamp": "2026-05-17T15:02:14.596Z",
+  "kind": "preview-boot-timeout",
+  "timeoutBudgetMs": 150000,
+  "projectId": "kAKCSoKxONNo",
+  "previewId": "d5cdd42c294e",
+  "previewStatus": "failed",
+  "previewStep": "preview:timeout",
+  "previewStepStartedAt": "2026-05-17T15:02:14.578Z",
+  "previewStartedAt": "2026-05-17T14:59:44.577Z",
+  "previewTimeoutAt": "2026-05-17T15:02:14.577Z",
+  "lastSuccessfulStep": "Preview startup timed out after 150s [cause=install-hung] — install never finished (npm install started but did not complete before the budget). Step at timeout: preview:installing (last successful: l",
+  "runtime": "local",
+  "timeoutCause": "install-hung",
+  "timeoutLifecycle": {
+    "installStarted": true,
+    "installCompleted": false,
+    "buildStarted": false,
+    "buildCompleted": false,
+    "serverSpawned": false,
+    "portOpened": false,
+    "firstProbeAttempted": false
+  },
+  "child": {
+    "pid": null,
+    "alive": null,
+    "exitCode": null,
+    "exitSignal": null,
+    "startedAt": null,
+    "exitedAt": null
+  },
+  "processLifecycle": {
+    "startedAt": "2026-05-17T14:59:44.577Z",
+    "exitedAt": null,
+    "exitCode": null,
+    "signal": null,
+    "alive": null,
+    "pid": null,
+    "uptimeMs": 150000,
+    "classification": "alive-hanging",
+    "capturedAt": "2026-05-17T15:02:14.577Z"
+  },
+  "command": null,
+  "commandArgs": null,
+  "cwd": "..\\..\\data\\projects\\kAKCSoKxONNo\\output\\.preview-runtime",
+  "port": 11062,
+  "envSafe": {
+    "PORT": "3303",
+    "HOST": "127.0.0.1",
+    "NODE_ENV": "development"
+  },
+  "stdoutTail": "",
+  "stderrTail": "",
+  "httpProbeEverConnected": false,
+  "httpProbeOkAt": null,
+  "lastProbeError": null,
+  "probeDiagnosis": "No HTTP probes were issued — boot stalled before the readiness wait.",
+  "probeSummary": {
+    "kind": "no-probes",
+    "totalProbesAttempted": 0,
+    "tcpEverConnected": false,
+    "httpEverResponded": false,
+    "lastStatus": null,
+    "lastOutcome": null,
+    "lastErrorCode": null,
+    "lastErrorMessage": null,
+    "lastBodySample": null
+  },
+  "contentIndicatedFrameworkError": false,
+  "overlayDetection": null,
+  "probeAttempts": [],
+  "stepDurations": [
+    {
+      "step": "preview:queued",
+      "startedAt": "2026-05-17T14:59:44.577Z",
+      "completedAt": "2026-05-17T14:59:44.578Z",
+      "durationMs": 1
+    },
+    {
+      "step": "preview:staging-files",
+      "startedAt": "2026-05-17T14:59:44.578Z",
+      "completedAt": "2026-05-17T14:59:44.598Z",
+      "durationMs": 20
+    },
+    {
+      "step": "preview:installing",
+      "startedAt": "2026-05-17T14:59:44.598Z",
+      "completedAt": "2026-05-17T15:02:14.578Z",
+      "durationMs": 149980
+    }
+  ],
+  "historyTail": [
+    {
+      "step": "starting:local-runner",
+      "at": "2026-05-17T14:59:44.577Z"
+    },
+    {
+      "step": "failed:Preview startup timed out after 150s [cause=install-hung] — install never finished (npm install started but did not complete before the budget). Step at timeout: preview:installing (last successful: l",
+      "at": "2026-05-17T15:02:14.577Z"
+    }
+  ],
+  "timelineTail": [
+    {
+      "event": "runner-start",
+      "at": "2026-05-17T14:59:44.577Z",
+      "previewStatus": "starting",
+      "durationMs": null,
+      "details": {
+        "mode": "local",
+        "fileCount": 46
+      }
+    },
+    {
+      "event": "install-start",
+      "at": "2026-05-17T14:59:44.578Z",
+      "previewStatus": "starting",
+      "durationMs": null,
+      "details": {
+        "mode": "local"
+      }
+    }
+  ]
+}

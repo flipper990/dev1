@@ -86,6 +86,7 @@ const config: Config = {
       fontSize: {
         'display-l': ['40px', { lineHeight: '48px', fontWeight: '600', letterSpacing: '-0.02em' }],
         'display-m': ['32px', { lineHeight: '40px', fontWeight: '600', letterSpacing: '-0.018em' }],
+        'display-s': ['28px', { lineHeight: '36px', fontWeight: '600', letterSpacing: '-0.016em' }],
         'title-l': ['24px', { lineHeight: '32px', fontWeight: '600', letterSpacing: '-0.014em' }],
         'title-m': ['20px', { lineHeight: '28px', fontWeight: '600', letterSpacing: '-0.012em' }],
         'title-s': ['18px', { lineHeight: '26px', fontWeight: '600', letterSpacing: '-0.01em' }],

@@ -1,5 +1,9 @@
 :root {
   color-scheme: dark;
+  --shell-header-offset: 106px;
+  --shell-chrome-gap: 24px;
+  --shell-content-min-height: calc(100dvh - var(--shell-header-offset) - var(--shell-chrome-gap));
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 
   --color-brand-primary: #67c5b1;
   --color-brand-primary-hover: #82d4c2;
@@ -164,6 +168,7 @@ body {
   min-height: 100vh;
   margin: 0;
   overflow-x: hidden;
+  scrollbar-gutter: stable;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -191,6 +196,7 @@ select {
 .studio-canvas {
   position: relative;
   isolation: isolate;
+  min-height: 100dvh;
 }
 
 .studio-canvas::before {
@@ -249,6 +255,13 @@ select {
 
 .studio-scroll::-webkit-scrollbar-track {
   background: transparent;
+}
+
+@media (min-width: 1536px) {
+  :root {
+    --shell-header-offset: 56px;
+    --shell-chrome-gap: 24px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

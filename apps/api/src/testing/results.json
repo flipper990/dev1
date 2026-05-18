@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "startedAt": "2026-05-13T01:03:21.080Z",
-  "completedAt": "2026-05-13T01:05:24.846Z",
-  "apiUrl": "http://localhost:3003",
+  "startedAt": "2026-05-14T01:20:32.938Z",
+  "completedAt": "2026-05-14T01:26:26.873Z",
+  "apiUrl": "http://127.0.0.1:3003",
   "count": 1,
   "results": [
     {
       "index": 0,
-      "projectId": "YgwXt16xRe49",
+      "projectId": "c_j-NK7VLzsa",
       "prompt": "Build a counter app with increment, decrement, and reset buttons. Persist the count to localStorage.",
-      "startedAt": "2026-05-13T01:03:21.081Z",
-      "completedAt": "2026-05-13T01:05:24.839Z",
-      "totalDurationMs": 123758,
+      "startedAt": "2026-05-14T01:20:32.938Z",
+      "completedAt": "2026-05-14T01:26:26.871Z",
+      "totalDurationMs": 353933,
       "status": "fail-update-no-progress",
       "fixAttempts": 1,
       "attempts": [
@@ -19,31 +19,29 @@
           "iteration": 0,
           "success": false,
           "buildErrors": [
-            "project output directory missing: C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\YgwXt16xRe49\\output"
+            "build exited with code 1"
           ],
           "runtimeErrors": [],
           "failedSteps": [
-            "install",
-            "build",
-            "dev"
+            "build"
           ],
           "failureReasons": [
-            "no project output directory"
+            "build failed"
           ],
           "httpStatus": null,
           "bodyBytes": null,
-          "durationMs": 0
+          "durationMs": 767
         }
       ],
-      "finalError": "No progress in 120s for update YgwXt16xRe49 (state=status=generating|phase=slice-1/1|step=step:spec|llm=2|files=0|slices=0|stepStarted=2026-05-13T01:03:21.345Z|stepCompleted=-, heartbeatAge=123s)",
+      "finalError": "No progress in 120s for update c_j-NK7VLzsa (state=status=generating|phase=slice-2/2|step=step:builder|llm=6|files=4|slices=2|stepStarted=2026-05-14T01:23:23.685Z|stepCompleted=-, heartbeatAge=183s)",
       "diagnostics": {
-        "failedPhase": "slice-1/1",
-        "lastSuccessfulPhase": "spec",
+        "failedPhase": "slice-2/2",
+        "lastSuccessfulPhase": "slice-1/2",
         "errorName": "Error",
-        "errorMessage": "[builder-empty] slice-1/1 → single-pass:builder slice 1/1: orchestrator status=failed (Critical step \"Specification\" failed: All models exhausted after 1ms. Tried: [openai/gpt-4.1, openai/gpt-4o-mini]. Last error: unknown)",
-        "stack": "Error: [builder-empty] slice-1/1 → single-pass:builder slice 1/1: orchestrator status=failed (Critical step \"Specification\" failed: All models exhausted after 1ms. Tried: [openai/gpt-4.1, openai/gpt-4o-mini]. Last error: unknown)\n    at assertBuilderProducedFiles (/app/apps/api/src/pipeline/slice-runner.ts:287:9)\n    at ProjectGenerator.assertBuilderProducedFiles (/app/apps/api/src/pipeline/project-generator.ts:3540:5)\n    at ProjectGenerator.runPipelineBody (/app/apps/api/src/pipeline/project-generator.ts:2273:14)\n    at async ProjectGenerator.generate (/app/apps/api/src/pipeline/project-generator.ts:1781:22)\n    at async ProjectGenerator.runReserved (/app/apps/api/src/pipeline/project-generator.ts:534:22)",
-        "failedAt": "2026-05-13T01:03:21.348Z",
-        "llmCallCount": 2,
+        "errorMessage": "[builder-empty] slice-2/2 → 2/2 'counter#2':builder slice 2/2 [slice=counter]: orchestrator status=failed (Critical step \"Build\" failed: Builder produced 0 files in primary attempts (VALIDATION_ERROR: Validation: builder produced no files) AND in the reduced-prompt fallback (Validation: builder produced no files). Slice cannot proceed.)",
+        "stack": "Error: [builder-empty] slice-2/2 → 2/2 'counter#2':builder slice 2/2 [slice=counter]: orchestrator status=failed (Critical step \"Build\" failed: Builder produced 0 files in primary attempts (VALIDATION_ERROR: Validation: builder produced no files) AND in the reduced-prompt fallback (Validation: builder produced no files). Slice cannot proceed.)\n    at assertBuilderProducedFiles (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\slice-runner.ts:287:9)\n    at ProjectGenerator.assertBuilderProducedFiles (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:3540:5)\n    at ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2273:14)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:1781:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:534:22)",
+        "failedAt": "2026-05-14T01:24:23.570Z",
+        "llmCallCount": 6,
         "anyLlmCallMade": true
       }
     }

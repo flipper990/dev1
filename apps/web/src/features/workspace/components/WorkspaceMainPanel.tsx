@@ -49,7 +49,7 @@ export function WorkspaceMainPanel({
   tabContent,
 }: WorkspaceMainPanelProps) {
   return (
-    <>
+    <div className="space-y-4 sm:space-y-5">
       <PreviewCanvasFrame
         key={previewKey}
         title="Generated application"
@@ -63,13 +63,6 @@ export function WorkspaceMainPanel({
         previewTruth={previewTruth}
         onRetry={onRetryPreview}
         retrying={retryingPreview}
-      />
-
-      <CommandDock
-        projectId={selectedProjectId}
-        mode={selectedProjectId && selectedProject ? 'change' : 'create'}
-        busy={commandBusy}
-        onSubmit={onCommandSubmit}
       />
 
       <section className="studio-surface-soft rounded-[var(--radius-panel)]">
@@ -102,8 +95,17 @@ export function WorkspaceMainPanel({
         ) : null}
       </section>
 
+      <div className="mt-1 lg:sticky lg:bottom-[calc(var(--safe-bottom)+10px)] lg:z-20">
+        <CommandDock
+          projectId={selectedProjectId}
+          mode={selectedProjectId && selectedProject ? 'change' : 'create'}
+          busy={commandBusy}
+          onSubmit={onCommandSubmit}
+        />
+      </div>
+
       {retryingPreview ? <Toast tone="retrying" title="Preview in progress" message="Starting runtime and refreshing project evidence." /> : null}
       {commandBusy ? <Toast tone="info" title="Command submitted" message="Clearing stale preview state and waiting for backend project evidence." /> : null}
-    </>
+    </div>
   );
 }

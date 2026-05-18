@@ -39,7 +39,13 @@ export interface PreviewFileIssue {
     | 'invalid-package-json'
     | 'missing-dev-script'
     | 'missing-build-script'
-    | 'undeterminable-preview-command';
+    | 'undeterminable-preview-command'
+    | 'missing-next-layout'
+    | 'missing-next-page'
+    | 'missing-next-globals-css'
+    | 'invalid-global-css-import'
+    | 'invalid-css-syntax'
+    | 'invalid-postcss-config-module-format';
   typeofContent: string;
   typeofContents: string;
   /** First 200 chars of content if it WAS a string, otherwise null. */
@@ -85,6 +91,19 @@ const CRITICAL_FILES: ReadonlyArray<{ id: string; oneOf: string[] }> = [
     ],
   },
 ];
+
+function hasBalancedCssBraces(input: string): boolean {
+  let depth = 0;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (ch === '{') depth++;
+    if (ch === '}') {
+      depth--;
+      if (depth < 0) return false;
+    }
+  }
+  return depth === 0;
+}
 
 /**
  * Validate every file entry. Returns ok=true ONLY when:
@@ -283,6 +302,131 @@ export function validateProjectFilesForPreview(
             detail: 'dev/start script is empty after trimming — cannot determine preview command.',
           });
         }
+
+        // Next.js structural + CSS pipeline contract checks.
+        const deps = (parsed as { dependencies?: Record<string, string> }).dependencies ?? {};
+        const devDeps = (parsed as { devDependencies?: Record<string, string> }).devDependencies ?? {};
+        const pkgType = (parsed as { type?: unknown }).type;
+        const isTypeModule = pkgType === 'module';
+        const byPath = new Map(staged.map((f) => [f.path.replace(/\\/g, '/'), f.contents]));
+        const hasNext =
+          typeof deps.next === 'string'
+          || typeof devDeps.next === 'string'
+          || byPath.has('next.config.js')
+          || byPath.has('next.config.mjs')
+          || byPath.has('next.config.ts');
+
+        if (hasNext) {
+          const layoutPath = byPath.has('src/app/layout.tsx') ? 'src/app/layout.tsx'
+            : byPath.has('app/layout.tsx') ? 'app/layout.tsx'
+            : null;
+          const pagePath = byPath.has('src/app/page.tsx') ? 'src/app/page.tsx'
+            : byPath.has('app/page.tsx') ? 'app/page.tsx'
+            : null;
+          const globalsPath = byPath.has('src/app/globals.css') ? 'src/app/globals.css'
+            : byPath.has('app/globals.css') ? 'app/globals.css'
+            : null;
+
+          if (!layoutPath) {
+            issues.push({
+              index: -1,
+              path: 'src/app/layout.tsx',
+              reason: 'missing-next-layout',
+              typeofContent: 'undefined',
+              typeofContents: 'undefined',
+              preview: null,
+              detail: 'Next preview requires a root App Router layout.',
+            });
+          }
+          if (!pagePath) {
+            issues.push({
+              index: -1,
+              path: 'src/app/page.tsx',
+              reason: 'missing-next-page',
+              typeofContent: 'undefined',
+              typeofContents: 'undefined',
+              preview: null,
+              detail: 'Next preview requires a root App Router page.',
+            });
+          }
+          if (!globalsPath) {
+            issues.push({
+              index: -1,
+              path: 'src/app/globals.css',
+              reason: 'missing-next-globals-css',
+              typeofContent: 'undefined',
+              typeofContents: 'undefined',
+              preview: null,
+              detail: 'Next preview requires globals.css for deterministic baseline styles.',
+            });
+          }
+
+          if (layoutPath && globalsPath) {
+            const layoutContent = byPath.get(layoutPath) ?? '';
+            const globalImportRel = globalsPath.startsWith('src/') ? './globals.css' : './globals.css';
+            if (!/import\s+['"]\.\/globals\.css['"]/.test(layoutContent)) {
+              issues.push({
+                index: -1,
+                path: layoutPath,
+                reason: 'invalid-global-css-import',
+                typeofContent: 'string',
+                typeofContents: 'string',
+                preview: layoutContent.slice(0, 200),
+                detail: `Root layout must import "${globalImportRel}".`,
+              });
+            }
+            for (const f of staged) {
+              const p = f.path.replace(/\\/g, '/');
+              if (p === layoutPath || !/\.(?:tsx?|jsx?)$/i.test(p)) continue;
+              if (/import\s+['"][^'"]*globals\.css['"]/.test(f.contents)) {
+                issues.push({
+                  index: -1,
+                  path: p,
+                  reason: 'invalid-global-css-import',
+                  typeofContent: 'string',
+                  typeofContents: 'string',
+                  preview: f.contents.slice(0, 200),
+                  detail: 'Global CSS must be imported only from the root layout.',
+                });
+              }
+            }
+          }
+
+          if (globalsPath) {
+            const css = byPath.get(globalsPath) ?? '';
+            if (!hasBalancedCssBraces(css)) {
+              issues.push({
+                index: -1,
+                path: globalsPath,
+                reason: 'invalid-css-syntax',
+                typeofContent: 'string',
+                typeofContents: 'string',
+                preview: css.slice(0, 200),
+                detail: 'Unbalanced CSS braces detected in globals.css.',
+              });
+            }
+          }
+
+          if (isTypeModule) {
+            const postcssPath = byPath.has('postcss.config.js') ? 'postcss.config.js'
+              : byPath.has('apps/web/postcss.config.js') ? 'apps/web/postcss.config.js'
+              : null;
+            if (postcssPath) {
+              const postcssContent = byPath.get(postcssPath) ?? '';
+              if (/module\.exports\s*=/.test(postcssContent)) {
+                issues.push({
+                  index: -1,
+                  path: postcssPath,
+                  reason: 'invalid-postcss-config-module-format',
+                  typeofContent: 'string',
+                  typeofContents: 'string',
+                  preview: postcssContent.slice(0, 200),
+                  detail: 'package.json has "type":"module", but postcss.config.js uses CommonJS module.exports.',
+                });
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -311,5 +455,12 @@ export function describePreviewFileIssue(issue: PreviewFileIssue): string {
     case 'missing-dev-script':    return `Project cannot be previewed: ${issue.detail ?? `"${issue.path}" is missing a "dev" or "start" script`}.`;
     case 'missing-build-script':  return `Project is missing a "build" script in "${issue.path}".`;
     case 'undeterminable-preview-command': return `Cannot determine preview command from "${issue.path}": ${issue.detail ?? 'no runnable script'}.`;
+    case 'missing-next-layout':   return `Next preview contract failed: missing root layout ("${issue.path}").`;
+    case 'missing-next-page':     return `Next preview contract failed: missing root page ("${issue.path}").`;
+    case 'missing-next-globals-css': return `Next preview contract failed: missing global stylesheet ("${issue.path}").`;
+    case 'invalid-global-css-import': return `Invalid global CSS import in "${issue.path}": ${issue.detail ?? 'global CSS must only be imported in root layout'}.`;
+    case 'invalid-css-syntax':    return `Invalid CSS syntax in "${issue.path}": ${issue.detail ?? 'syntax error'}.`;
+    case 'invalid-postcss-config-module-format':
+      return `Invalid PostCSS config module format in "${issue.path}": ${issue.detail ?? 'ESM/CommonJS mismatch'}.`;
   }
 }

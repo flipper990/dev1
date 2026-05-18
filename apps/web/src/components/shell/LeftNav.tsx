@@ -61,7 +61,21 @@ const SECTION_LABELS: Record<NonNullable<LeftNavItem['section']>, string> = {
 
 function isActive(currentPath: string, href?: string) {
   if (!href) return false;
-  return href === '/' ? currentPath === '/' : currentPath.startsWith(href);
+  const currentUrl = new URL(currentPath, 'https://devteam.local');
+  const hrefUrl = new URL(href, 'https://devteam.local');
+
+  const pathnameMatch =
+    hrefUrl.pathname === '/'
+      ? currentUrl.pathname === '/'
+      : currentUrl.pathname === hrefUrl.pathname || currentUrl.pathname.startsWith(`${hrefUrl.pathname}/`);
+
+  if (!pathnameMatch) return false;
+  if (!hrefUrl.searchParams.size) return true;
+
+  for (const [key, value] of hrefUrl.searchParams.entries()) {
+    if (currentUrl.searchParams.get(key) !== value) return false;
+  }
+  return true;
 }
 
 export function LeftNav({
@@ -80,12 +94,13 @@ export function LeftNav({
   return (
     <aside
       className={cn(
-        'studio-surface-soft flex h-full min-h-0 flex-col rounded-[calc(var(--radius-modal)+2px)] px-2 py-3',
-        collapsed ? 'w-[78px]' : 'w-[236px]',
+        'studio-surface-soft flex h-full min-h-0 flex-col rounded-[calc(var(--radius-modal)+2px)] px-2.5 py-3.5',
+        'transition-[width,padding] duration-220 ease-ledger',
+        collapsed ? 'w-[82px]' : 'w-[248px]',
         className,
       )}
     >
-      <div className={cn('mb-3 flex items-center gap-2', collapsed ? 'justify-center' : 'justify-between')}>
+      <div className={cn('mb-3.5 flex items-center gap-2', collapsed ? 'justify-center' : 'justify-between')}>
         <div className={cn('min-w-0', collapsed && 'sr-only')}>
           <p className="text-label-s uppercase tracking-[0.15em] text-text-muted">Runtime</p>
           <p className="mt-1 truncate text-label-m text-text-primary">Mission control</p>
@@ -99,7 +114,7 @@ export function LeftNav({
         />
       </div>
 
-      <div className={cn('mb-3', collapsed ? 'px-0.5' : 'px-1')}>
+      <div className={cn('mb-3.5', collapsed ? 'px-0.5' : 'px-1')}>
         <button
           type="button"
           className={cn(
@@ -114,26 +129,26 @@ export function LeftNav({
         </button>
       </div>
 
-      <nav aria-label="Primary" className="studio-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-0.5">
+      <nav aria-label="Primary" className="studio-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
         {groupedItems.map(({ section, items: sectionItems }) => {
           if (sectionItems.length === 0) return null;
 
           return (
-            <div key={section} className="mb-5 last:mb-0">
-              <div className={cn('mb-2 px-2 text-label-s uppercase tracking-[0.14em] text-text-muted', collapsed && 'sr-only')}>
+            <div key={section} className="mb-7 last:mb-0">
+              <div className={cn('mb-2.5 px-2 text-label-s uppercase tracking-[0.14em] text-text-muted', collapsed && 'sr-only')}>
                 {SECTION_LABELS[section]}
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 {sectionItems.map((item) => {
                   const active = isActive(currentPath, item.href);
                   const Icon = item.icon;
                   const itemKey = `${section}:${item.href ?? 'no-href'}:${item.label}`;
                   const baseClass = cn(
-                    'group flex min-h-11 w-full items-center gap-3 rounded-[14px] px-3 text-body-s',
+                    'group flex min-h-11 w-full items-center gap-3 rounded-[14px] border border-transparent px-3 text-body-s',
                     'transition-[background-color,border-color,color,box-shadow] duration-160 ease-ledger focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]',
                     active
-                      ? 'bg-brand-primary-subtle text-brand-primary shadow-hairline'
-                      : 'text-text-secondary hover:bg-surface-tint hover:text-text-primary',
+                      ? 'border-brand-primary/35 bg-brand-primary-subtle text-brand-primary shadow-hairline'
+                      : 'text-text-secondary hover:border-border-muted hover:bg-surface-tint hover:text-text-primary',
                     collapsed && 'justify-center px-0.5',
                     item.disabled && 'cursor-not-allowed opacity-55 hover:border-transparent hover:bg-transparent hover:text-text-secondary',
                   );
@@ -173,7 +188,7 @@ export function LeftNav({
         })}
       </nav>
 
-      <div className={cn('mt-3 flex items-center rounded-[14px] bg-surface-tint px-2 py-1.5', collapsed ? 'justify-center' : 'justify-between')}>
+      <div className={cn('mt-3.5 flex items-center rounded-[14px] bg-surface-tint px-2 py-1.5', collapsed ? 'justify-center' : 'justify-between')}>
         <PanelLeft className="h-4 w-4 text-text-muted" />
         <span className={cn('text-label-s text-text-muted', collapsed && 'sr-only')}>Dock mode</span>
       </div>

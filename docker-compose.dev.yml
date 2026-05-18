@@ -8,8 +8,8 @@ services:
     image: postgres:16
     environment:
       POSTGRES_USER: devteam
+      POSTGRES_PASSWORD: devteam
       POSTGRES_DB: devteam
-      POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - '55432:5432'
     volumes:
@@ -32,7 +32,7 @@ services:
       PORT: 3003
       API_PORT: 3003
       STORAGE_PATH: /app/data
-      DATABASE_URL: postgresql://devteam@postgres:5432/devteam
+      DATABASE_URL: postgresql://devteam:devteam@postgres:5432/devteam
     env_file: .env
     volumes:
       - .:/app

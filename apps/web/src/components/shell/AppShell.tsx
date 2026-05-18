@@ -61,6 +61,7 @@ export function AppShell({
   const [leftNavCollapsed, setLeftNavCollapsed] = useState(false);
   const [contextOpen, setContextOpen] = useState(defaultContextOpen);
   const [themeDark, setThemeDark] = useState(true);
+  const [currentRoute, setCurrentRoute] = useState(pathname);
   const keyboardTrackedRef = useRef(false);
   const variantTrackedRef = useRef(false);
   const mobileNavRef = useRef<HTMLDivElement | null>(null);
@@ -68,6 +69,15 @@ export function AppShell({
   const hasContext = useMemo(() => Boolean(contextContent), [contextContent]);
   const flags = useMemo(() => getUiRedesignFlags(), []);
   const experiments = useMemo(() => getExperimentAssignments(), []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      setCurrentRoute(pathname);
+      return;
+    }
+    const query = window.location.search;
+    setCurrentRoute(query ? `${pathname}${query}` : pathname);
+  }, [pathname]);
 
   useEffect(() => {
     if (experiments.light_default_variant === 'dark-first' && flags.ui_redesign_dark_mode) {
@@ -85,7 +95,22 @@ export function AppShell({
     const root = document.documentElement;
     root.dataset.theme = themeDark ? 'dark' : 'light';
     root.classList.toggle('theme-dark', themeDark);
+    try {
+      window.localStorage.setItem('devteam-theme', themeDark ? 'dark' : 'light');
+    } catch {
+      // Ignore persistence failures in restricted environments.
+    }
   }, [themeDark]);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem('devteam-theme');
+      if (saved === 'light') setThemeDark(false);
+      if (saved === 'dark') setThemeDark(true);
+    } catch {
+      // Use default theme when storage is unavailable.
+    }
+  }, []);
 
   useEffect(() => {
     if (!leftNavOpen) return;
@@ -117,6 +142,15 @@ export function AppShell({
 
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
+  }, [leftNavOpen]);
+
+  useEffect(() => {
+    if (!leftNavOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
   }, [leftNavOpen]);
 
   useEffect(() => {
@@ -229,38 +263,38 @@ export function AppShell({
         showContextToggle={hasContext}
       />
 
-      <div className="mx-auto w-full max-w-[1760px] px-3 py-3 sm:px-4 sm:py-4 lg:px-6">
-        <div className={cn('grid min-w-0 gap-3 xl:grid-cols-[auto_minmax(0,1fr)_minmax(300px,360px)]', hasContext ? '' : 'xl:grid-cols-[auto_minmax(0,1fr)]')}>
-          <div className="hidden min-h-[calc(100vh-4.5rem)] shrink-0 lg:block">
-            <div className="sticky top-[4.65rem] h-[calc(100vh-5.1rem)]">
-            <LeftNav
-              currentPath={pathname}
-              collapsed={leftNavCollapsed}
-              onToggleCollapsed={() => setLeftNavCollapsed((prev) => !prev)}
-            />
+      <div className="mx-auto w-full max-w-[1780px] px-3 py-3 sm:px-4 sm:py-4 lg:px-6">
+        <div className={cn('grid min-w-0 gap-3 xl:grid-cols-[auto_minmax(0,1fr)_minmax(292px,344px)]', hasContext ? '' : 'xl:grid-cols-[auto_minmax(0,1fr)]')}>
+          <div className="hidden min-h-[var(--shell-content-min-height)] shrink-0 lg:block">
+            <div className="sticky top-[calc(var(--shell-header-offset)+10px)] h-[calc(var(--shell-content-min-height)-12px)]">
+              <LeftNav
+                currentPath={currentRoute}
+                collapsed={leftNavCollapsed}
+                onToggleCollapsed={() => setLeftNavCollapsed((prev) => !prev)}
+              />
             </div>
           </div>
 
           {leftNavOpen ? (
-            <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-label="Navigation menu" aria-modal="true">
+            <div className="fixed inset-0 z-[65] lg:hidden" role="dialog" aria-label="Navigation menu" aria-modal="true">
               <button
                 type="button"
                 className="absolute inset-0 bg-text-primary/45 backdrop-blur-[2px]"
                 aria-label="Close navigation menu"
                 onClick={() => setLeftNavOpen(false)}
               />
-              <div ref={mobileNavRef} className="studio-glass absolute inset-y-2 left-2 flex w-[304px] max-w-[88vw] flex-col rounded-[var(--radius-modal)]">
+              <div ref={mobileNavRef} className="studio-glass absolute bottom-2 left-2 top-[calc(var(--shell-header-offset)+8px)] flex w-[304px] max-w-[88vw] flex-col rounded-[var(--radius-modal)] pb-[max(var(--safe-bottom),0px)]">
                 <div className="flex items-center justify-between border-b border-border-muted px-4 py-3">
                   <span className="text-label-m text-text-primary">Navigation</span>
                   <IconButton icon={<X className="h-4 w-4" />} label="Close navigation menu" onClick={() => setLeftNavOpen(false)} />
                 </div>
-                <LeftNav currentPath={pathname} onNavigate={() => setLeftNavOpen(false)} className="w-full flex-1 border-r-0 shadow-none" />
+                <LeftNav currentPath={currentRoute} onNavigate={() => setLeftNavOpen(false)} className="w-full flex-1 border-r-0 shadow-none" />
               </div>
             </div>
           ) : null}
 
           <main className="studio-surface min-w-0 overflow-hidden rounded-[var(--radius-modal)]">
-            <section className="studio-scroll mx-auto min-h-[calc(100vh-5.1rem)] w-full max-w-[1320px] overflow-y-auto px-4 pb-28 pt-5 sm:px-6 sm:pt-6 lg:px-8 lg:pt-8 xl:px-10">
+            <section className="studio-scroll mx-auto min-h-[var(--shell-content-min-height)] w-full max-w-[1400px] overflow-y-auto px-4 pb-[calc(var(--safe-bottom)+var(--space-6))] pt-5 sm:px-6 sm:pt-6 lg:px-8 lg:pt-8 xl:px-10">
               <PageHeader
                 title={title}
                 subtitle={subtitle}
@@ -276,8 +310,8 @@ export function AppShell({
           </main>
 
           {hasContext ? (
-            <aside className="studio-surface-soft studio-scroll hidden min-h-[calc(100vh-5.1rem)] overflow-y-auto rounded-[var(--radius-modal)] p-4 xl:block">
-              <div className="mb-4 border-b border-border-muted pb-3">
+            <aside className="studio-surface-soft studio-scroll hidden min-h-[var(--shell-content-min-height)] overflow-y-auto rounded-[var(--radius-modal)] p-3.5 xl:block">
+              <div className="mb-3.5 border-b border-border-muted pb-2.5">
                 <h2 className="text-label-m text-text-primary">{contextTitle}</h2>
                 {contextDescription ? <p className="mt-1 text-body-s text-text-secondary">{contextDescription}</p> : null}
               </div>

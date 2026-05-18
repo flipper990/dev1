@@ -1,0 +1,239 @@
+{
+  "startedAt": "2026-05-18T17:15:58.593Z",
+  "completedAt": "2026-05-18T17:20:58.291Z",
+  "apiUrl": "http://127.0.0.1:3003",
+  "prompts": [
+    "Build a simple landing page with hero section, features, and CTA."
+  ],
+  "repeatCycles": 1,
+  "minSuccessMissions": 1,
+  "summary": {
+    "total": 1,
+    "succeeded": 1,
+    "failed": 0,
+    "successRate": 1,
+    "averageCompletionMs": 297981,
+    "retryFrequency": 0,
+    "previewStartupSuccess": 1,
+    "exportSuccessRate": 1,
+    "failureCategories": {},
+    "reliabilityByTier": [
+      {
+        "tier": "tier1",
+        "total": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "successRate": 0
+      },
+      {
+        "tier": "tier2",
+        "total": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "successRate": 0
+      },
+      {
+        "tier": "tier3",
+        "total": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "successRate": 0
+      }
+    ]
+  },
+  "preflightBefore": {
+    "ok": true,
+    "checkedAt": "2026-05-18T17:15:58.609Z",
+    "requiredProviders": [
+      "azure"
+    ],
+    "providerPreflight": {
+      "ok": true,
+      "requiredProviders": [
+        "azure"
+      ],
+      "providers": {
+        "openai": {
+          "provider": "openai",
+          "healthy": false,
+          "reason": "provider-healthcheck-failed",
+          "checkedAt": "2026-05-18T17:15:58.727Z",
+          "latencyMs": 514
+        },
+        "azure": {
+          "provider": "azure",
+          "healthy": true,
+          "reason": "ok",
+          "checkedAt": "2026-05-18T17:15:59.241Z",
+          "latencyMs": 0
+        }
+      },
+      "checkedAt": "2026-05-18T17:15:58.727Z"
+    },
+    "services": {
+      "storage": {
+        "ok": true,
+        "reason": "ok"
+      },
+      "preview": {
+        "ok": true,
+        "reason": "ok"
+      }
+    },
+    "reason": null
+  },
+  "preflightAfter": {
+    "ok": true,
+    "checkedAt": "2026-05-18T17:20:57.230Z",
+    "requiredProviders": [
+      "azure"
+    ],
+    "providerPreflight": {
+      "ok": true,
+      "requiredProviders": [
+        "azure"
+      ],
+      "providers": {
+        "openai": {
+          "provider": "openai",
+          "healthy": false,
+          "reason": "provider-healthcheck-failed",
+          "checkedAt": "2026-05-18T17:20:57.343Z",
+          "latencyMs": 519
+        },
+        "azure": {
+          "provider": "azure",
+          "healthy": true,
+          "reason": "ok",
+          "checkedAt": "2026-05-18T17:20:57.862Z",
+          "latencyMs": 0
+        }
+      },
+      "checkedAt": "2026-05-18T17:20:57.343Z"
+    },
+    "services": {
+      "storage": {
+        "ok": true,
+        "reason": "ok"
+      },
+      "preview": {
+        "ok": true,
+        "reason": "ok"
+      }
+    },
+    "reason": null
+  },
+  "runtimeTelemetry": {
+    "observedAt": "2026-05-18T17:20:58.291Z",
+    "missions": {
+      "accepted": 1,
+      "terminal": 176,
+      "completed": 80,
+      "failed": 96,
+      "successRate": 0.45454545454545453,
+      "avgCompletionMs": 393351
+    },
+    "reliability": {
+      "failuresByCategory": {
+        "unknown": 43,
+        "orchestration_failure": 36,
+        "artifact_corruption": 3,
+        "empty_generation": 4,
+        "dependency_failure": 10
+      },
+      "failuresByPhase": {
+        "unknown": 13,
+        "qa-gate": 30,
+        "terminal-consistency": 10,
+        "finalize": 1,
+        "final-integrity-gate": 2,
+        "final-assembly": 9,
+        "watchdog": 3,
+        "slice-1/3": 3,
+        "slice-1/4": 2,
+        "slice-1/7": 1,
+        "slice-1/6": 1,
+        "slice-1/5": 3,
+        "slice-1/2": 2,
+        "slice-1/1": 10,
+        "slice-4/4": 1,
+        "validate-request": 2,
+        "slice-2/2": 1,
+        "slice-2/5": 1,
+        "slice-1/20": 1
+      },
+      "artifactCorruptionRate": 0.017045454545454544
+    },
+    "providers": {
+      "preflightBlockedLaunches": 0,
+      "requiredProviders": [
+        "azure"
+      ],
+      "currentStatus": {
+        "openai": {
+          "provider": "openai",
+          "healthy": false,
+          "reason": "provider-healthcheck-failed",
+          "checkedAt": "2026-05-18T17:20:58.175Z",
+          "latencyMs": 115
+        },
+        "azure": {
+          "provider": "azure",
+          "healthy": true,
+          "reason": "ok",
+          "checkedAt": "2026-05-18T17:20:58.290Z",
+          "latencyMs": 0
+        }
+      },
+      "failureRate": 0.5
+    },
+    "retries": {
+      "averageRetriesPerSession": 0
+    },
+    "preview": {
+      "attempted": 48,
+      "ready": 19,
+      "startupSuccessRate": 0.3958333333333333
+    },
+    "export": {
+      "attempts": 1,
+      "successes": 1,
+      "failures": 0,
+      "successRate": 1
+    }
+  },
+  "results": [
+    {
+      "index": 0,
+      "tier": "custom",
+      "prompt": "Build a simple landing page with hero section, features, and CTA.",
+      "projectId": "UCitIKtXkoVg",
+      "sessionId": "1NSGa1Y0y-ctZmXC",
+      "status": "pass",
+      "durationMs": 297981,
+      "filesCount": 45,
+      "previewState": "ready",
+      "previewUrl": "/preview/UCitIKtXkoVg/",
+      "exportOk": true,
+      "exportState": "ok",
+      "retriesObserved": 0,
+      "phasesSeen": [
+        "init",
+        "planning",
+        "backend_generation",
+        "artifact_packaging"
+      ],
+      "failureCategory": null,
+      "failurePhase": null,
+      "failureReason": null,
+      "failedAgent": null,
+      "failedStep": null,
+      "retryCount": 0,
+      "lastValidCheckpoint": null,
+      "filesGeneratedBeforeFailure": 45,
+      "recoveryAttempted": false,
+      "recommendedNextAction": null,
+      "zeroFileClassification": null
+    }
+  ]
+}

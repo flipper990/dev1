@@ -31,6 +31,27 @@ export interface SessionProgress {
   sessionId: string;
   status: 'active' | 'completed' | 'failed' | 'cancelled';
   progress: number;
+  executionPhase?:
+    | 'queued'
+    | 'planning'
+    | 'architecting'
+    | 'backend_generation'
+    | 'frontend_generation'
+    | 'verification'
+    | 'preview_build'
+    | 'artifact_packaging'
+    | 'completed'
+    | 'failed'
+    | 'timed_out'
+    | 'provider_unavailable'
+    | 'retrying';
+  providerStatus?: Record<string, boolean>;
+  retryAttempt?: number;
+  activeWorker?: string | null;
+  lastHeartbeatAt?: string;
+  timeoutAt?: string | null;
+  timeoutRemainingMs?: number | null;
+  failureReason?: string | null;
   currentStep: {
     stepId: string;
     name: string;

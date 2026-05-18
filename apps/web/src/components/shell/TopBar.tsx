@@ -128,11 +128,11 @@ export function TopBar({
   return (
     <header
       className={cn(
-        'sticky top-0 z-40 border-b border-border-muted bg-surface-canvas/70 supports-[backdrop-filter]:backdrop-blur-xl',
+        'sticky top-0 z-40 border-b border-border-muted bg-surface-canvas/72 supports-[backdrop-filter]:backdrop-blur-xl',
         className,
       )}
     >
-      <div className="mx-auto flex h-14 w-full max-w-[1720px] items-center gap-3 px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex h-14 w-full max-w-[1760px] items-center gap-3 px-4 sm:px-6 lg:px-8">
         <IconButton
           icon={<Menu className="h-4 w-4" />}
           label={onOpenNav ? 'Open navigation' : 'Navigation unavailable'}
@@ -151,7 +151,7 @@ export function TopBar({
           </div>
         </div>
 
-        <div className="hidden min-w-0 items-center gap-2 rounded-full border border-border-muted bg-surface-base/80 px-3 py-1.5 text-label-s text-text-secondary md:flex">
+        <div className="hidden min-w-0 max-w-[420px] items-center gap-2 rounded-full border border-border-muted bg-surface-base/80 px-3 py-1.5 text-label-s text-text-secondary md:flex">
           <Building2 className="h-3.5 w-3.5 shrink-0 text-text-muted" aria-hidden="true" />
           <span className="truncate text-text-primary">{workspaceName}</span>
           {projectName ? (
@@ -167,7 +167,7 @@ export function TopBar({
             <Sparkles className="h-3.5 w-3.5 text-brand-primary" />
             <span>Runtime telemetry live</span>
           </div>
-          <div className="hidden xl:block">
+          <div className="hidden 2xl:block">
             <GlobalCommandBar value={searchValue} onChange={onSearchChange} onSubmit={onSearchSubmit} className="max-w-[380px]" />
           </div>
         </div>
@@ -238,7 +238,7 @@ export function TopBar({
         </div>
       </div>
 
-      <div className="border-t border-border-muted px-4 pb-3 pt-2 xl:hidden">
+      <div className="border-t border-border-muted px-4 pb-3 pt-2 2xl:hidden">
         <GlobalCommandBar value={searchValue} onChange={onSearchChange} onSubmit={onSearchSubmit} className="max-w-none" />
       </div>
     </header>

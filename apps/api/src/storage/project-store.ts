@@ -52,6 +52,71 @@ export class ProjectRecordCorruptError extends Error {
     this.name = 'ProjectRecordCorruptError';
   }
 }
+
+export class ProjectStorePersistenceError extends Error {
+  constructor(
+    public readonly code: 'PROJECT_PERSISTENCE_FAILURE' | 'FILESYSTEM_PERMISSION_FAILURE',
+    public readonly operation: string,
+    public readonly path: string,
+    message: string,
+    cause?: unknown,
+  ) {
+    super(message);
+    this.name = 'ProjectStorePersistenceError';
+    (this as Error & { cause?: unknown }).cause = cause;
+  }
+}
+
+function isPermissionLikeFsError(err: unknown): boolean {
+  const code = String((err as { code?: string })?.code ?? '').toUpperCase();
+  const msg = String((err as { message?: string })?.message ?? '').toLowerCase();
+  return code === 'EPERM' || code === 'EACCES' || code === 'EROFS'
+    || msg.includes('operation not permitted')
+    || msg.includes('permission denied')
+    || msg.includes('read-only file system');
+}
+
+function isRetryableWindowsFsError(err: unknown): boolean {
+  const code = String((err as { code?: string })?.code ?? '').toUpperCase();
+  const msg = String((err as { message?: string })?.message ?? '').toLowerCase();
+  return code === 'EPERM' || code === 'EBUSY' || code === 'ENOTEMPTY'
+    || msg.includes('operation not permitted')
+    || msg.includes('resource busy');
+}
+
+function delayMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function retryWindowsFsOperation<T>(
+  operation: string,
+  fn: () => Promise<T>,
+  maxAttempts = 4,
+): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (!isRetryableWindowsFsError(err) || attempt >= maxAttempts) {
+        throw err;
+      }
+      const backoff = 50 * (2 ** (attempt - 1));
+      await delayMs(backoff);
+    }
+  }
+  throw new Error(`${operation} failed after retries: ${String(lastErr)}`);
+}
+
+async function mkdirWithRetry(targetPath: string, operation: string): Promise<void> {
+  await retryWindowsFsOperation(operation, async () => mkdir(targetPath, { recursive: true }));
+}
+
+async function writeFileWithRetry(targetPath: string, content: string, operation: string): Promise<void> {
+  await retryWindowsFsOperation(operation, async () => writeFile(targetPath, content, 'utf-8'));
+}
+
 import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
 import type { Session, Task, AgentRole } from '../../../../packages/agent-core/src/types.js';
 import { auditAndLog } from '../pipeline/file-integrity.js';
@@ -284,6 +349,84 @@ export interface ProjectRecord {
     pipelineLedger?: PipelineRunLedger;
     /** Per-project generation-cost budget state and threshold events. */
     generationBudget?: GenerationBudgetDiagnostics;
+    /** Generation reliability checkpoints for phase-local recovery/resume. */
+    generationCheckpoints?: Array<{
+      id: string;
+      phase: string;
+      step: string;
+      status: 'checkpointed' | 'recovered';
+      at: string;
+      fileCount: number;
+      fileHash: string;
+      sliceIndex?: number;
+      sliceCount?: number;
+      details?: Record<string, unknown>;
+    }>;
+    /** Complexity score used to adapt QA loops and runtime budgets. */
+    generationComplexity?: {
+      score: number;
+      tier: 'low' | 'medium' | 'high';
+      estimatedSlices: number;
+      estimatedDeliverables: number;
+    };
+    /** Compact, user-facing failure trace persisted for terminal mission failures. */
+    generationFailureTrace?: {
+      capturedAt: string;
+      failureCategory: string;
+      failurePhase: string;
+      failureReason: string;
+      failedAgent: string;
+      failedStep: string;
+      retryCount: number;
+      lastValidCheckpoint: string | null;
+      filesGeneratedBeforeFailure: number;
+      recoveryAttempted: boolean;
+      recommendedNextAction: string;
+      zeroFileClassification?: string | null;
+      phaseTimeline: Array<{
+        phase: string;
+        stepId: string;
+        agentRole: string;
+        status: string;
+        attempt?: number;
+        startedAt?: string | null;
+        completedAt?: string | null;
+        durationMs?: number | null;
+        model?: string | null;
+        provider?: string | null;
+        errorCode: string | null;
+        errorMessage: string | null;
+        retryCount: number;
+      }>;
+      agentOutputsSummary: Array<{
+        agentRole: string;
+        phase: string;
+        status: string;
+        outputArtifactSummary?: string | null;
+      }>;
+      validationDecisions: Array<{
+        stepId: string;
+        status: string;
+        errorCode: string | null;
+        errorMessage: string | null;
+        validationVerdict?: string | null;
+        validationIssueCount?: number | null;
+        validationRepairCount?: number | null;
+      }>;
+      checkpoints?: Array<{
+        id: string;
+        phase: string;
+        step: string;
+        status: 'checkpointed' | 'recovered';
+        at: string;
+        fileCount: number;
+        sliceIndex?: number | null;
+        sliceCount?: number | null;
+      }>;
+      filesAccepted: number;
+      filesRejected: number;
+      fallbackAttempts: number;
+    };
     [key: string]: unknown;
   };
   /**
@@ -297,6 +440,21 @@ export interface ProjectRecord {
   progress?: {
     /** High-level phase tag: 'init' | 'spec' | 'slice-N/M' | 'final-assembly' | 'qa-gate' | 'execution-validation'. */
     phase: string;
+    /** Canonical orchestration phase surfaced to UI/runtime observers. */
+    executionPhase?:
+      | 'queued'
+      | 'planning'
+      | 'architecting'
+      | 'backend_generation'
+      | 'frontend_generation'
+      | 'verification'
+      | 'preview_build'
+      | 'artifact_packaging'
+      | 'completed'
+      | 'failed'
+      | 'timed_out'
+      | 'provider_unavailable'
+      | 'retrying';
     /** ISO timestamp of the last meaningful update. */
     lastProgressAt: string;
     /** ISO timestamp when the background runner first started. */
@@ -646,6 +804,40 @@ export interface ProjectRecord {
     lastSuccessfulStep?: string;
     /** Alias for `stack` \u2014 some consumers expect the conventional name. */
     errorStack?: string;
+    /** Structured failure classification for reliability analytics. */
+    classification?: {
+      category:
+        | 'provider_failure'
+        | 'orchestration_failure'
+        | 'artifact_corruption'
+        | 'empty_generation'
+        | 'timeout'
+        | 'preview_failure'
+        | 'export_failure'
+        | 'dependency_failure'
+        | 'dependency_install_failure'
+        | 'generated_app_build_failure'
+        | 'generated_import_export_mismatch'
+        | 'generated_typescript_error'
+        | 'preview_runner_internal_error'
+        | 'project_persistence_failure'
+        | 'filesystem_permission_failure'
+        | 'tier1_scope_violation'
+        | 'unknown';
+      code: string;
+      reason: string;
+    };
+    /** Human-facing failure details for deterministic diagnostics. */
+    failureCategory?: string;
+    failurePhase?: string;
+    failureReason?: string;
+    failedAgent?: string;
+    retryCount?: number;
+    lastValidCheckpoint?: string | null;
+    filesGeneratedBeforeFailure?: number;
+    recoveryAttempted?: boolean;
+    recommendedNextAction?: string;
+    zeroFileClassification?: string | null;
   };
 }
 
@@ -882,16 +1074,20 @@ export class ProjectStore {
       bytes,
     });
 
-    let fh: import('node:fs/promises').FileHandle | null = null;
     try {
       // Step 2 + 3: write to tmp then fdatasync so the rename observes
       // the full payload even if the OS crashes mid-flight.
-      await mkdir(dirname(filePath), { recursive: true });
-      fh = await open(tmpPath, 'w');
-      await fh.writeFile(serialized, { encoding: 'utf8' });
-      await fh.sync();
-      await fh.close();
-      fh = null;
+      await retryWindowsFsOperation('atomic-write-temp-json', async () => {
+        await unlink(tmpPath).catch(() => undefined);
+        await mkdirWithRetry(dirname(filePath), 'atomic-mkdir-parent');
+        const localHandle = await open(tmpPath, 'w');
+        try {
+          await localHandle.writeFile(serialized, { encoding: 'utf8' });
+          await localHandle.sync();
+        } finally {
+          await localHandle.close();
+        }
+      });
       // Step 3.5 (project.json only): keep one last-known-good backup.
       // Validate the EXISTING file before copying — we'd rather have
       // no backup than a backup of corruption. The .bak file is the
@@ -917,7 +1113,7 @@ export class ProjectStore {
       }
       // Step 4: atomic rename. MoveFileEx-atomic on Windows when the
       // target exists; rename(2)-atomic on POSIX.
-      await rename(tmpPath, filePath);
+      await retryWindowsFsOperation('atomic-rename-project-json', async () => rename(tmpPath, filePath));
       this.logger.info('atomicWriteJson: ok', {
         event: 'project-store:write-ok',
         projectId: ctx.projectId,
@@ -937,14 +1133,20 @@ export class ProjectStore {
         error: (err as Error).message,
       });
       // Best-effort tmp cleanup. Re-throw the original.
-      if (fh) await fh.close().catch(() => undefined);
       await unlink(tmpPath).catch(() => undefined);
-      throw err;
+      const message = `project persistence failed during ${ctx.phase} (${filePath}): ${(err as Error).message}`;
+      throw new ProjectStorePersistenceError(
+        isPermissionLikeFsError(err) ? 'FILESYSTEM_PERMISSION_FAILURE' : 'PROJECT_PERSISTENCE_FAILURE',
+        ctx.phase,
+        filePath,
+        message,
+        err,
+      );
     }
   }
 
   async init(): Promise<void> {
-    await mkdir(this.baseDir, { recursive: true });
+    await mkdirWithRetry(this.baseDir, 'project-store-init-mkdir');
   }
 
   // ────────────────────────────────────────────────────────────
@@ -1215,7 +1417,7 @@ export class ProjectStore {
     if (!project.versionHistory) project.versionHistory = [];
     this.syncLifecycleFields(project);
     const dir = join(this.baseDir, project.id);
-    await mkdir(dir, { recursive: true });
+    await mkdirWithRetry(dir, 'project-save-project-dir-mkdir');
 
     // Run the entire save (project.json + output/ tree) under the
     // per-project lock so a concurrent updatePreview() can't read a
@@ -1259,9 +1461,9 @@ export class ProjectStore {
       if (project.files.length > 0) {
         const outputDir = join(dir, 'output');
         if (existsSync(outputDir)) {
-          await rm(outputDir, { recursive: true, force: true });
+          await retryWindowsFsOperation('rm-output-dir', async () => rm(outputDir, { recursive: true, force: true }));
         }
-        await mkdir(outputDir, { recursive: true });
+        await mkdirWithRetry(outputDir, 'project-save-output-dir-mkdir');
 
         for (const file of project.files) {
           // Defensive: refuse to write an entry whose content is not a string.
@@ -1296,8 +1498,8 @@ export class ProjectStore {
               `Cannot save project ${project.id}: unsafe generated file path "${file.path}" (${pathErr.reason ?? 'invalid-path'}).`,
             );
           }
-          await mkdir(dirname(filePath), { recursive: true });
-          await writeFile(filePath, file.content, 'utf-8');
+          await mkdirWithRetry(dirname(filePath), 'project-save-file-dir-mkdir');
+          await writeFileWithRetry(filePath, file.content, 'project-save-file-write');
         }
       }
     }, 'save');
@@ -1528,12 +1730,14 @@ export class ProjectStore {
         if (!next.version) next.version = 1;
         if (!next.versionHistory) next.versionHistory = [];
         const dir = join(this.baseDir, next.id);
-        await mkdir(dir, { recursive: true });
+        await mkdirWithRetry(dir, 'project-update-project-dir-mkdir');
         await this.atomicWriteJson(join(dir, 'project.json'), next, { projectId, phase, backup: true });
         if (next.files.length > 0) {
           const outputDir = join(dir, 'output');
-          if (existsSync(outputDir)) await rm(outputDir, { recursive: true, force: true });
-          await mkdir(outputDir, { recursive: true });
+          if (existsSync(outputDir)) {
+            await retryWindowsFsOperation('rm-output-dir-update', async () => rm(outputDir, { recursive: true, force: true }));
+          }
+          await mkdirWithRetry(outputDir, 'project-update-output-dir-mkdir');
           for (const file of next.files) {
             if (typeof file.content !== 'string') {
               throw new Error(
@@ -1557,8 +1761,8 @@ export class ProjectStore {
                 `update(${projectId}): unsafe generated file path "${file.path}" (${pathErr.reason ?? 'invalid-path'}).`,
               );
             }
-            await mkdir(dirname(filePath), { recursive: true });
-            await writeFile(filePath, file.content, 'utf-8');
+            await mkdirWithRetry(dirname(filePath), 'project-update-file-dir-mkdir');
+            await writeFileWithRetry(filePath, file.content, 'project-update-file-write');
           }
         }
       } else {
@@ -1703,7 +1907,7 @@ export class ProjectStore {
     if (!existsSync(dir)) return false;
     return this.withProjectLock(projectId, async () => {
       if (!existsSync(dir)) return false;
-      await rm(dir, { recursive: true, force: true });
+      await retryWindowsFsOperation('delete-project-dir', async () => rm(dir, { recursive: true, force: true }));
       return true;
     }, 'delete');
   }
@@ -1711,7 +1915,7 @@ export class ProjectStore {
   /** Save a full version snapshot to disk. */
   async saveSnapshot(projectId: string, snapshot: ProjectSnapshot): Promise<void> {
     const dir = join(this.baseDir, projectId, 'versions');
-    await mkdir(dir, { recursive: true });
+      await mkdirWithRetry(dir, 'project-save-snapshot-dir-mkdir');
     // Snapshots live under the project's directory so we serialise
     // them under the same project lock — keeps version writes
     // ordered relative to project.json updates and prevents a

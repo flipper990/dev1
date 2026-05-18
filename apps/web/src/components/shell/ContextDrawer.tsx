@@ -54,21 +54,30 @@ export function ContextDrawer({ open, onClose, title = 'Context', description, c
     return () => document.removeEventListener('keydown', handleKeydown);
   }, [open, onClose]);
 
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 top-16 z-50" role="dialog" aria-modal="true" aria-label={title}>
+    <div className="fixed inset-0 top-[var(--shell-header-offset)] z-[60]" role="dialog" aria-modal="true" aria-label={title}>
       <button
         type="button"
         aria-label="Close context drawer"
-        className="absolute inset-0 bg-text-primary/20 backdrop-blur-[1px]"
+        className="absolute inset-0 bg-text-primary/24 backdrop-blur-[2px]"
         onClick={onClose}
       />
       <div
         ref={panelRef}
         className={cn(
-          'absolute inset-y-0 right-0 flex w-full max-w-[420px] flex-col border-l border-border bg-surface-raised shadow-overlay',
-          'sm:max-w-[440px]',
+          'studio-glass absolute inset-y-0 right-0 flex w-full max-w-[430px] flex-col rounded-l-[var(--radius-modal)]',
+          'sm:max-w-[462px]',
           className,
         )}
       >
@@ -79,7 +88,7 @@ export function ContextDrawer({ open, onClose, title = 'Context', description, c
           </div>
           <IconButton icon={<X className="h-4 w-4" aria-hidden="true" />} label="Close context drawer" onClick={onClose} />
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-5">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-5 pb-[calc(var(--safe-bottom)+var(--space-6))]">{children}</div>
       </div>
     </div>
   );

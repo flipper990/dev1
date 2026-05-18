@@ -159,6 +159,7 @@ export function ensureRunnableScaffold(fileMap: Map<string, ProjectFile>): void 
 /* ── Next.js (app router) ───────────────────────────────────── */
 
 function ensureNextScaffold(fileMap: Map<string, ProjectFile>): void {
+  const hasReactSource = [...fileMap.keys()].some((k) => /\.(tsx|jsx)$/i.test(k));
   if (!fileMap.has('package.json')) {
     fileMap.set('package.json', {
       path: 'package.json',
@@ -250,6 +251,13 @@ function ensureNextScaffold(fileMap: Map<string, ProjectFile>): void {
     fileMap.set('src/app/globals.css', {
       path: 'src/app/globals.css',
       content: '@tailwind base;\n@tailwind components;\n@tailwind utilities;\n',
+    });
+  }
+  if (hasReactSource && !fileMap.has('src/lib/api-client.ts') && !fileMap.has('lib/api-client.ts')) {
+    const target = fileMap.has('src/app/page.tsx') ? 'src/lib/api-client.ts' : 'lib/api-client.ts';
+    fileMap.set(target, {
+      path: target,
+      content: canonicalApiClientScaffoldContent(),
     });
   }
 }
@@ -522,22 +530,7 @@ function ensureFullstackWeb(fileMap: Map<string, ProjectFile>): void {
     const target = has('apps/web/src/app/page.tsx') ? 'apps/web/src/lib/api-client.ts' : 'apps/web/lib/api-client.ts';
     fileMap.set(target, {
       path: target,
-      content: [
-        '// Auto-injected fallback API client. Replace with project-specific',
-        '// methods, but keep this file as the single network layer.',
-        '',
-        'const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";',
-        '',
-        'export async function apiFetch<T = unknown>(path: string, init?: RequestInit): Promise<T> {',
-        '  const res = await fetch(`${BASE_URL}${path}`, {',
-        '    ...init,',
-        '    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },',
-        '    cache: "no-store",',
-        '  });',
-        '  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);',
-        '  return res.json() as Promise<T>;',
-        '}',
-      ].join('\n') + '\n',
+      content: canonicalApiClientScaffoldContent(),
     });
   }
   if (!has('apps/web/.env.example')) {
@@ -861,6 +854,49 @@ function ensureFullstackRoot(fileMap: Map<string, ProjectFile>): void {
 }
 
 /* ── tsconfig per stack ─────────────────────────────────────── */
+
+function canonicalApiClientScaffoldContent(): string {
+  return [
+    '// Auto-injected fallback API client. Replace with project-specific',
+    '// methods, but keep this file as the single network layer.',
+    '',
+    'const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";',
+    '',
+    'export async function apiFetch<T = unknown>(path: string, init?: RequestInit): Promise<T> {',
+    "  const target = path.startsWith('http') ? path : `${BASE_URL}${path}`;",
+    '  const res = await fetch(target, {',
+    '    ...init,',
+    '    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },',
+    '    cache: "no-store",',
+    '  });',
+    '  if (!res.ok) {',
+    '    const text = await res.text();',
+    '    throw new Error(`API ${res.status}: ${text}`);',
+    '  }',
+    '  return res.json() as Promise<T>;',
+    '}',
+    '',
+    'export async function request<T = unknown>(path: string, init?: RequestInit): Promise<T> {',
+    '  return apiFetch<T>(path, init);',
+    '}',
+    '',
+    'export async function getJson<T = unknown>(path: string): Promise<T> {',
+    "  return request<T>(path, { method: 'GET' });",
+    '}',
+    '',
+    'export async function postJson<T = unknown>(path: string, body?: unknown): Promise<T> {',
+    "  return request<T>(path, { method: 'POST', body: body == null ? undefined : JSON.stringify(body) });",
+    '}',
+    '',
+    'export async function fetcher<T = unknown>(path: string): Promise<T> {',
+    '  return getJson<T>(path);',
+    '}',
+    '',
+    'export const apiClient = { apiFetch, request, getJson, postJson, fetcher };',
+    'export default apiClient;',
+    '',
+  ].join('\\n');
+}
 
 function tsconfigFor(stack: ScaffoldStack): string {
   if (stack === 'nextjs') {

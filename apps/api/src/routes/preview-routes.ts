@@ -234,12 +234,12 @@ function proxyHandler(
   const queryStr = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
   const upstreamPath = `/${tail}${queryStr}`;
 
-  // Filter out hop-by-hop and host headers — the upstream will set its own.
+  // Forward only a safe subset of headers to preview runtimes.
+  // Never forward platform auth/session headers.
   const headers: Record<string, string> = {};
   for (const [k, v] of Object.entries(req.headers)) {
     if (v == null) continue;
-    const key = k.toLowerCase();
-    if (HOP_BY_HOP.has(key) || key === 'host') continue;
+    if (!shouldForwardPreviewHeader(k)) continue;
     headers[k] = Array.isArray(v) ? v.join(',') : String(v);
   }
 
@@ -293,3 +293,54 @@ const HOP_BY_HOP = new Set([
   'transfer-encoding',
   'upgrade',
 ]);
+
+const SENSITIVE_PREVIEW_HEADERS = new Set([
+  'authorization',
+  'cookie',
+  'x-csrf-token',
+  'x-devteam-user-id',
+  'x-devteam-user-email',
+  'x-devteam-workspace-id',
+  'x-devteam-role',
+  'x-forwarded-for',
+  'x-forwarded-host',
+  'x-forwarded-proto',
+  'forwarded',
+  'via',
+  'x-real-ip',
+]);
+
+const SAFE_PREVIEW_HEADERS = new Set([
+  'accept',
+  'accept-encoding',
+  'accept-language',
+  'cache-control',
+  'pragma',
+  'if-match',
+  'if-none-match',
+  'if-modified-since',
+  'if-unmodified-since',
+  'if-range',
+  'range',
+  'content-type',
+  'content-length',
+  'origin',
+  'referer',
+  'user-agent',
+  'upgrade-insecure-requests',
+  'x-request-id',
+  'x-correlation-id',
+  'x-requested-with',
+]);
+
+function shouldForwardPreviewHeader(headerName: string): boolean {
+  const key = headerName.toLowerCase();
+  if (HOP_BY_HOP.has(key) || key === 'host') return false;
+  if (SENSITIVE_PREVIEW_HEADERS.has(key)) return false;
+  if (key.startsWith('x-devteam-')) return false;
+  if (key.startsWith('x-internal-')) return false;
+  if (key.startsWith('x-forwarded-')) return false;
+  if (key.startsWith('sec-ch-') || key.startsWith('sec-fetch-')) return true;
+  if (key.startsWith('x-preview-')) return true;
+  return SAFE_PREVIEW_HEADERS.has(key);
+}

@@ -40,6 +40,7 @@ export function registerLLMRoutes(app: FastifyInstance, llm: SmartLLMRouter, aut
   });
 
   app.get('/api/llm/providers/health', { preHandler: [auth.requireRole('viewer')] }, async () => llm.getProviderRegistry().healthCheckAll());
+  app.get('/api/llm/providers/health/detailed', { preHandler: [auth.requireRole('viewer')] }, async () => llm.getProviderRegistry().healthCheckAllDetailed());
 
   app.get('/api/llm/overrides', { preHandler: [auth.requireRole('viewer')] }, async () => llm.getActiveOverrides());
 

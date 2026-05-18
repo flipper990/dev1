@@ -4,14 +4,26 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --ignore \"data/**\" --ignore \"./data/**\" --ignore \"**/data/**\" src/server.ts",
+    "dev": "tsx src/runtime/prestart-db-check.ts && tsx watch --ignore \"data/**\" --ignore \"./data/**\" --ignore \"**/data/**\" src/server.ts",
     "build": "tsc",
-    "start": "tsx src/server.ts",
+    "start": "tsx src/runtime/prestart-db-check.ts && tsx src/server.ts",
     "lint": "eslint src/",
+    "test": "npm run test:contracts && npm run test:auth && npm run test:package:unit && npm run test:preview:security",
+    "type-check": "npm run typecheck",
     "typecheck": "tsc --noEmit",
+    "db:preflight": "tsx src/runtime/prestart-db-check.ts",
+    "db:up": "docker compose -f ../../docker-compose.dev.yml up -d postgres",
+    "db:down": "docker compose -f ../../docker-compose.dev.yml down",
+    "db:logs": "docker compose -f ../../docker-compose.dev.yml logs postgres --tail=200",
     "test:auth": "tsx --test src/security/auth.test.ts",
     "test:contracts": "tsx --test src/routes/api-contract.test.ts",
-    "test:generations": "tsx src/testing/generation-runner.ts"
+    "test:preview:security": "tsx --test src/routes/preview-routes.security.test.ts",
+    "test:contracts:fast": "tsx src/testing/contract-fast-check.ts",
+    "test:package:unit": "tsx --test src/pipeline/canonical-package-manifest.test.ts",
+    "test:generations": "tsx src/testing/generation-runner.ts",
+    "test:missions:e2e": "tsx src/testing/run-missions-e2e.ts",
+    "test:missions:e2e:raw": "tsx src/testing/successful-mission-e2e.ts",
+    "test:missions:ci": "MIN_SUCCESS_MISSIONS=1 tsx src/testing/successful-mission-e2e.ts"
   },
   "dependencies": {
     "@devteam/types": "*",
@@ -34,6 +46,9 @@
     "archiver": "^7.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.1",
+    "typescript-eslint": "^8.46.4",
     "@types/node": "^22.10.0",
     "@types/pg": "^8.11.0",
     "@types/archiver": "^6.0.0",

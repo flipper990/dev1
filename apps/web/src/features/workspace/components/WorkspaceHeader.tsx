@@ -36,7 +36,7 @@ export function WorkspaceHeader({
   const sortedProjects = sortProjectsByUpdated(projects);
 
   return (
-    <section className="studio-surface-soft overflow-hidden rounded-[var(--radius-panel)] p-4">
+    <section className="studio-surface-soft overflow-hidden rounded-[var(--radius-panel)] p-4 sm:p-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -53,7 +53,7 @@ export function WorkspaceHeader({
         </div>
 
         <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
-          <div className="min-w-0 flex-1 lg:w-[340px] lg:flex-none">
+          <div className="min-w-0 flex-1 lg:w-[360px] lg:flex-none">
             <label htmlFor="workspace-project" className="sr-only">Project context</label>
             <Select
               id="workspace-project"

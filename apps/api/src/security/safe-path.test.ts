@@ -11,6 +11,8 @@ import {
 test('normalizeProjectRelativePath normalizes separators and dot segments', () => {
   assert.equal(normalizeProjectRelativePath('src\\app\\..\\app\\page.tsx'), 'src/app/page.tsx');
   assert.equal(normalizeProjectRelativePath('./package.json'), 'package.json');
+  assert.equal(normalizeProjectRelativePath('src/app/articles/:slug/page.tsx'), 'src/app/articles/[slug]/page.tsx');
+  assert.equal(normalizeProjectRelativePath('src\\app\\articles\\:slug\\page.tsx'), 'src/app/articles/[slug]/page.tsx');
 });
 
 test('normalizeProjectRelativePath rejects traversal and absolute paths', () => {
@@ -25,6 +27,10 @@ test('normalizeProjectRelativePath rejects traversal and absolute paths', () => 
   assert.throws(
     () => normalizeProjectRelativePath('C:\\Windows\\System32\\drivers\\etc\\hosts'),
     (err: unknown) => err instanceof UnsafeProjectPathError && err.reason === 'absolute-path',
+  );
+  assert.throws(
+    () => normalizeProjectRelativePath('src/app/articles/<bad>/page.tsx'),
+    (err: unknown) => err instanceof UnsafeProjectPathError && err.reason === 'windows-invalid-char',
   );
 });
 

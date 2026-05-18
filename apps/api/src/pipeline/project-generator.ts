@@ -26,7 +26,7 @@ import {
   clearActiveGeneration,
 } from '../crash-logger.js';
 import { planSlices, buildSliceManifest, type PlannedSlice } from '../../../../packages/agent-core/src/slice-planner.js';
-import { SessionManager } from './session-manager.js';
+import { SessionManager, type RuntimeExecutionPhase } from './session-manager.js';
 import { ProjectStore, type ProjectRecord } from '../storage/project-store.js';
 import { FileMemoryStore } from '../storage/memory-store.js';
 import { assembleProject, buildTaskSummaries, buildStepSummaries } from './project-assembler.js';
@@ -41,6 +41,9 @@ import { runSpecRunner } from './spec-runner.js';
 import { runFinalizationRunner } from './finalization-runner.js';
 import { runWithProgressHeartbeat } from './progress-heartbeat.js';
 import { formatFailureSummary } from './failure-persistence.js';
+import { validateArtifactIntegrity } from './artifact-integrity.js';
+import { classifyGenerationFailure } from './generation-failure-classifier.js';
+import { buildStructuredFailureDiagnostics } from './failure-diagnostics.js';
 import {
   applyDependencyAutoFix as applyDependencyAutoFixForSlice,
   applySimplifiedFallback as applySimplifiedFallbackForSlice,
@@ -52,11 +55,14 @@ import {
   runPostSliceBuildCheck as runPostSliceBuildCheckForSlice,
   runPostSliceQuickValidation as runPostSliceQuickValidationForSlice,
 } from './slice-runner.js';
+import { runDeterministicImportRepair, type ImportRepairDiagnostics } from './import-repair.js';
+import { evaluateQaGateDecision } from './qa-gate-policy.js';
 import {
   buildPreviewValidationArtifacts as buildPreviewValidationArtifactsForScheduler,
   scheduleRuntimeValidation as scheduleRuntimeValidationForScheduler,
 } from './preview-scheduler.js';
 import { scheduleExecutionValidation as scheduleExecutionValidationForScheduler } from './execution-validation-scheduler.js';
+import { enforceDeterministicGenerationContract, type GenerationManifest } from './deterministic-generation-contract.js';
 
 export type {
   GenerateRequest, UpdateRequest, GenerateResult, UpdateResult, StepSummary,
@@ -66,6 +72,9 @@ import type { GenerateRequest, GenerateResult, UpdateRequest, UpdateResult } fro
 
 const MAX_QA_LOOPS = 2; // hard cap on QA-driven rebuilds per slice. After hitting this, applySimplifiedFallback() stubs the offending files instead of regenerating the whole slice again.
 const QA_STAGNATION_LIMIT = 1; // bail immediately if a rebuild fails to drop the issue count.
+const MAX_EMPTY_SLICE_RECOVERY = 2;
+const MAX_CHECKPOINTS = 250;
+const BACKEND_OR_FULLSTACK_INTENT_RE = /\b(backend|api|full[\s-]?stack)\b/i;
 
 /**
  * Per-call LLM usage record collected live for the diagnostic dump.
@@ -419,6 +428,202 @@ export class ProjectGenerator {
     this.updater = new ProjectUpdater(agents, projectStore, memoryStore, sessionManager, logger);
   }
 
+  private estimateComplexity(
+    specOut: {
+      frontendPages?: Array<unknown>;
+      routes?: Array<unknown>;
+      apiContracts?: Array<unknown>;
+      entities?: Array<unknown>;
+      featureSlices?: Array<unknown>;
+      components?: Array<unknown>;
+    },
+    slices: PlannedSlice[],
+  ): { score: number; tier: 'low' | 'medium' | 'high'; estimatedSlices: number; estimatedDeliverables: number } {
+    const pages = Array.isArray(specOut.frontendPages) ? specOut.frontendPages.length : 0;
+    const routes = Array.isArray(specOut.routes) ? specOut.routes.length : 0;
+    const apis = Array.isArray(specOut.apiContracts) ? specOut.apiContracts.length : 0;
+    const entities = Array.isArray(specOut.entities) ? specOut.entities.length : 0;
+    const declaredSlices = Array.isArray(specOut.featureSlices) ? specOut.featureSlices.length : 0;
+    const components = Array.isArray(specOut.components) ? specOut.components.length : 0;
+    const estimatedSlices = Math.max(1, slices.length || declaredSlices || 1);
+    const estimatedDeliverables = pages + routes + apis + entities + components;
+    const score = Math.max(
+      1,
+      estimatedSlices * 2 + pages + routes + apis * 2 + entities + Math.ceil(estimatedDeliverables / 3),
+    );
+    const tier: 'low' | 'medium' | 'high' = score >= 22 ? 'high' : score >= 11 ? 'medium' : 'low';
+    return { score, tier, estimatedSlices, estimatedDeliverables };
+  }
+
+  private computeFileHash(files: Array<{ path: string; content: string }>): string {
+    const canonical = files
+      .slice()
+      .sort((a, b) => a.path.localeCompare(b.path))
+      .map((f) => `${f.path}\n${f.content}`)
+      .join('\n--FILE--\n');
+    return createHash('sha256').update(canonical).digest('hex');
+  }
+
+  private appendGenerationCheckpoint(
+    project: ProjectRecord,
+    input: {
+      phase: string;
+      step: string;
+      status: 'checkpointed' | 'recovered';
+      files: Array<{ path: string; content: string }>;
+      sliceIndex?: number;
+      sliceCount?: number;
+      details?: Record<string, unknown>;
+    },
+  ): void {
+    if (!project.diagnostics) project.diagnostics = {};
+    const checkpoints = Array.isArray(project.diagnostics.generationCheckpoints)
+      ? project.diagnostics.generationCheckpoints
+      : [];
+    checkpoints.push({
+      id: nanoid(10),
+      phase: input.phase,
+      step: input.step,
+      status: input.status,
+      at: new Date().toISOString(),
+      fileCount: input.files.length,
+      fileHash: this.computeFileHash(input.files),
+      sliceIndex: input.sliceIndex,
+      sliceCount: input.sliceCount,
+      details: input.details,
+    });
+    if (checkpoints.length > MAX_CHECKPOINTS) {
+      checkpoints.splice(0, checkpoints.length - MAX_CHECKPOINTS);
+    }
+    project.diagnostics.generationCheckpoints = checkpoints;
+  }
+
+  private deriveRecoveryTargetPaths(slice: PlannedSlice | undefined, sliceIdx: number): string[] {
+    const targets = new Set<string>();
+    const asArray = (value: unknown): string[] =>
+      Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0) : [];
+
+    const routes = asArray((slice as unknown as { routes?: unknown[] } | undefined)?.routes);
+    for (const rawRoute of routes) {
+      const route = rawRoute.trim();
+      if (!route) continue;
+      if (route.startsWith('/api/')) {
+        const rest = route.replace(/^\/api\//, '').replace(/^\/+/, '');
+        const file = `src/app/api/${rest || 'health'}/route.ts`.replace(/\/+/g, '/');
+        targets.add(file);
+        continue;
+      }
+      if (route === '/' || route === '/home') {
+        targets.add('src/app/page.tsx');
+        continue;
+      }
+      const seg = route.replace(/^\/+/, '').replace(/\/+$/, '');
+      targets.add(`src/app/${seg}/page.tsx`.replace(/\/+/g, '/'));
+    }
+
+    const apiIds = asArray((slice as unknown as { apiIds?: unknown[] } | undefined)?.apiIds);
+    for (const apiId of apiIds) {
+      const normalized = apiId.replace(/^\/+/, '').replace(/^api\//, '').trim();
+      if (!normalized) continue;
+      targets.add(`src/app/api/${normalized}/route.ts`.replace(/\/+/g, '/'));
+    }
+
+    const components = asArray((slice as unknown as { components?: unknown[] } | undefined)?.components);
+    for (const comp of components) {
+      const safe = comp.replace(/[^A-Za-z0-9_-]/g, '').trim();
+      if (!safe) continue;
+      targets.add(`src/components/${safe}.tsx`);
+    }
+
+    if (targets.size === 0) {
+      if (sliceIdx === 0) targets.add('src/app/page.tsx');
+      targets.add(`src/lib/slices/slice-${sliceIdx + 1}.ts`);
+    }
+    return [...targets];
+  }
+
+  private recoverEmptyBuilderSlice(
+    sliceState: { artifacts: Map<AgentRole, Record<string, unknown>> },
+    opts: { slice: PlannedSlice | undefined; sliceIdx: number; sliceCount: number; sliceLabel: string },
+  ): { files: Array<{ path: string; content: string; language?: string }>; reason: string } {
+    const targets = this.deriveRecoveryTargetPaths(opts.slice, opts.sliceIdx);
+    const files = targets.map((targetPath) => {
+      const stub = buildSimplifiedStub(targetPath)
+        ?? `export const recoveredSlice${opts.sliceIdx + 1} = true;\n`;
+      const language = targetPath.endsWith('.json')
+        ? 'json'
+        : targetPath.endsWith('.css')
+          ? 'css'
+          : targetPath.endsWith('.ts') || targetPath.endsWith('.tsx') ? 'typescript' : undefined;
+      return { path: targetPath, content: stub, language };
+    });
+    sliceState.artifacts.set('builder', {
+      files,
+      _sliceRecovered: true,
+      _sliceRecoveryTargets: targets,
+      _sliceRecoveryReason: 'builder-empty',
+    });
+    const qa = (sliceState.artifacts.get('qa') as { issues?: unknown[]; verdict?: string; summary?: string } | undefined) ?? {};
+    sliceState.artifacts.set('qa', {
+      ...qa,
+      verdict: 'pass',
+      summary: `${qa.summary ?? ''} [slice-recovery:builder-empty:${opts.sliceLabel}]`.trim(),
+    } as Record<string, unknown>);
+    return {
+      files,
+      reason: `Recovered slice ${opts.sliceLabel} with ${files.length} deterministic fallback artifact(s).`,
+    };
+  }
+
+  private assertArtifactIntegrityOrThrow(
+    files: Array<{ path: string; content: string; language?: string }>,
+    context: { phase: string; step: string; requireAppEntry?: boolean; requirePackageJson?: boolean },
+  ): void {
+    const report = validateArtifactIntegrity(files, {
+      requireAppEntry: context.requireAppEntry,
+      requirePackageJson: context.requirePackageJson,
+    });
+    if (report.ok) return;
+    const first = report.issues[0];
+    const detail = first ? `${first.code}: ${first.message}` : 'unknown integrity issue';
+    throw new Error(`[artifact-integrity] ${context.phase} -> ${context.step}: ${detail}`);
+  }
+
+  private repairDanglingInternalImports(
+    files: Array<{ path: string; content: string; language?: string }>,
+    dangling: Array<{ importer: string; specifier: string; triedPaths: string[] }>,
+  ): { files: Array<{ path: string; content: string; language?: string }>; repairedPaths: string[] } {
+    if (!Array.isArray(dangling) || dangling.length === 0) return { files, repairedPaths: [] };
+    const byPath = new Map(files.map((f) => [f.path.replace(/\\/g, '/').replace(/^\.\//, ''), f]));
+    const repairedPaths: string[] = [];
+    const preferredExt = ['.tsx', '.ts', '.jsx', '.js'];
+
+    const chooseTarget = (paths: string[]): string | null => {
+      const normalized = paths
+        .map((p) => p.replace(/\\/g, '/').replace(/^\.\//, ''))
+        .filter((p) => p.length > 0 && !p.includes('node_modules/'));
+      for (const ext of preferredExt) {
+        const found = normalized.find((p) => p.endsWith(ext));
+        if (found) return found;
+      }
+      return normalized[0] ?? null;
+    };
+
+    for (const item of dangling) {
+      const target = chooseTarget(item.triedPaths);
+      if (!target || byPath.has(target)) continue;
+      const content = buildSimplifiedStub(target) ?? `export default function GeneratedPlaceholder(){ return null; }\n`;
+      const language = target.endsWith('.json')
+        ? 'json'
+        : target.endsWith('.css')
+          ? 'css'
+          : target.endsWith('.ts') || target.endsWith('.tsx') ? 'typescript' : undefined;
+      byPath.set(target, { path: target, content, language });
+      repairedPaths.push(target);
+    }
+    return { files: Array.from(byPath.values()), repairedPaths };
+  }
+
   // ── Background-friendly entry ────────────────────────────
   /**
    * Allocate project + session IDs synchronously and persist a 'generating'
@@ -614,7 +819,7 @@ export class ProjectGenerator {
         if (asJson && asJson.length > 2 && asJson !== '{}') {
           message = asJson;
         } else {
-          message = `Unknown error in ${failedPhase}/${failedStep}`;
+          message = `Unspecified pipeline failure in ${failedPhase}/${failedStep} (no throwable message payload)`;
         }
       }
     }
@@ -624,6 +829,11 @@ export class ProjectGenerator {
       failedPhase,
       failedStep,
       errorName: name,
+      errorMessage: message,
+    });
+    const classification = classifyGenerationFailure({
+      failedPhase,
+      failedStep,
       errorMessage: message,
     });
 
@@ -673,6 +883,16 @@ export class ProjectGenerator {
       context.lastSuccessfulStep ??
       base.failure?.lastSuccessfulStep ??
       persisted?.failure?.lastSuccessfulStep ?? lastSuccessfulPhase;
+    const progress = this.sessionManager.getProgress(sessionId);
+    const retryCount = Number(progress?.retryAttempt ?? 0);
+    const failedAgent = (() => {
+      const step = failedStep.toLowerCase();
+      if (step.includes('qa')) return 'qa';
+      if (step.includes('builder') || step.includes('build')) return 'builder';
+      if (step.includes('spec')) return 'spec';
+      if (step.includes('polish')) return 'polish';
+      return 'pipeline';
+    })();
 
     base.status = 'failed';
     base.projectStatus = 'failed';
@@ -682,6 +902,16 @@ export class ProjectGenerator {
     base.completedAt = failedAt;
     base.totalTokens = totalTokens;
     base.totalCostUsd = totalCostUsd;
+    const structured = buildStructuredFailureDiagnostics({
+      project: base,
+      failedPhase,
+      failedStep,
+      failedAgent,
+      failureReason: message,
+      retryCount,
+      filesGeneratedBeforeFailure: base.files?.length ?? 0,
+      recoveryAttempted: false,
+    });
     base.failure = {
       failedPhase,
       errorName: name,
@@ -693,7 +923,22 @@ export class ProjectGenerator {
       llmCallCount,
       failedStep,
       lastSuccessfulStep,
+      classification: structured.classification,
+      failureCategory: structured.failure.failureCategory,
+      failurePhase: structured.failure.failurePhase,
+      failureReason: structured.failure.failureReason,
+      failedAgent: structured.failure.failedAgent,
+      retryCount: structured.failure.retryCount,
+      lastValidCheckpoint: structured.failure.lastValidCheckpoint,
+      filesGeneratedBeforeFailure: structured.failure.filesGeneratedBeforeFailure,
+      recoveryAttempted: structured.failure.recoveryAttempted,
+      recommendedNextAction: structured.failure.recommendedNextAction,
+      zeroFileClassification: structured.failure.zeroFileClassification,
     };
+    base.diagnostics = base.diagnostics ?? {};
+    base.diagnostics.generationFailureTrace = structured.trace as NonNullable<
+      NonNullable<ProjectRecord['diagnostics']>['generationFailureTrace']
+    >;
 
     try {
       await this.projectStore.save(base, {
@@ -713,6 +958,54 @@ export class ProjectGenerator {
         saveErr: String(saveErr),
         saveStack: saveErr instanceof Error ? saveErr.stack : undefined,
       });
+      try {
+        await this.projectStore.update(projectId, (rec) => {
+          rec.status = 'failed';
+          rec.projectStatus = 'failed';
+          rec.verificationStatus = 'failed';
+          rec.completedAt = failedAt;
+          rec.error = summary;
+          rec.failure = {
+            ...(rec.failure ?? {}),
+            failedPhase,
+            failedStep,
+            failedAt,
+            errorName: name,
+            errorMessage: message,
+            errorStack: stack,
+            classification: structured.classification,
+            failureCategory: structured.failure.failureCategory,
+            failurePhase: structured.failure.failurePhase,
+            failureReason: structured.failure.failureReason,
+            failedAgent: structured.failure.failedAgent,
+            retryCount: structured.failure.retryCount,
+            lastValidCheckpoint: structured.failure.lastValidCheckpoint,
+            filesGeneratedBeforeFailure: structured.failure.filesGeneratedBeforeFailure,
+            recoveryAttempted: structured.failure.recoveryAttempted,
+            recommendedNextAction: structured.failure.recommendedNextAction,
+            zeroFileClassification: structured.failure.zeroFileClassification,
+          };
+          rec.diagnostics = rec.diagnostics ?? {};
+          rec.diagnostics.generationFailureTrace = structured.trace as NonNullable<
+            NonNullable<ProjectRecord['diagnostics']>['generationFailureTrace']
+          >;
+        }, {
+          phase: 'persistProjectFailure:fallback-update',
+          caller: 'persistProjectFailure',
+          reason: `${failedPhase}/${failedStep}:save-fallback`,
+          allowStatusDowngrade: true,
+        });
+      } catch (fallbackErr) {
+        this.logger.error('[gen:persist-failure:fallback-update-error] failed to force terminal failure state', {
+          event: 'gen:persist-failure:fallback-update-error',
+          projectId,
+          sessionId,
+          failedPhase,
+          failedStep,
+          fallbackErr: String(fallbackErr),
+          fallbackStack: fallbackErr instanceof Error ? fallbackErr.stack : undefined,
+        });
+      }
     }
 
     this.logger.error('[gen:persist-failure] project marked failed', {
@@ -744,6 +1037,7 @@ export class ProjectGenerator {
         totalTokens,
         totalCostUsd,
         failedAt,
+        classification: structured.classification,
       } as unknown as PipelineEvent);
     } catch (emitErr) {
       this.logger.warn('[gen:persist-failure:emit-error] websocket emit failed (non-fatal)', {
@@ -1183,6 +1477,7 @@ export class ProjectGenerator {
       usageLog: diag?.usageLog ?? [],
       warnings: args.record.warnings ?? [],
       failure: args.record.failure ?? null,
+      failureClassification: args.record.failure?.classification ?? null,
     };
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, JSON.stringify(payload, null, 2), 'utf8');
@@ -1390,7 +1685,12 @@ export class ProjectGenerator {
       stepCompletedAt: patch.stepCompletedAt ?? (stepChanged ? undefined : prev.stepCompletedAt),
       stepDurationMs: patch.stepDurationMs ?? (stepChanged ? undefined : prev.stepDurationMs),
       previousStep: stepChanged ? prev.lastMeaningfulStep : prev.previousStep,
+      executionPhase: this.toExecutionPhase(patch.phase ?? prev.phase, patch.step),
     };
+    this.sessionManager.markHeartbeat(project.sessionId, {
+      phase: patch.phase ?? prev.phase,
+      step: patch.step,
+    });
     // Per-call usage accumulation. Persisted on the SAME save() as the
     // heartbeat so a crash anywhere downstream still reflects the real
     // spend. Critical for diagnostics: previously totalTokens/totalCostUsd
@@ -2099,9 +2399,15 @@ export class ProjectGenerator {
       const plan = planSlices(rawSlices as Parameters<typeof planSlices>[0]);
       const slices: PlannedSlice[] = plan.slices;
       const sliceCount = Math.max(1, slices.length); // always at least one pass
+      const complexity = this.estimateComplexity(specOut ?? {}, slices);
+      const maxQaLoops = complexity.tier === 'high' ? MAX_QA_LOOPS + 1 : MAX_QA_LOOPS;
+      const maxEmptySliceRecovery = complexity.tier === 'high' ? MAX_EMPTY_SLICE_RECOVERY : 1;
+      if (!project.diagnostics) project.diagnostics = {};
+      project.diagnostics.generationComplexity = complexity;
       this.logger.info('[gen:slices:planned] slice plan computed', {
         event: 'gen:slices:planned', projectId, sessionId,
         rawSliceCount: rawSlices.length, plannedSliceCount: slices.length,
+        complexity,
       });
 
       // Persist slice plan onto the project record IMMEDIATELY so observers
@@ -2124,6 +2430,13 @@ export class ProjectGenerator {
           phase: 'slice-planning', step: 'slices:persisted',
           slicesPlannedCount: slices.length,
         });
+        this.appendGenerationCheckpoint(project, {
+          phase: 'slice-planning',
+          step: 'slices:persisted',
+          status: 'checkpointed',
+          files: project.files,
+          details: { sliceCount: slices.length, complexity },
+        });
       } catch (persistErr) {
         this.logger.warn('[gen:slices:persist-failed] could not persist slice plan (non-fatal)', {
           event: 'gen:slices:persist-failed', projectId, sessionId, err: String(persistErr),
@@ -2136,7 +2449,13 @@ export class ProjectGenerator {
       // discarding everything as 'failed'.
       const adaptiveBudgetMs = Math.min(
         this.pipelineHardTimeoutMs,
-        Math.max(this.minPipelineBudgetMs, sliceCount * this.perSliceBudgetMs),
+        Math.max(
+          this.minPipelineBudgetMs,
+          Math.round(
+            sliceCount * this.perSliceBudgetMs
+            * (complexity.tier === 'high' ? 1.45 : complexity.tier === 'medium' ? 1.2 : 1),
+          ),
+        ),
       );
       softDeadlineMs = pipelineStartedAt + adaptiveBudgetMs;
       this.logger.info(
@@ -2151,6 +2470,9 @@ export class ProjectGenerator {
           rawSliceIds: rawSlices.map((s) => s.id),
           plannedOrder: slices.map((s) => s.plannedId),
           notes: plan.notes,
+          complexity,
+          maxQaLoops,
+          maxEmptySliceRecovery,
         },
       );
       if (plan.notes.length > 0) {
@@ -2164,6 +2486,7 @@ export class ProjectGenerator {
       let totalBuilderIterations = 0;
       let lastQaArtifact: Record<string, unknown> | undefined;
       let lastPolishArtifact: Record<string, unknown> | undefined;
+      let generationManifest: GenerationManifest | null = null;
       const completedSlices: PlannedSlice[] = [];
 
       // Builder reads the LOCKED stack via the spec artifact (which carries
@@ -2266,18 +2589,92 @@ export class ProjectGenerator {
         let sliceState = await sliceOrch.execute(sliceSession, sliceSeed);
         totalBuilderIterations++;
 
-        // Fail-fast: if the slice's builder produced zero files (or the
-        // critical step failed), abort immediately. Continuing here would
-        // bubble an empty cumulativeFiles set into QA, polish and finalize
-        // and surface the failure several steps too late.
-        this.assertBuilderProducedFiles(sliceState, {
-          phase: phaseRef.current,
-          step: `${sliceLabel}:builder`,
-          sliceLabel,
-          sliceId: slice?.id ?? null,
-          sliceIndex: sliceIdx,
-          sliceCount,
-        });
+        // Builder-empty recovery: retry this slice locally, then synthesize
+        // deterministic fallback artifacts if retries still return 0 files.
+        let builderValidated = false;
+        for (let emptyRetry = 0; emptyRetry <= maxEmptySliceRecovery; emptyRetry++) {
+          try {
+            this.assertBuilderProducedFiles(sliceState, {
+              phase: phaseRef.current,
+              step: `${sliceLabel}:builder`,
+              sliceLabel,
+              sliceId: slice?.id ?? null,
+              sliceIndex: sliceIdx,
+              sliceCount,
+            });
+            builderValidated = true;
+            break;
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            if (!message.includes('[builder-empty]')) throw err;
+            if (emptyRetry < maxEmptySliceRecovery) {
+              this.sessionManager.markRetrying(sessionId, `slice-builder-empty:${sliceLabel}:retry-${emptyRetry + 1}`);
+              this.logger.warn('[gen:slice:builder-empty:retry]', {
+                event: 'gen:slice:builder-empty:retry',
+                projectId,
+                sessionId,
+                sliceLabel,
+                sliceIdx,
+                retry: emptyRetry + 1,
+                maxEmptySliceRecovery,
+              });
+              const retrySession: Session = this.sessionManager.create(
+                nanoid(16),
+                session.userId ?? 'anonymous',
+                session.prompts,
+              );
+              setBuilderProjectContext(retrySession.id, { projectId });
+              for (const [k, v] of sliceSession.artifacts.entries()) retrySession.artifacts.set(k, v);
+              retrySession.artifacts.set('projectId', projectId);
+              retrySession.artifacts.set('generationPhase', phaseRef.current);
+              retrySession.artifacts.set('builderIteration', emptyRetry + 2);
+              if (cumulativeFiles.length > 0) retrySession.artifacts.set('previousFiles', cumulativeFiles);
+              if (slice) retrySession.artifacts.set('currentSlice', slice);
+              const retryOrch = new PipelineOrchestrator(this.agents, bus, this.logger);
+              retryOrch.onEvent(forwardEvents(/* orchSessionIsMain */ false));
+              retryOrch.onEvent(recordPipelineLedger);
+              retryOrch.onEvent(bumpLlmCounter);
+              phaseRef.currentStep = `${sliceLabel}:builder-empty-retry-${emptyRetry + 1}`;
+              sliceState = await retryOrch.execute(retrySession, sliceSeed);
+              totalBuilderIterations++;
+              continue;
+            }
+            const recovered = this.recoverEmptyBuilderSlice(sliceState, {
+              slice,
+              sliceIdx,
+              sliceCount,
+              sliceLabel,
+            });
+            this.logger.warn('[gen:slice:builder-empty:recovered]', {
+              event: 'gen:slice:builder-empty:recovered',
+              projectId,
+              sessionId,
+              sliceLabel,
+              recoveredFileCount: recovered.files.length,
+              recoveryReason: recovered.reason,
+            });
+            project.warnings = project.warnings ?? [];
+            project.warnings.push({
+              code: 'SLICE_BUILDER_EMPTY_RECOVERED',
+              message: recovered.reason,
+              details: { sliceLabel, sliceIdx, sliceCount, recoveredFiles: recovered.files.map((f) => f.path) },
+            });
+            this.appendGenerationCheckpoint(project, {
+              phase: phaseRef.current,
+              step: `${sliceLabel}:builder-empty-recovered`,
+              status: 'recovered',
+              files: recovered.files,
+              sliceIndex: sliceIdx,
+              sliceCount,
+              details: { retryCount: maxEmptySliceRecovery },
+            });
+            builderValidated = true;
+            break;
+          }
+        }
+        if (!builderValidated) {
+          throw new Error(`[builder-empty] unable to recover slice ${sliceLabel}`);
+        }
 
         // Dependency validator — auto-fix package.json so every bare-module
         // import the builder emitted is declared. Runs AFTER builder and
@@ -2307,7 +2704,7 @@ export class ProjectGenerator {
         this.enforceImplementationCompleteness(sliceState.artifacts, sliceLabel);
 
         // Per-slice QA loop — ADAPTIVE. Re-runs builder while QA issue
-        // count is decreasing, up to MAX_QA_LOOPS. Bails early if issues
+        // count is decreasing, up to maxQaLoops. Bails early if issues
         // stagnate (no decrease for QA_STAGNATION_LIMIT consecutive
         // iterations) so we don't burn LLM calls on an unfixable problem.
         const issueHistory: number[] = [countQaIssues(sliceState.artifacts)];
@@ -2322,7 +2719,7 @@ export class ProjectGenerator {
           step: `${sliceLabel}:qa-iter-1`,
         });
 
-        while (sliceQaIter < MAX_QA_LOOPS) {
+        while (sliceQaIter < maxQaLoops) {
           const qa = sliceState.artifacts.get('qa') as { verdict?: string } | undefined;
           if (!qa || qa.verdict === 'pass') break;
 
@@ -2330,7 +2727,7 @@ export class ProjectGenerator {
           const nextIter = sliceQaIter + 1;
 
           this.logger.info(
-            `Slice ${sliceLabel} QA needs-improvement — rebuilding (iter ${nextIter}/${MAX_QA_LOOPS}, ${prevCount} issue(s))`,
+            `Slice ${sliceLabel} QA needs-improvement — rebuilding (iter ${nextIter}/${maxQaLoops}, ${prevCount} issue(s))`,
             { event: 'qa:rebuild', sliceLabel, iteration: nextIter, prevIssueCount: prevCount },
           );
           this.sessionManager.handleEvent({
@@ -2371,17 +2768,46 @@ export class ProjectGenerator {
           sliceState = await rebuildOrch.execute(rebuildSession, rebuildSeed);
           totalBuilderIterations++;
 
-          // Same fail-fast guard for the rebuild step. A truncation-class
-          // exhaustion at this point would otherwise leave the cumulative
-          // codebase short and only blow up at finalize.
-          this.assertBuilderProducedFiles(sliceState, {
-            phase: phaseRef.current,
-            step: `${sliceLabel}:builder-rebuild-${nextIter}`,
-            sliceLabel,
-            sliceId: slice?.id ?? null,
-            sliceIndex: sliceIdx,
-            sliceCount,
-          });
+          // Rebuild-level empty output recovery keeps this slice local
+          // instead of failing the whole mission.
+          try {
+            this.assertBuilderProducedFiles(sliceState, {
+              phase: phaseRef.current,
+              step: `${sliceLabel}:builder-rebuild-${nextIter}`,
+              sliceLabel,
+              sliceId: slice?.id ?? null,
+              sliceIndex: sliceIdx,
+              sliceCount,
+            });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            if (!message.includes('[builder-empty]')) throw err;
+            const recovered = this.recoverEmptyBuilderSlice(sliceState, {
+              slice,
+              sliceIdx,
+              sliceCount,
+              sliceLabel,
+            });
+            project.warnings = project.warnings ?? [];
+            project.warnings.push({
+              code: 'SLICE_REBUILD_EMPTY_RECOVERED',
+              message: `Recovered rebuild for ${sliceLabel} after empty output.`,
+              details: {
+                sliceLabel,
+                iteration: nextIter,
+                recoveredFiles: recovered.files.map((f) => f.path),
+              },
+            });
+            this.appendGenerationCheckpoint(project, {
+              phase: phaseRef.current,
+              step: `${sliceLabel}:builder-rebuild-${nextIter}:recovered`,
+              status: 'recovered',
+              files: recovered.files,
+              sliceIndex: sliceIdx,
+              sliceCount,
+              details: { qaIteration: nextIter },
+            });
+          }
           // Auto-fix any new missing deps the rebuild may have introduced.
           this.applyDependencyAutoFix(sliceState.artifacts, sliceLabel);
           // Re-check integrity after the rebuild so the loop converges or
@@ -2437,7 +2863,7 @@ export class ProjectGenerator {
         );
 
         // ── Simplified-implementation fallback ────────────────
-        // After MAX_QA_LOOPS rebuilds, if QA still fails we DO NOT do
+        // After maxQaLoops rebuilds, if QA still fails we DO NOT do
         // another full-slice regeneration (too slow, often unproductive).
         // Instead, replace ONLY the files cited in QA findings with safe
         // minimal stubs that compile and render. The slice continues with
@@ -2463,6 +2889,12 @@ export class ProjectGenerator {
         // builder + qa + (final-slice) polish artifacts overlayed on previous.
         const slicePolishApplied = sliceIdx === sliceCount - 1;
         const sliceMerged = getMergedFiles(sliceState.artifacts, slicePolishApplied);
+        this.assertArtifactIntegrityOrThrow(sliceMerged, {
+          phase: phaseRef.current,
+          step: `${sliceLabel}:slice-merge`,
+          requireAppEntry: false,
+          requirePackageJson: false,
+        });
 
         // ── File-integrity audit: builder/qa/polish artifacts ──
         // Audit each agent's contribution to the file tree at the EARLIEST
@@ -2631,7 +3063,34 @@ export class ProjectGenerator {
               touchedPackageJson: quick.fixes.touchedPackageJson,
             },
           });
+
+          // Quick-check may synthesize or rewrite package.json. Re-run the
+          // dependency reconciler once so strict bundle pins (for example
+          // typescript/react/next) are normalized before artifact integrity.
+          const quickDep = validateAndFixDependencies(cumulativeFiles);
+          if (quickDep.report.patched.length > 0) {
+            const patchedByPath = new Map(quickDep.files.map((f) => [f.path, f]));
+            cumulativeFiles = cumulativeFiles.map((f) => {
+              const patched = patchedByPath.get(f.path);
+              return patched && patched.content !== f.content ? patched : f;
+            });
+            this.logger.info(
+              `[deps] Slice ${sliceLabel} quick-check dep-reconcile: patched ${quickDep.report.patched.length} package.json file(s), added ${quickDep.report.added.length} dep(s), reconciled ${quickDep.report.reconciled.reduce((n, r) => n + r.effects.length, 0)} package pin(s) [pm=${quickDep.report.packageManager}]`,
+              {
+                event: 'deps:auto-fix-after-quick-check',
+                sliceLabel,
+                packageManager: quickDep.report.packageManager,
+                added: quickDep.report.added.map((a) => `${a.name}@${a.version} -> ${a.packageJson}`),
+              },
+            );
+          }
         }
+
+        this.assertArtifactIntegrityOrThrow(cumulativeFiles, {
+          phase: phaseRef.current,
+          step: `${sliceLabel}:cumulative-integrity`,
+          requireAppEntry: false,
+        });
 
         // Track this slice as completed so the next iteration's manifest
         // includes it in the cross-reference summary.
@@ -2667,6 +3126,15 @@ export class ProjectGenerator {
             sliceLabel,
             persistedFileCount: project.files.length,
             persistedFilePaths: project.files.map((f) => f.path),
+          });
+          this.appendGenerationCheckpoint(project, {
+            phase: phaseRef.current,
+            step: `slice-${sliceIdx + 1}/${sliceCount}:files-persisted`,
+            status: 'checkpointed',
+            files: project.files,
+            sliceIndex: sliceIdx,
+            sliceCount,
+            details: { sliceLabel, totalBuilderIterations },
           });
         } catch (persistErr) {
           this.logger.warn('Per-slice persistence failed (non-fatal)', {
@@ -2736,6 +3204,11 @@ export class ProjectGenerator {
           );
         }
       }
+      this.assertArtifactIntegrityOrThrow(files, {
+        phase: 'final-assembly',
+        step: 'assembleProject',
+        requireAppEntry: true,
+      });
       // Final dependency-validator pass on the cumulative codebase, in case
       // any cross-slice merging surfaced new bare imports.
       // SUBSTEP: finalize:dependency-validation — wrap the deterministic
@@ -2772,6 +3245,112 @@ export class ProjectGenerator {
           overrides: b.overrides,
         })),
       });
+      this.assertArtifactIntegrityOrThrow(depFix.files, {
+        phase: 'final-assembly',
+        step: 'validateAndFixDependencies',
+        requireAppEntry: true,
+      });
+      const allowBackendRuntimeArtifacts = this.shouldAllowBackendRuntimeArtifactsForTier1(request.prompts);
+      let contract = await this.runPostPersistStep(
+        phaseRef,
+        { projectId, sliceId: finalSliceTag, step: 'final-assembly:deterministic-contract' },
+        () => enforceDeterministicGenerationContract(depFix.files, { allowBackendRuntimeArtifacts }),
+      );
+      let importRepairDiagnostics: ImportRepairDiagnostics | null = null;
+      let importRepairAttempted = false;
+      generationManifest = contract.manifest;
+      project.diagnostics = project.diagnostics ?? {};
+      (project.diagnostics as Record<string, unknown>).deterministicContract = {
+        testFilesDropped: contract.testFilesDropped,
+        testFilesIgnored: contract.testFilesIgnored,
+        testImportViolations: contract.testImportViolations,
+        testArtifactPathsMatched: contract.testArtifactPathsMatched,
+        backendFilesDropped: contract.backendFilesDropped,
+        backendFilesIgnored: contract.backendFilesIgnored,
+        backendImportViolations: contract.backendImportViolations,
+        backendArtifactPathsMatched: contract.backendArtifactPathsMatched,
+        runtimeImportViolations: contract.runtimeImportViolations,
+        reason: contract.testArtifactPolicyReason,
+        backendReason: contract.backendArtifactPolicyReason,
+        blockingViolations: contract.blockingViolations,
+      };
+      if (contract.addedPaths.length > 0 || contract.patchedPaths.length > 0) {
+        this.logger.warn('[gen:contract:auto-fix] deterministic generation contract patched final artifact set', {
+          event: 'gen:contract:auto-fix',
+          projectId,
+          addedPaths: contract.addedPaths,
+          patchedPaths: contract.patchedPaths,
+          warningCount: contract.warnings.length,
+          blockingCount: contract.blockingViolations.length,
+        });
+      }
+      if (
+        contract.blockingViolations.length > 0
+        && contract.blockingViolations.every((v) => v.startsWith('dangling internal import:'))
+      ) {
+        importRepairAttempted = true;
+        const importRepair = await this.runPostPersistStep(
+          phaseRef,
+          { projectId, sliceId: finalSliceTag, step: 'final-assembly:deterministic-import-repair' },
+          () => runDeterministicImportRepair(contract.files),
+        );
+        importRepairDiagnostics = importRepair.diagnostics;
+        project.diagnostics = project.diagnostics ?? {};
+        (project.diagnostics as Record<string, unknown>).importRepair = {
+          importRepairAttempted: true,
+          importRepairPasses: 1,
+          importsRepaired: importRepair.diagnostics.importsRepaired,
+          importsRemoved: importRepair.diagnostics.importsRemoved,
+          filesCreatedForImports: importRepair.diagnostics.filesCreatedForImports,
+          unrecoverableImports: importRepair.diagnostics.unrecoverableImports,
+          testImportsIgnored: importRepair.diagnostics.testImportsIgnored,
+          testArtifactPathsMatched: importRepair.diagnostics.testArtifactPathsMatched,
+          runtimeImportViolations: importRepair.diagnostics.runtimeImportViolations,
+        };
+        if (importRepair.changed) {
+          contract = await this.runPostPersistStep(
+            phaseRef,
+            { projectId, sliceId: finalSliceTag, step: 'final-assembly:deterministic-contract-after-import-repair' },
+            () => enforceDeterministicGenerationContract(importRepair.files, { allowBackendRuntimeArtifacts }),
+          );
+          generationManifest = contract.manifest;
+          (project.diagnostics as Record<string, unknown>).deterministicContract = {
+            testFilesDropped: contract.testFilesDropped,
+            testFilesIgnored: contract.testFilesIgnored,
+            testImportViolations: contract.testImportViolations,
+            testArtifactPathsMatched: contract.testArtifactPathsMatched,
+            backendFilesDropped: contract.backendFilesDropped,
+            backendFilesIgnored: contract.backendFilesIgnored,
+            backendImportViolations: contract.backendImportViolations,
+            backendArtifactPathsMatched: contract.backendArtifactPathsMatched,
+            runtimeImportViolations: contract.runtimeImportViolations,
+            reason: contract.testArtifactPolicyReason,
+            backendReason: contract.backendArtifactPolicyReason,
+            blockingViolations: contract.blockingViolations,
+          };
+        }
+      }
+      if (contract.blockingViolations.length > 0) {
+        if (importRepairDiagnostics) {
+          project.diagnostics = project.diagnostics ?? {};
+          (project.diagnostics as Record<string, unknown>).importRepair = {
+            importRepairAttempted: importRepairAttempted,
+            importRepairPasses: importRepairAttempted ? 1 : 0,
+            importsRepaired: importRepairDiagnostics.importsRepaired,
+            importsRemoved: importRepairDiagnostics.importsRemoved,
+            filesCreatedForImports: importRepairDiagnostics.filesCreatedForImports,
+            unrecoverableImports: importRepairDiagnostics.unrecoverableImports,
+            testImportsIgnored: importRepairDiagnostics.testImportsIgnored,
+            testArtifactPathsMatched: importRepairDiagnostics.testArtifactPathsMatched,
+            runtimeImportViolations: importRepairDiagnostics.runtimeImportViolations,
+            remainingBlockingViolationsAfterRepair: contract.blockingViolations,
+          };
+        }
+        throw new Error(
+          `Deterministic generation contract FAILED: ${contract.blockingViolations.slice(0, 5).join(' | ')}`,
+        );
+      }
+      const contractFiles = contract.files;
       const taskSummaries = await this.runPostPersistStep(
         phaseRef, { projectId, sliceId: finalSliceTag, step: 'final-assembly:buildTaskSummaries' },
         () => buildTaskSummaries(pipelineState),
@@ -2795,14 +3374,19 @@ export class ProjectGenerator {
         'finalize:quality-assurance',
         () => this.runPostPersistStep(
           phaseRef, { projectId, sliceId: finalSliceTag, step: 'qa-gate:runQualityAssurance' },
-          () => runFinalizationRunner(async () => runQualityAssurance(depFix.files)),
+          () => runFinalizationRunner(async () => runQualityAssurance(contractFiles)),
         ),
       );
-      const finalFiles = qaGate.files;
+      let finalFiles = qaGate.files;
+      this.assertArtifactIntegrityOrThrow(finalFiles, {
+        phase: 'qa-gate',
+        step: 'runQualityAssurance',
+        requireAppEntry: true,
+      });
       this.logger.info('[gen:qa-gate:timings] runQualityAssurance completed', {
         event: 'gen:qa-gate:timings',
         projectId,
-        fileCount: depFix.files.length,
+        fileCount: contractFiles.length,
         totalMs: qaGate.report.totalMs,
         slowestStep: qaGate.report.slowestStep,
         timings: qaGate.report.timings,
@@ -2820,6 +3404,41 @@ export class ProjectGenerator {
           blockers: qaGate.report.blockers.map((b) => b.id),
         });
       }
+      const qaDecision = evaluateQaGateDecision(qaGate.report, {
+        tier: 'tier1',
+        pipelineCompleted: pipelineState.status === 'completed',
+      });
+
+      // QA auto-fixes can introduce new bare-module imports (for example bcrypt
+      // in auth route templates) after the pre-QA dependency reconciliation.
+      // Re-run dependency validation on the post-QA tree so final integrity-gate
+      // does not fail on fixable missing package declarations.
+      const postQaDepFix = await this.runFinalizeStep(
+        project,
+        'finalize:dependency-validation-post-qa',
+        () => this.runPostPersistStep(
+          phaseRef,
+          { projectId, sliceId: finalSliceTag, step: 'qa-gate:validateAndFixDependencies-after-qa' },
+          () => validateAndFixDependencies(finalFiles),
+        ),
+      );
+      if (postQaDepFix.report.added.length > 0 || postQaDepFix.report.patched.length > 0) {
+        this.logger.info(
+          `[deps] Post-QA dep-reconcile: patched ${postQaDepFix.report.patched.length} package.json file(s), added ${postQaDepFix.report.added.length} dep(s) [pm=${postQaDepFix.report.packageManager}]`,
+          {
+            event: 'deps:auto-fix-post-qa',
+            projectId,
+            packageManager: postQaDepFix.report.packageManager,
+            added: postQaDepFix.report.added.map((a) => `${a.name}@${a.version} -> ${a.packageJson}`),
+          },
+        );
+      }
+      finalFiles = postQaDepFix.files;
+      this.assertArtifactIntegrityOrThrow(finalFiles, {
+        phase: 'qa-gate',
+        step: 'validateAndFixDependencies-after-qa',
+        requireAppEntry: true,
+      });
 
       const specForName = pipelineState.artifacts.get('spec') as { productName?: string } | undefined;
       project.name = specForName?.productName ?? 'Generated Project';
@@ -2837,9 +3456,10 @@ export class ProjectGenerator {
         cumulativeFileCount: cumulativeFiles.length,
         finalFileCount: finalFiles.length,
         finalFilePaths: finalFiles.map((f) => f.path),
-        qaGatePassed: qaGate.report.passed,
+        qaGatePassed: qaDecision.passed,
         qaGateScore: qaGate.report.score,
         qaGateBlockers: qaGate.report.blockers.map((b) => b.id),
+        qaGateDecision: qaDecision,
         pipelineStatus: pipelineState.status,
         pipelineError: pipelineState.error ?? null,
       });
@@ -2849,7 +3469,7 @@ export class ProjectGenerator {
       // (and optional Docker validation after it) is the actual gate that
       // flips status to 'completed' or 'failed'. No project is marked
       // complete unless it actually runs.
-      const qaPassed = pipelineState.status === 'completed' && qaGate.report.passed;
+      const qaPassed = qaDecision.passed;
       project.status = qaPassed ? 'generating' : 'failed';
       project.files = finalFiles;
 
@@ -2877,6 +3497,18 @@ export class ProjectGenerator {
         phase: phaseRef.current,
         step: 'finalize:manifest-refreshed',
         filesWrittenCount: finalFiles.length,
+      });
+      this.appendGenerationCheckpoint(project, {
+        phase: 'finalize',
+        step: 'finalize:manifest-refreshed',
+        status: 'checkpointed',
+        files: finalFiles,
+        details: {
+          qaPassed: qaPassed,
+          qaScore: qaGate.report.score,
+          autoFixCount: qaGate.report.autoFixCount,
+          qaPolicy: qaDecision,
+        },
       });
       // SUBSTEP: finalize:manifest-refreshed — instantaneous marker
       // (manifest is in-memory). Stamp stepStartedAt + stepCompletedAt
@@ -2987,6 +3619,10 @@ export class ProjectGenerator {
                 finalStack,
               });
             }
+            if (generationManifest) {
+              project.diagnostics = project.diagnostics ?? {};
+              project.diagnostics.generationManifest = generationManifest as unknown as Record<string, unknown>;
+            }
           },
         );
 
@@ -2994,7 +3630,7 @@ export class ProjectGenerator {
           phaseRef, { projectId, sliceId: finalSliceTag, step: 'qa-gate:assign-qa-assurance' },
           () => {
             project.qaAssurance = {
-              passed: qaGate.report.passed,
+              passed: qaPassed,
               score: qaGate.report.score,
               autoFixCount: qaGate.report.autoFixCount,
               bars: qaGate.report.bars,
@@ -3058,7 +3694,7 @@ export class ProjectGenerator {
         step: phaseRef.lastSuccessfulStep,
         fileCount: project.files.length,
         manifestCount: finalFiles.length,
-        qaPassed: qaGate.report.passed,
+        qaPassed: qaPassed,
         totalTokens: project.totalTokens,
         totalCostUsd: project.totalCostUsd,
       });
@@ -3077,9 +3713,7 @@ export class ProjectGenerator {
         const reason =
           pipelineState.status !== 'completed'
             ? `Pipeline did not reach 'completed' state (state=${pipelineState.status}, error=${pipelineState.error ?? 'none'})`
-            : `QA gate failed: score ${qaGate.report.score}/100 (blockers=${
-                qaGate.report.blockers.map((b) => b.id).join(',') || 'none'
-              })`;
+            : qaDecision.reason;
         const failedStep =
           pipelineState.status !== 'completed' ? 'qa-gate:pipeline-not-completed' : 'qa-gate:report-not-passed';
         this.logger.error('[gen:finalize:qa-gate-failed] routing through persistQaGateFailure', {
@@ -3093,8 +3727,9 @@ export class ProjectGenerator {
           pipelineStatus: pipelineState.status,
           pipelineError: pipelineState.error ?? null,
           qaScore: qaGate.report.score,
-          qaPassed: qaGate.report.passed,
+          qaPassed: qaPassed,
           qaBlockers: qaGate.report.blockers.map((b) => b.id),
+          qaDecision,
         });
         await this.persistQaGateFailure(projectId, {
           sessionId,
@@ -3171,7 +3806,7 @@ export class ProjectGenerator {
             ? {
                 type: 'pipeline:failed',
                 sessionId,
-                error: pipelineState.error ?? (qaPassed ? 'unknown' : `QA gate failed (score ${qaGate.report.score}/100)`),
+                error: pipelineState.error ?? (qaPassed ? 'unknown' : qaDecision.reason),
                 failedStep: pipelineState.error ? 'pipeline' : 'qa-gate',
                 durationMs: pipelineState.durationMs,
               }
@@ -3206,7 +3841,7 @@ export class ProjectGenerator {
       // and last-failure.json are uniformly populated.
       if (project.status === 'generating') {
         const t0Integrity = await this.startFinalizeStep(project, 'finalize:integrity-gate');
-        const integrityReport = runFinalIntegrityGate(project.files);
+        let integrityReport = runFinalIntegrityGate(project.files);
         project.integrityReport = integrityReport;
         // Persist verdict regardless of outcome — the postmortem path
         // needs the report on disk even when we then call
@@ -3227,6 +3862,48 @@ export class ProjectGenerator {
             bareImportsScanned: integrityReport.counts.bareImportsScanned,
           },
         );
+        this.appendGenerationCheckpoint(project, {
+          phase: 'final-integrity-gate',
+          step: `final-integrity-gate:${integrityReport.verdict}`,
+          status: integrityReport.verdict === 'pass' ? 'checkpointed' : 'recovered',
+          files: project.files,
+          details: {
+            verdict: integrityReport.verdict,
+            counts: integrityReport.counts,
+          },
+        });
+        if (integrityReport.verdict === 'fail') {
+          if (
+            integrityReport.counts.danglingInternalImports > 0
+            && integrityReport.counts.missingPackages === 0
+            && (integrityReport.counts.packageJsonViolations ?? 0) === 0
+          ) {
+            const repaired = this.repairDanglingInternalImports(project.files, integrityReport.danglingInternalImports);
+            if (repaired.repairedPaths.length > 0) {
+              project.files = repaired.files;
+              project.warnings = project.warnings ?? [];
+              project.warnings.push({
+                code: 'INTEGRITY_AUTO_REPAIR_DANGLING_IMPORTS',
+                message: `Recovered ${repaired.repairedPaths.length} missing internal import target(s) before final integrity gate.`,
+                details: { repairedPaths: repaired.repairedPaths },
+              });
+              this.appendGenerationCheckpoint(project, {
+                phase: 'final-integrity-gate',
+                step: 'final-integrity-gate:auto-repair-dangling-imports',
+                status: 'recovered',
+                files: project.files,
+                details: { repairedPaths: repaired.repairedPaths },
+              });
+              integrityReport = runFinalIntegrityGate(project.files);
+              project.integrityReport = integrityReport;
+              await this.projectStore.update(projectId, (rec) => {
+                rec.files = project.files;
+                rec.warnings = project.warnings;
+                rec.integrityReport = integrityReport;
+              }, { phase: 'final-integrity-gate:auto-repair' });
+            }
+          }
+        }
         if (integrityReport.verdict === 'fail') {
           const reason = describeIntegrityFailure(integrityReport);
           this.logger.error('[gen:final-integrity:fail] integrity gate FAILED — blocking completion', {
@@ -3345,18 +4022,33 @@ export class ProjectGenerator {
             stack: schedErr instanceof Error ? schedErr.stack : undefined,
             durationMs: Date.now() - t0Sched,
           });
-          // Schedule failures must not silently drop the project. Route
-          // through persistFailure so error/stack/failedPhase/failedStep/
-          // last-failure dump are populated. The project record retains
-          // its 'generating' status until persistFailure flips it.
-          await this.persistFailure(projectId, {
-            sessionId,
-            err: schedErr,
-            failedPhase: 'finalize',
-            failedStep: 'finalize:scheduleExecutionValidation',
-            lastSuccessfulPhase: phaseRef.lastSuccessful,
-            lastSuccessfulStep: phaseRef.lastSuccessfulStep,
-            runningProject: project,
+          // Execution-validation scheduling is post-completion hygiene;
+          // keep the mission generated/exportable and surface this as
+          // a verification warning instead of demoting the build.
+          project.verificationStatus = 'warning';
+          project.warnings = project.warnings ?? [];
+          project.warnings.push({
+            code: 'EXECUTION_VALIDATION_SCHEDULE_FAILED',
+            message: 'Execution validation could not be scheduled; generation remains successful.',
+            details: {
+              error: schedErr instanceof Error ? schedErr.message : String(schedErr),
+            },
+          });
+          await this.projectStore.update(projectId, (rec) => {
+            rec.verificationStatus = 'warning';
+            rec.warnings = rec.warnings ?? [];
+            rec.warnings.push({
+              code: 'EXECUTION_VALIDATION_SCHEDULE_FAILED',
+              message: 'Execution validation could not be scheduled; generation remains successful.',
+              details: {
+                error: schedErr instanceof Error ? schedErr.message : String(schedErr),
+              },
+            });
+          }, {
+            phase: 'finalize:scheduleExecutionValidation',
+            caller: 'project-generator:execution-validation',
+            reason: 'execution validation schedule failed (non-fatal)',
+            allowStatusDowngrade: true,
           });
         }
       }
@@ -3384,7 +4076,7 @@ export class ProjectGenerator {
         finalStatus: project.status,
         fileCount: project.files.length,
         manifestCount: finalFiles.length,
-        qaPassed: qaGate.report.passed,
+        qaPassed: qaPassed,
         durationMs: pipelineState.durationMs,
         totalTokens: project.totalTokens,
         totalCostUsd: project.totalCostUsd,
@@ -3423,7 +4115,7 @@ export class ProjectGenerator {
       });
 
       return {
-        projectId, sessionId, success: pipelineState.status === 'completed' && qaGate.report.passed,
+        projectId, sessionId, success: pipelineState.status === 'completed' && qaPassed,
         cached: false, project, steps: stepSummaries,
         optimization: {
           requestCacheHit: false,
@@ -3432,7 +4124,7 @@ export class ProjectGenerator {
           skippedSteps: pipelineState.optimization.skippedSteps,
           estimatedApiCallsSaved: pipelineState.optimization.estimatedApiCallsSaved,
         },
-        error: pipelineState.error ?? (qaGate.report.passed ? undefined : `QA gate failed (score ${qaGate.report.score}/100): ${qaGate.report.blockers[0]?.message ?? 'see qaAssurance'}`),
+        error: pipelineState.error ?? (qaPassed ? undefined : qaDecision.reason),
       };
     }
   }
@@ -3467,6 +4159,10 @@ export class ProjectGenerator {
     return createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
   }
 
+  private shouldAllowBackendRuntimeArtifactsForTier1(prompts: string[]): boolean {
+    return prompts.some((prompt) => BACKEND_OR_FULLSTACK_INTENT_RE.test(prompt));
+  }
+
   private async readResultCache(cacheKey: string): Promise<ProjectRecord | null> {
     const item = this.resultCache.get(cacheKey);
     if (!item) return null;
@@ -3495,6 +4191,21 @@ export class ProjectGenerator {
     sliceLabel: string,
   ): void {
     applyDependencyAutoFixForSlice(artifacts, sliceLabel, this.logger);
+  }
+
+  private toExecutionPhase(phase: string, step: string): RuntimeExecutionPhase {
+    const p = (phase ?? '').toLowerCase();
+    const s = (step ?? '').toLowerCase();
+    if (!p || p === 'init' || p === 'reserve') return 'queued';
+    if (p === 'spec') return s.includes('returned') ? 'architecting' : 'planning';
+    if (p.includes('slice') || s.includes('builder') || s.includes('backend')) return 'backend_generation';
+    if (p.includes('final-assembly') || s.includes('assemble') || s.includes('frontend')) return 'frontend_generation';
+    if (p.includes('qa') || s.includes('qa') || s.includes('verify') || p.includes('execution-validation') || p.includes('runtime-validation')) {
+      return 'verification';
+    }
+    if (p.includes('preview') || s.includes('preview')) return 'preview_build';
+    if (p.includes('finalize') || s.includes('package') || s.includes('manifest') || s.includes('export')) return 'artifact_packaging';
+    return 'planning';
   }
 
   private runPostSliceBuildCheck(

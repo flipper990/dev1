@@ -24,9 +24,9 @@ interface PreviewCanvasFrameProps {
 }
 
 const DEVICE_LAYOUT: Record<PreviewDevice, { maxWidth: string; viewportHeightClass: string; label: string; icon: typeof Monitor }> = {
-  desktop: { maxWidth: '100%', viewportHeightClass: 'h-[min(58vh,720px)] min-h-[360px]', label: 'Desktop', icon: Monitor },
-  tablet: { maxWidth: '900px', viewportHeightClass: 'h-[min(62vh,760px)] min-h-[400px]', label: 'Tablet', icon: Tablet },
-  mobile: { maxWidth: '430px', viewportHeightClass: 'h-[min(66vh,780px)] min-h-[460px]', label: 'Mobile', icon: Smartphone },
+  desktop: { maxWidth: '100%', viewportHeightClass: 'h-[clamp(420px,66vh,880px)]', label: 'Desktop', icon: Monitor },
+  tablet: { maxWidth: '960px', viewportHeightClass: 'h-[clamp(460px,70vh,940px)]', label: 'Tablet', icon: Tablet },
+  mobile: { maxWidth: '430px', viewportHeightClass: 'h-[clamp(520px,74vh,980px)]', label: 'Mobile', icon: Smartphone },
 };
 
 function transportTone(status: PreviewTransportStatus) {
@@ -150,12 +150,12 @@ export function PreviewCanvasFrame({
     <section
       aria-label={title}
       className={cn(
-        'studio-surface relative overflow-hidden rounded-[calc(var(--radius-modal)+4px)] p-2 sm:p-3',
+        'studio-surface relative overflow-hidden rounded-[calc(var(--radius-modal)+4px)] p-2',
         'before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(65%_80%_at_50%_0%,rgba(136,172,255,0.16),transparent_70%)] before:content-[""]',
         className,
       )}
     >
-      <div className="relative mb-2 flex flex-col gap-2 px-1 lg:flex-row lg:items-center lg:justify-between">
+      <div className="relative mb-2 flex flex-col gap-2 px-1.5 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <p className="text-label-s uppercase tracking-[0.16em] text-text-muted">Primary output</p>
@@ -209,7 +209,7 @@ export function PreviewCanvasFrame({
         </div>
       </div>
 
-      <div className="relative rounded-[var(--radius-panel)] border border-border-muted bg-surface-tint/85 p-1.5 sm:p-2">
+      <div className="relative rounded-[var(--radius-panel)] border border-border-muted bg-surface-tint/85 p-1.5">
         <div
           className="mx-auto overflow-hidden rounded-[var(--radius-preview)] border border-border-strong bg-surface-raised shadow-overlay"
           style={{ maxWidth: DEVICE_LAYOUT[device].maxWidth }}

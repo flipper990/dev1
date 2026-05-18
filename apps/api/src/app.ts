@@ -30,6 +30,7 @@ import { LocalPreviewRunner } from './preview/local-runner.js';
 import { appendBudgetDiagnostic } from './llm/generation-budget.js';
 import { createAuthGuards } from './security/auth.js';
 import { AuthStore } from './security/auth-store.js';
+import { evaluateTerminalStateConsistency } from './pipeline/terminal-state-consistency.js';
 
 export async function buildApp() {
   const logger = createLogger('server');
@@ -296,11 +297,134 @@ export async function buildApp() {
 
   // ── Cleanup interval ────────────────────────────────
 
+  const enforceTerminalStateConsistency = async (): Promise<void> => {
+    const projects = await projectStore.list();
+    const progressSnapshots = sessionManager.listProgressSnapshots();
+    const terminal = progressSnapshots.filter((p) => p.status === 'completed' || p.status === 'failed');
+    for (const session of terminal) {
+      const project = projects.find((item) => item.sessionId === session.sessionId);
+      if (!project) continue;
+      const decision = evaluateTerminalStateConsistency({ project, session });
+      if (!decision.shouldRepair || !decision.expectedStatus || !decision.event) continue;
+      const event = decision.event;
+
+      await projectStore.update(project.id, (current) => {
+        current.diagnostics = current.diagnostics ?? {};
+        const bag = current.diagnostics as Record<string, unknown>;
+        const terminalState = (bag.terminalStateConsistency ?? { events: [] }) as { events?: unknown[] };
+        const events = Array.isArray(terminalState.events) ? terminalState.events : [];
+        events.push(event);
+        bag.terminalStateConsistency = {
+          events: events.slice(-50),
+          lastRepairedAt: event.capturedAt,
+        };
+
+        if (decision.expectedStatus === 'generated') {
+          current.status = 'generated';
+          current.projectStatus = 'generated';
+          current.error = undefined;
+          current.completedAt = current.completedAt ?? event.capturedAt;
+          return;
+        }
+
+        current.status = 'failed';
+        current.projectStatus = 'failed';
+        current.verificationStatus = 'failed';
+        current.completedAt = current.completedAt ?? event.capturedAt;
+        const explicitReason = decision.failureReason ?? `terminal session failed in phase=${session.executionPhase}`;
+        current.error = explicitReason;
+        current.failure = {
+          ...(current.failure ?? {}),
+          failedPhase: current.failure?.failedPhase ?? 'terminal-consistency',
+          failedStep: current.failure?.failedStep ?? (session.currentStep?.stepId ?? 'terminal-consistency'),
+          failedAt: current.failure?.failedAt ?? event.capturedAt,
+          errorName: current.failure?.errorName ?? 'TerminalStateMismatch',
+          errorMessage: current.failure?.errorMessage ?? explicitReason,
+          failureCategory: current.failure?.failureCategory ?? 'orchestration_failure',
+          failurePhase: current.failure?.failurePhase ?? 'terminal-consistency',
+          failureReason: current.failure?.failureReason ?? explicitReason,
+          failedAgent: current.failure?.failedAgent ?? 'pipeline',
+          retryCount: current.failure?.retryCount ?? session.retryAttempt ?? 0,
+          filesGeneratedBeforeFailure: current.failure?.filesGeneratedBeforeFailure ?? (current.files?.length ?? 0),
+          recoveryAttempted: current.failure?.recoveryAttempted ?? false,
+          recommendedNextAction: current.failure?.recommendedNextAction
+            ?? 'Inspect terminal-state consistency diagnostics and pipeline failure trace.',
+        };
+      }, {
+        phase: 'terminal-consistency',
+        caller: 'app:terminal-consistency',
+        reason: `${event.sessionStatus}/${event.sessionExecutionPhase}`,
+        allowStatusDowngrade: true,
+      });
+    }
+  };
+
   const cleanupInterval = setInterval(() => {
     const cleaned = sessionManager.cleanup();
     if (cleaned > 0) {
       logger.info(`Cleaned up ${cleaned} expired sessions`);
     }
+    const watchdogFailures = sessionManager.sweepStalled({
+      missionTimeoutMs: Number(process.env.MISSION_TIMEOUT_MS) || 2 * 60 * 60 * 1000,
+      heartbeatTimeoutMs: Number(process.env.MISSION_HEARTBEAT_TIMEOUT_MS) || 15 * 60 * 1000,
+      stalledStepTimeoutMs: Number(process.env.MISSION_STALLED_STEP_TIMEOUT_MS) || 25 * 60 * 1000,
+    });
+    if (watchdogFailures.length > 0) {
+      logger.warn('Mission watchdog failed active sessions', { count: watchdogFailures.length, watchdogFailures });
+      void (async () => {
+        const projects = await projectStore.list();
+        for (const failure of watchdogFailures) {
+          const project = projects.find((item) => item.sessionId === failure.sessionId && item.status === 'generating');
+          if (!project) continue;
+          await projectStore.update(project.id, (current) => {
+            current.status = 'failed';
+            current.projectStatus = 'failed';
+            current.verificationStatus = 'failed';
+            current.error = `[watchdog:${failure.reason}] ${failure.diagnostics}`;
+            current.completedAt = failure.timeoutAt;
+            current.progress = {
+              ...(current.progress ?? {
+                phase: 'init',
+                lastProgressAt: failure.timeoutAt,
+                startedAt: current.createdAt,
+                lastMeaningfulStep: 'watchdog',
+                llmCallCount: 0,
+                filesWrittenCount: 0,
+                slicesPlannedCount: 0,
+              }),
+              phase: 'watchdog',
+              executionPhase: failure.executionPhase,
+              lastProgressAt: failure.timeoutAt,
+              lastMeaningfulStep: `watchdog:${failure.reason}`,
+            };
+            current.failure = {
+              failedPhase: 'watchdog',
+              failedStep: failure.currentStep ?? 'watchdog',
+              lastSuccessfulPhase: current.progress?.phase ?? 'unknown',
+              lastSuccessfulStep: current.progress?.lastMeaningfulStep ?? 'unknown',
+              failedAt: failure.timeoutAt,
+              errorName: 'MissionWatchdogTimeout',
+              errorMessage: failure.diagnostics,
+              llmCallCount: current.progress?.llmCallCount ?? 0,
+            };
+          }, {
+            phase: 'watchdog',
+            caller: 'app:session-watchdog',
+            reason: failure.reason,
+            allowStatusDowngrade: true,
+          });
+        }
+      })().catch((err) => {
+        logger.error('Mission watchdog persistence failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
+    void enforceTerminalStateConsistency().catch((err) => {
+      logger.error('Terminal-state consistency reconciliation failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
   }, 60_000);
 
   // ── Memory decay interval (every 6 hours) ───────────

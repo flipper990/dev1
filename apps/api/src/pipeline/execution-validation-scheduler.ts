@@ -28,7 +28,17 @@ export function scheduleExecutionValidation(args: {
       const summary = await runExecutionFeedbackLoop(
         project.id,
         { updater, projectStore, logger },
-        { maxIterations: 3 },
+        {
+          maxIterations: 3,
+          runner: {
+            runTypecheck: true,
+            timeouts: {
+              install: 180_000,
+              build: 180_000,
+              dev: 90_000,
+            },
+          },
+        },
       );
 
       const fresh = await projectStore.get(project.id);

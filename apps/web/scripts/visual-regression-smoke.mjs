@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const crypto = require('crypto');
+import crypto from 'node:crypto';
 
 const BASE_URL = process.env.SMOKE_BASE_URL || 'http://localhost:3000';
 const ROUTES = ['/', '/workspace', '/projects', '/agents'];

@@ -53,13 +53,27 @@ export class AzureOpenAIClient implements LLMProviderClient {
   private readonly endpoint: string;
 
   constructor(opts: AzureOpenAIClientOptions, logger: Logger) {
-    this.client = new AzureOpenAI({
-      apiKey: opts.apiKey,
-      endpoint: opts.endpoint,
-      apiVersion: opts.apiVersion,
-      timeout: AZURE_REQUEST_TIMEOUT_MS,
-      maxRetries: AZURE_SDK_MAX_RETRIES,
-    });
+    // Some environments export OPENAI_BASE_URL for non-Azure usage.
+    // The OpenAI SDK treats baseURL + endpoint as mutually exclusive and
+    // throws during AzureOpenAI construction. We isolate Azure client init
+    // from that global by temporarily clearing OPENAI_BASE_URL.
+    const originalBaseUrl = process.env.OPENAI_BASE_URL;
+    try {
+      if (process.env.OPENAI_BASE_URL) {
+        delete process.env.OPENAI_BASE_URL;
+      }
+      this.client = new AzureOpenAI({
+        apiKey: opts.apiKey,
+        endpoint: opts.endpoint,
+        apiVersion: opts.apiVersion,
+        timeout: AZURE_REQUEST_TIMEOUT_MS,
+        maxRetries: AZURE_SDK_MAX_RETRIES,
+      });
+    } finally {
+      if (originalBaseUrl !== undefined) {
+        process.env.OPENAI_BASE_URL = originalBaseUrl;
+      }
+    }
     this.apiKey = opts.apiKey;
     this.endpoint = opts.endpoint.replace(/\/+$/, '');
     this.logger = logger;

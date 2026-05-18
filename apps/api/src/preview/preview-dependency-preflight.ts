@@ -137,6 +137,89 @@ interface PreflightArgs {
   logger: Logger;
 }
 
+interface PreviewInfraFix {
+  kind:
+    | 'postcss-config-esm-rewrite'
+    | 'postcss-config-generated';
+  path: string;
+  detail: string;
+}
+
+function rewritePostcssCommonJsToEsm(content: string): string | null {
+  if (!/module\.exports\s*=/.test(content)) return null;
+  const trimmed = content.trim();
+  const rhs = trimmed
+    .replace(/^module\.exports\s*=\s*/m, '')
+    .replace(/;?\s*$/, '');
+  if (!rhs) return null;
+  return `const config = ${rhs};\nexport default config;\n`;
+}
+
+function normalizePreviewInfrastructureFiles(
+  files: Array<{ path: string; content: string; language?: string }>,
+): { files: Array<{ path: string; content: string; language?: string }>; fixes: PreviewInfraFix[] } {
+  const fixes: PreviewInfraFix[] = [];
+  const out = files.map((f) => ({ ...f }));
+  const byPath = new Map(out.map((f, i) => [f.path.replace(/\\/g, '/'), i]));
+  const rootPkgPath = byPath.has('package.json') ? 'package.json'
+    : byPath.has('./package.json') ? './package.json'
+    : null;
+  if (!rootPkgPath) return { files: out, fixes };
+
+  let pkg: { type?: string } | null = null;
+  try {
+    const idx = byPath.get(rootPkgPath)!;
+    pkg = JSON.parse(out[idx]!.content) as { type?: string };
+  } catch {
+    return { files: out, fixes };
+  }
+  const isTypeModule = pkg?.type === 'module';
+  if (!isTypeModule) return { files: out, fixes };
+
+  const postcssPaths = [
+    'postcss.config.js',
+    'apps/web/postcss.config.js',
+  ].filter((p) => byPath.has(p));
+  for (const postcssPath of postcssPaths) {
+    const idx = byPath.get(postcssPath)!;
+    const current = out[idx]!;
+    const rewritten = rewritePostcssCommonJsToEsm(current.content);
+    if (!rewritten || rewritten === current.content) continue;
+    out[idx] = {
+      ...current,
+      content: rewritten,
+      language: current.language ?? 'javascript',
+    };
+    fixes.push({
+      kind: 'postcss-config-esm-rewrite',
+      path: postcssPath,
+      detail: 'Rewrote CommonJS module.exports to ESM export default for type=module package.',
+    });
+  }
+
+  const hasAnyPostcss = postcssPaths.length > 0 || byPath.has('postcss.config.mjs') || byPath.has('apps/web/postcss.config.mjs');
+  const globalsCandidates = ['src/app/globals.css', 'app/globals.css', 'apps/web/src/app/globals.css', 'apps/web/app/globals.css'];
+  const usesTailwind = globalsCandidates.some((p) => {
+    const i = byPath.get(p);
+    if (i === undefined) return false;
+    return /@tailwind\s+(?:base|components|utilities)\s*;/.test(out[i]!.content);
+  });
+  if (usesTailwind && !hasAnyPostcss) {
+    out.push({
+      path: 'postcss.config.js',
+      language: 'javascript',
+      content: 'const config = { plugins: { tailwindcss: {}, autoprefixer: {} } };\nexport default config;\n',
+    });
+    fixes.push({
+      kind: 'postcss-config-generated',
+      path: 'postcss.config.js',
+      detail: 'Generated deterministic ESM postcss config for Tailwind pipeline.',
+    });
+  }
+
+  return { files: out, fixes };
+}
+
 const DEV_DEP_PATTERNS = [
   /^@types\//,
   /^eslint(-|$)/,
@@ -229,7 +312,8 @@ export async function runPreviewDependencyPreflight(
     });
   }
 
-  const { files: patchedFiles, report } = validateAndFixDependencies(project.files);
+  const normalized = normalizePreviewInfrastructureFiles(project.files);
+  const { files: patchedFiles, report } = validateAndFixDependencies(normalized.files);
   const fixedAt = new Date().toISOString();
 
   const fixes: DependencyFix[] = report.added.map((entry) => ({
@@ -342,12 +426,12 @@ export async function runPreviewDependencyPreflight(
   const reconcilerTouched = report.reconciled.some((r) => r.effects.length > 0);
 
   // No-op fast path — clean codebase AND no reconciler effects.
-  if (fixes.length === 0 && !reconcilerTouched) {
+  if (fixes.length === 0 && !reconcilerTouched && normalized.fixes.length === 0) {
     return {
       fixes: [],
       unresolved,
       filesPersisted: false,
-      patchedFiles: project.files,
+      patchedFiles: normalized.files,
       importsScanned: report.imports,
       packageJsonViolations,
       hasBlockingViolation,
@@ -401,6 +485,7 @@ export async function runPreviewDependencyPreflight(
       block: f.block,
       requiredBy: f.requiredBy.slice(0, 2),
     })),
+    infrastructureFixes: normalized.fixes,
   });
 
   return {

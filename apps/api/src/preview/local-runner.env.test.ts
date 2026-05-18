@@ -57,6 +57,21 @@ test('buildLocalPreviewEnv install phase keeps minimal runtime env', () => {
   assert.equal('NEXT_PUBLIC_API_URL' in bundle.env, false);
 });
 
+test('buildLocalPreviewEnv build phase forces NODE_ENV=production', () => {
+  const bundle = buildLocalPreviewEnv({
+    phase: 'build',
+    baseEnv: {
+      PATH: '/usr/bin:/bin',
+      NODE_ENV: 'development',
+    },
+  });
+
+  assert.equal(bundle.env.PATH, '/usr/bin:/bin');
+  assert.equal(bundle.env.NODE_ENV, 'production');
+  assert.equal('PORT' in bundle.env, false);
+  assert.equal('HOST' in bundle.env, false);
+});
+
 test('assertNoForbiddenPreviewEnvKeys rejects forbidden keys', () => {
   assert.throws(
     () => assertNoForbiddenPreviewEnvKeys({ OPENAI_API_KEY: 'x', PATH: '/usr/bin' }),

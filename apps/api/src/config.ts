@@ -3,9 +3,21 @@
 // ─────────────────────────────────────────────────────────────
 
 import { config as _dotenv } from 'dotenv';
+import { existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-_dotenv({ path: resolve(dirname(fileURLToPath(import.meta.url)), '../../../.env') });
+
+const dotenvCandidates = [
+  resolve(process.cwd(), '.env'),
+  resolve(process.cwd(), '../../.env'),
+  resolve(dirname(fileURLToPath(import.meta.url)), '../../../.env'),
+];
+
+for (const dotenvPath of dotenvCandidates) {
+  if (existsSync(dotenvPath)) {
+    _dotenv({ path: dotenvPath });
+  }
+}
 
 function optionalPositiveFloat(value: string | undefined): number | null {
   if (value === undefined || value.trim() === '') return null;
@@ -46,7 +58,7 @@ export const config = {
   },
 
   db: {
-    url: process.env.DATABASE_URL ?? 'postgresql://devteam:devteam@localhost:5432/devteam',
+    url: process.env.DATABASE_URL ?? 'postgresql://devteam:devteam@localhost:55432/devteam',
   },
 
   redis: {

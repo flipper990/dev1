@@ -1,0 +1,112 @@
+{
+  "timestamp": "2026-05-18T16:18:55.875Z",
+  "projectId": "Yw2y7mORcbK3",
+  "previewId": "2c0f7b09ca1f",
+  "runtime": "local",
+  "reason": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m  8 |\u001b[39m \u001b[36mimport\u001b[39m { \u001b[33mProfileForm\u001b[39m } \u001b[36mfrom\u001b[39m \u001b[32m'@/components/users/ProfileForm'\u001b[39m\u001b[33m;\u001b[39m\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m  9 |\u001b[39m \u001b[36mimport\u001b[39m { fetcher\u001b[33m,\u001b[39m postJson } \u001b[36mfrom\u001b[39m \u001b[32m'@/lib/api-client'\u001b[39m\u001b[33m;\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m          \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 10 |\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 11 |\u001b[39m \u001b[36mexport\u001b[39m \u001b[36mdefault\u001b[39m \u001b[36mfunction\u001b[39m \u001b[33mProfileContent\u001b[39m() {\u001b[0m | \u001b[0m \u001b[90m 12 |\u001b[39m   \u001b[36mconst\u001b[39m { data\u001b[33m,\u001b[39m error\u001b[33m,\u001b[39m isLoading\u001b[33m,\u001b[39m mutate } \u001b[33m=\u001b[39m useSWR(\u001b[32m'/api/users/get'\u001b[39m\u001b[33m,\u001b[39m fetcher)\u001b[33m;\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/app/profile/ProfileContent.tsx:9:10; errorMessage=Type error: Module '\"@/lib/api-client\"' has no exported member 'fetcher'.; recommendedRepairPath=Repair generated source and imports in ./src/app/profile/ProfileContent.tsx:9:10, then rerun build validation before preview start.",
+  "timeoutCause": null,
+  "timeoutLifecycle": null,
+  "command": "npm.cmd",
+  "commandArgs": [
+    "run",
+    "build"
+  ],
+  "cwd": "..\\..\\data\\projects\\Yw2y7mORcbK3\\output\\.preview-runtime",
+  "runtimePath": "..\\..\\data\\projects\\Yw2y7mORcbK3\\output\\.preview-runtime",
+  "packageJsonPath": "..\\..\\data\\projects\\Yw2y7mORcbK3\\output\\.preview-runtime\\package.json",
+  "packageManager": "npm",
+  "installCommand": "npm install --no-audit --no-fund",
+  "installCommandFallback": null,
+  "startCommand": "npm run build",
+  "reproduceCommand": [
+    "cd \"..\\..\\data\\projects\\Yw2y7mORcbK3\\output\\.preview-runtime\"",
+    "# Install (the runner used: unknown)",
+    "npm install --no-audit --no-fund",
+    "# Start dev server on the same port the runner used:",
+    "$env:PORT=\"64452\"; npm run build"
+  ],
+  "host": "127.0.0.1",
+  "port": 64452,
+  "envSafe": {
+    "PORT": "3001",
+    "HOST": "127.0.0.1",
+    "NODE_ENV": "development"
+  },
+  "pid": null,
+  "currentStep": "preview:building",
+  "lastSuccessfulStep": "install cache hit",
+  "installCompleted": true,
+  "installMode": null,
+  "serverSpawned": false,
+  "portEverOpened": false,
+  "httpEverResponded": false,
+  "childAlive": true,
+  "processStartedAt": null,
+  "processExitedAt": null,
+  "exitCode": null,
+  "exitSignal": null,
+  "stdoutTail": "\n> generated-app@0.1.0 build\n> next build\n\n   ▲ Next.js 15.0.4\n   - Environments: .env.local\n\n   Creating an optimized production build ...\n ✓ Compiled successfully\n   Linting and checking validity of types ...\n",
+  "stderrTail": " ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\nFailed to compile.\n\n./src/app/profile/ProfileContent.tsx:9:10\nType error: Module '\"@/lib/api-client\"' has no exported member 'fetcher'.\n\n\u001b[0m \u001b[90m  7 |\u001b[39m \u001b[36mimport\u001b[39m { \u001b[33mProfileCard\u001b[39m } \u001b[36mfrom\u001b[39m \u001b[32m'@/components/users/ProfileCard'\u001b[39m\u001b[33m;\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m  8 |\u001b[39m \u001b[36mimport\u001b[39m { \u001b[33mProfileForm\u001b[39m } \u001b[36mfrom\u001b[39m \u001b[32m'@/components/users/ProfileForm'\u001b[39m\u001b[33m;\u001b[39m\u001b[0m\n\u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m  9 |\u001b[39m \u001b[36mimport\u001b[39m { fetcher\u001b[33m,\u001b[39m postJson } \u001b[36mfrom\u001b[39m \u001b[32m'@/lib/api-client'\u001b[39m\u001b[33m;\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m    |\u001b[39m          \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 10 |\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 11 |\u001b[39m \u001b[36mexport\u001b[39m \u001b[36mdefault\u001b[39m \u001b[36mfunction\u001b[39m \u001b[33mProfileContent\u001b[39m() {\u001b[0m\n\u001b[0m \u001b[90m 12 |\u001b[39m   \u001b[36mconst\u001b[39m { data\u001b[33m,\u001b[39m error\u001b[33m,\u001b[39m isLoading\u001b[33m,\u001b[39m mutate } \u001b[33m=\u001b[39m useSWR(\u001b[32m'/api/users/get'\u001b[39m\u001b[33m,\u001b[39m fetcher)\u001b[33m;\u001b[39m\u001b[0m\n",
+  "probeAttemptsTotal": 0,
+  "probeAttemptsTail": [],
+  "installFallback": null,
+  "stepDurations": [
+    {
+      "step": "preview:queued",
+      "startedAt": "2026-05-18T16:17:56.665Z",
+      "completedAt": "2026-05-18T16:17:56.665Z",
+      "durationMs": 0
+    },
+    {
+      "step": "preview:staging-files",
+      "startedAt": "2026-05-18T16:17:56.665Z",
+      "completedAt": "2026-05-18T16:17:56.699Z",
+      "durationMs": 34
+    },
+    {
+      "step": "preview:installing",
+      "startedAt": "2026-05-18T16:17:56.699Z",
+      "completedAt": "2026-05-18T16:18:39.706Z",
+      "durationMs": 43007
+    },
+    {
+      "step": "preview:building",
+      "startedAt": "2026-05-18T16:18:39.706Z",
+      "completedAt": "2026-05-18T16:18:48.780Z",
+      "durationMs": 9074
+    },
+    {
+      "step": "preview:installing",
+      "startedAt": "2026-05-18T16:18:48.780Z",
+      "completedAt": "2026-05-18T16:18:48.831Z",
+      "durationMs": 51
+    }
+  ],
+  "previewStatusTransitions": [
+    {
+      "step": "starting:local-runner",
+      "at": "2026-05-18T16:17:56.665Z"
+    }
+  ],
+  "localStartAttempts": [
+    {
+      "attempt": 1,
+      "ok": false,
+      "error": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m  8 |\u001b[39m \u001b[36mimport\u001b[39m { \u001b[33mProfileForm\u001b[39m } \u001b[36mfrom\u001b[39m \u001b[32m'@/components/users/ProfileForm'\u001b[39m\u001b[33m;\u001b[39m\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m  9 |\u001b[39m \u001b[36mimport\u001b[39m { fetcher\u001b[33m,\u001b[39m postJson } \u001b[36mfrom\u001b[39m \u001b[32m'@/lib/api-client'\u001b[39m\u001b[33m;\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m          \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 10 |\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 11 |\u001b[39m \u001b[36mexport\u001b[39m \u001b[36mdefault\u001b[39m \u001b[36mfunction\u001b[39m \u001b[33mProfileContent\u001b[39m() {\u001b[0m | \u001b[0m \u001b[90m 12 |\u001b[39m   \u001b[36mconst\u001b[39m { data\u001b[33m,\u001b[39m error\u001b[33m,\u001b[39m isLoading\u001b[33m,\u001b[39m mutate } \u001b[33m=\u001b[39m useSWR(\u001b[32m'/api/users/get'\u001b[39m\u001b[33m,\u001b[39m fetcher)\u001b[33m;\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/app/profile/ProfileContent.tsx:9:10; errorMessage=Type error: Module '\"@/lib/api-client\"' has no exported member 'fetcher'.; recommendedRepairPath=Repair generated source and imports in ./src/app/profile/ProfileContent.tsx:9:10, then rerun build validation before preview start.",
+      "portOpened": false,
+      "durationMs": 50073,
+      "startedAtIso": "2026-05-18T16:17:56.699Z",
+      "endedAtIso": "2026-05-18T16:18:46.772Z"
+    },
+    {
+      "attempt": 2,
+      "ok": false,
+      "error": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m  8 |\u001b[39m \u001b[36mimport\u001b[39m { \u001b[33mProfileForm\u001b[39m } \u001b[36mfrom\u001b[39m \u001b[32m'@/components/users/ProfileForm'\u001b[39m\u001b[33m;\u001b[39m\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m  9 |\u001b[39m \u001b[36mimport\u001b[39m { fetcher\u001b[33m,\u001b[39m postJson } \u001b[36mfrom\u001b[39m \u001b[32m'@/lib/api-client'\u001b[39m\u001b[33m;\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m          \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 10 |\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 11 |\u001b[39m \u001b[36mexport\u001b[39m \u001b[36mdefault\u001b[39m \u001b[36mfunction\u001b[39m \u001b[33mProfileContent\u001b[39m() {\u001b[0m | \u001b[0m \u001b[90m 12 |\u001b[39m   \u001b[36mconst\u001b[39m { data\u001b[33m,\u001b[39m error\u001b[33m,\u001b[39m isLoading\u001b[33m,\u001b[39m mutate } \u001b[33m=\u001b[39m useSWR(\u001b[32m'/api/users/get'\u001b[39m\u001b[33m,\u001b[39m fetcher)\u001b[33m;\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/app/profile/ProfileContent.tsx:9:10; errorMessage=Type error: Module '\"@/lib/api-client\"' has no exported member 'fetcher'.; recommendedRepairPath=Repair generated source and imports in ./src/app/profile/ProfileContent.tsx:9:10, then rerun build validation before preview start.",
+      "portOpened": false,
+      "durationMs": 7093,
+      "startedAtIso": "2026-05-18T16:18:48.781Z",
+      "endedAtIso": "2026-05-18T16:18:55.874Z"
+    }
+  ],
+  "localRetrySucceeded": false
+}

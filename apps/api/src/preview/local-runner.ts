@@ -106,9 +106,66 @@ export interface LocalPreviewRecord {
   markStopRequested?: () => void;
 }
 
+export interface LocalPreviewFailureSnapshot {
+  projectId: string;
+  port: number;
+  stagingDir: string;
+  stack: StackInfo;
+  log: string;
+  stdoutLog: string;
+  stderrLog: string;
+  error: string | null;
+  exitCode: number | null;
+  exitSignal: NodeJS.Signals | null;
+  processStartedAt: string | null;
+  processExitedAt: string | null;
+  exited: boolean;
+  lastSuccessfulStep: string;
+  probeAttempts: ProbeAttempt[];
+  installMode: 'standard' | 'legacy-peer-deps-fallback' | null;
+  installFallback: LocalPreviewRecord['installFallback'];
+  childPid: number | null;
+}
+
+function createLocalPreviewFailureSnapshot(record: LocalPreviewRecord): LocalPreviewFailureSnapshot {
+  return {
+    projectId: record.projectId,
+    port: record.port,
+    stagingDir: record.stagingDir,
+    stack: record.stack,
+    log: record.log,
+    stdoutLog: record.stdoutLog,
+    stderrLog: record.stderrLog,
+    error: record.error,
+    exitCode: record.exitCode,
+    exitSignal: record.exitSignal,
+    processStartedAt: record.processStartedAt,
+    processExitedAt: record.processExitedAt,
+    exited: record.exited,
+    lastSuccessfulStep: record.lastSuccessfulStep,
+    probeAttempts: [...record.probeAttempts],
+    installMode: record.installMode,
+    installFallback: record.installFallback
+      ? {
+          ...record.installFallback,
+          firstAttemptEresolve: record.installFallback.firstAttemptEresolve
+            ? {
+                ...record.installFallback.firstAttemptEresolve,
+                conflicts: [...record.installFallback.firstAttemptEresolve.conflicts],
+              }
+            : null,
+        }
+      : null,
+    childPid: typeof record.child?.pid === 'number' ? record.child.pid : null,
+  };
+}
+
 const IS_WIN = process.platform === 'win32';
 const MAX_LOG_BYTES = 32_000;
+const INSTALL_TIMEOUT_MS = 240_000;
+const BUILD_TIMEOUT_MS = 120_000;
 const READY_TIMEOUT_MS = 90_000;
+const PROBE_TIMEOUT_MS = 1_500;
 const READY_POLL_INTERVAL_MS = 500;
 const STOP_GRACE_MS = 5_000;
 /** Cap on the size of the per-record probe-attempt ring buffer. The
@@ -118,7 +175,8 @@ const STOP_GRACE_MS = 5_000;
  *  generous head-room for retries. */
 const MAX_PROBE_ATTEMPTS = 64;
 
-type PreviewSpawnPhase = 'install' | 'dev';
+type PreviewSpawnPhase = 'install' | 'build' | 'dev';
+type BuildFailurePhase = 'preview:building';
 
 export interface BuildLocalPreviewEnvOptions {
   phase: PreviewSpawnPhase;
@@ -131,6 +189,37 @@ export interface BuildLocalPreviewEnvOptions {
 export interface LocalPreviewEnvBundle {
   env: Record<string, string>;
   safeLogEnv: Record<string, string>;
+}
+
+export interface BuildFailureDiagnostics {
+  phase: BuildFailurePhase;
+  failedFile: string | null;
+  errorMessage: string;
+  recommendedRepairPath: string;
+}
+
+export function extractBuildFailureDiagnostics(rawLog: string): BuildFailureDiagnostics {
+  const lines = rawLog.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0);
+  const source = lines.join('\n');
+  const failedFileMatch = source.match(/(?:^|\s)(\.?\/?[\w./-]+\.(?:tsx?|jsx?)):(\d+):(\d+)/m);
+  const typeErrorLine =
+    lines.find((line) => /^Type error:/i.test(line))
+    ?? lines.find((line) => /^Error:/i.test(line))
+    ?? lines.find((line) => /\b(typescript|ts\d{4}|not assignable to type|has no exported member|cannot find module|module not found)\b/i.test(line))
+    ?? 'Build failed before preview startup; inspect compiler output above.';
+  const failedFile = failedFileMatch
+    ? `${failedFileMatch[1]}:${failedFileMatch[2]}:${failedFileMatch[3]}`
+    : null;
+  const recommendedRepairPath = failedFile
+    ? `Repair generated source and imports in ${failedFile}, then rerun build validation before preview start.`
+    : 'Repair generated TypeScript/build errors and rerun build validation before preview start.';
+
+  return {
+    phase: 'preview:building',
+    failedFile,
+    errorMessage: typeErrorLine,
+    recommendedRepairPath,
+  };
 }
 
 const PREVIEW_SYSTEM_ENV_ALIASES: ReadonlyArray<{ out: string; keys: readonly string[] }> = [
@@ -199,7 +288,17 @@ export function buildLocalPreviewEnv(options: BuildLocalPreviewEnvOptions): Loca
     if (value) out[alias.out] = value;
   }
 
-  out.NODE_ENV = firstEnvValue(baseEnv, ['NODE_ENV']) ?? 'development';
+  if (options.phase === 'build') {
+    // `next build` must run with production semantics. Inheriting
+    // NODE_ENV=development from the API server causes non-standard
+    // mode warnings and has produced unstable build behavior.
+    out.NODE_ENV = 'production';
+  } else if (options.phase === 'install') {
+    // Keep install permissive so devDependencies remain available for build.
+    out.NODE_ENV = firstEnvValue(baseEnv, ['NODE_ENV']) ?? 'development';
+  } else {
+    out.NODE_ENV = firstEnvValue(baseEnv, ['NODE_ENV']) ?? 'development';
+  }
   out.CI = '1';
   out.FORCE_COLOR = '0';
   out.NO_COLOR = '1';
@@ -254,6 +353,7 @@ function fingerprintInstall(files: LocalPreviewFile[]): string {
 
 export class LocalPreviewRunner {
   private records = new Map<string, LocalPreviewRecord>();
+  private failedRecords = new Map<string, LocalPreviewFailureSnapshot>();
   private cachedAvailable: boolean | null = null;
 
   constructor(private opts: {
@@ -289,6 +389,10 @@ export class LocalPreviewRunner {
     return this.records.get(projectId) ?? null;
   }
 
+  getLastFailure(projectId: string): LocalPreviewFailureSnapshot | null {
+    return this.failedRecords.get(projectId) ?? null;
+  }
+
   list(): LocalPreviewRecord[] {
     return [...this.records.values()];
   }
@@ -311,7 +415,7 @@ export class LocalPreviewRunner {
     projectId: string,
     files: LocalPreviewFile[],
     onPhase?: (
-      phase: 'spawning-server' | 'waiting-for-port',
+      phase: 'building' | 'spawning-server' | 'waiting-for-port',
       meta?: {
         pid?: number | null;
         port?: number | null;
@@ -325,6 +429,7 @@ export class LocalPreviewRunner {
     onProbe?: (attempt: ProbeAttempt) => void,
   ): Promise<LocalPreviewRecord> {
     const existing = this.records.get(projectId);
+    this.failedRecords.delete(projectId);
     if (existing && existing.ready && !existing.child.killed) {
       return existing;
     }
@@ -353,6 +458,16 @@ export class LocalPreviewRunner {
     }
 
     const pm = detectPackageManager(files);
+    let hasBuildScript = false;
+    try {
+      const pkgFile = files.find((f) => f.path === 'package.json' || f.path === './package.json');
+      if (pkgFile) {
+        const parsed = JSON.parse(pkgFile.contents) as { scripts?: Record<string, string> };
+        hasBuildScript = typeof parsed.scripts?.build === 'string' && parsed.scripts.build.trim().length > 0;
+      }
+    } catch {
+      hasBuildScript = false;
+    }
     const port = await this.opts.ports.allocate();
 
     // ── Install (cached by fingerprint) ────────────────────
@@ -502,6 +617,7 @@ export class LocalPreviewRunner {
             // re-throwing through the same handler.
             record.stdoutLog = preservedFirstStdout;
             record.stderrLog = preservedFirstStderr;
+            this.failedRecords.set(projectId, createLocalPreviewFailureSnapshot(record));
             this.opts.ports.release(port);
             this.records.delete(projectId);
             if (firstParsed) {
@@ -518,6 +634,7 @@ export class LocalPreviewRunner {
             throw new Error(`npm install failed: ${(err as Error).message}`);
           }
         } else {
+          this.failedRecords.set(projectId, createLocalPreviewFailureSnapshot(record));
           this.opts.ports.release(port);
           this.records.delete(projectId);
           // ── ERESOLVE postmortem (no fallback path taken) ────
@@ -564,7 +681,30 @@ export class LocalPreviewRunner {
       }
     } else {
       this.opts.logger.info('local-runner: install cache hit', { projectId, fp });
-      record.lastSuccessfulStep = 'install cache hit';
+            record.lastSuccessfulStep = 'install cache hit';
+    }
+
+    if (hasBuildScript && (detected.kind === 'nextjs' || detected.kind === 'vite-react' || detected.kind === 'plain-react')) {
+      try {
+        onPhase?.('building', {
+          pid: null,
+          port,
+          host: '127.0.0.1',
+          cmd: pmExe(pm),
+          args: ['run', 'build'],
+          cwd: stagingDir,
+        });
+      } catch { /* progress callbacks must never abort boot */ }
+      try {
+        await this.runBuild(stagingDir, pm, record);
+      } catch (err) {
+        record.error = (err as Error).message;
+        this.failedRecords.set(projectId, createLocalPreviewFailureSnapshot(record));
+        this.opts.ports.release(port);
+        this.records.delete(projectId);
+        throw err;
+      }
+      record.lastSuccessfulStep = 'build completed';
     }
 
     // ── Spawn dev ──────────────────────────────────────────
@@ -729,6 +869,7 @@ export class LocalPreviewRunner {
         stderrTail: record.stderrLog.slice(-1_500),
       });
       record.error = (err as Error).message;
+      this.failedRecords.set(projectId, createLocalPreviewFailureSnapshot(record));
       await this.stop(projectId);
       throw err;
     }
@@ -820,10 +961,15 @@ export class LocalPreviewRunner {
     options: { extraArgs?: string[]; label?: string } = {},
   ): Promise<void> {
     return new Promise((resolve, reject) => {
-      const baseArgs = pm === 'yarn' ? ['install'] : ['install', '--no-audit', '--no-fund'];
+      const npmCacheDir = join(stagingDir, '.npm-cache');
+      const baseArgs = pm === 'yarn'
+        ? ['install']
+        : ['install', '--no-audit', '--no-fund', '--cache', npmCacheDir];
       const args = [...baseArgs, ...(options.extraArgs ?? [])];
       const installCmd = pmExe(pm);
       const installEnv = buildLocalPreviewEnv({ phase: 'install' });
+      installEnv.env.NPM_CONFIG_CACHE = npmCacheDir;
+      installEnv.env.npm_config_cache = npmCacheDir;
       this.opts.logger.info('local-runner: starting install process', {
         event: 'preview:runtime-start',
         runtime: 'local',
@@ -864,8 +1010,8 @@ export class LocalPreviewRunner {
       const timer = setTimeout(() => {
         try { child.kill('SIGKILL'); } catch { /* ignore */ }
         const tail = (record.stderrLog || record.stdoutLog).trim().split(/\r?\n/).slice(-3).join(' | ').slice(-400);
-        reject(new Error(`install timed out after 240s${tail ? ` — ${tail}` : ''}`));
-      }, 240_000);
+        reject(new Error(`install timed out after ${Math.round(INSTALL_TIMEOUT_MS / 1000)}s${tail ? ` — ${tail}` : ''}`));
+      }, INSTALL_TIMEOUT_MS);
       child.once('error', (err) => { clearTimeout(timer); reject(err); });
       child.once('exit', (code, signal) => {
         clearTimeout(timer);
@@ -1074,6 +1220,96 @@ export class LocalPreviewRunner {
    * `onProbe` (when supplied) is invoked once per attempt so the
    * PreviewManager can mirror attempts onto its own record.
    */
+
+  private runBuild(
+    stagingDir: string,
+    pm: 'pnpm' | 'npm' | 'yarn',
+    record: LocalPreviewRecord,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const cmd = pmExe(pm);
+      const args = ['run', 'build'];
+      const buildEnv = buildLocalPreviewEnv({ phase: 'build' });
+      this.opts.logger.info('local-runner: starting build validation', {
+        event: 'preview:runtime-build-start',
+        runtime: 'local',
+        projectId: record.projectId,
+        cmd,
+        args,
+        cwd: stagingDir,
+      });
+      const child = spawn(cmd, args, {
+        cwd: stagingDir,
+        shell: IS_WIN,
+        windowsHide: true,
+        env: buildEnv.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      instrumentChild(
+        child,
+        {
+          label: 'local-build',
+          cmd,
+          args,
+          cwd: stagingDir,
+          projectId: record.projectId,
+        },
+        this.opts.logger,
+      );
+      const appendStdout = (chunk: Buffer) => {
+        const s = chunk.toString('utf8');
+        record.stdoutLog = (record.stdoutLog + s).slice(-MAX_LOG_BYTES);
+        record.log = (record.log + s).slice(-MAX_LOG_BYTES);
+      };
+      const appendStderr = (chunk: Buffer) => {
+        const s = chunk.toString('utf8');
+        record.stderrLog = (record.stderrLog + s).slice(-MAX_LOG_BYTES);
+        record.log = (record.log + s).slice(-MAX_LOG_BYTES);
+      };
+      child.stdout?.on('data', appendStdout);
+      child.stderr?.on('data', appendStderr);
+
+      const timer = setTimeout(() => {
+        try { child.kill('SIGKILL'); } catch { /* ignore */ }
+        const tail = (record.stderrLog || record.stdoutLog).trim().split(/\r?\n/).slice(-5).join(' | ').slice(-800);
+        reject(new Error(`build timed out after ${Math.round(BUILD_TIMEOUT_MS / 1000)}s${tail ? ` - ${tail}` : ''}`));
+      }, BUILD_TIMEOUT_MS);
+
+      child.once('error', (err) => {
+        clearTimeout(timer);
+        reject(new Error(`build failed: ${err.message}`));
+      });
+      child.once('exit', (code, signal) => {
+        clearTimeout(timer);
+        if (code === 0) {
+          this.opts.logger.info('local-runner: build validation passed', {
+            event: 'preview:runtime-build-ok',
+            projectId: record.projectId,
+          });
+          resolve();
+          return;
+        }
+        const stderrOrStdout = record.stderrLog || record.stdoutLog;
+        const diagnostics = extractBuildFailureDiagnostics(stderrOrStdout);
+        const tail = stderrOrStdout.trim().split(/\r?\n/).slice(-6).join(' | ').slice(-900);
+        const diagnosticsSummary = [
+          `phase=${diagnostics.phase}`,
+          `failedFile=${diagnostics.failedFile ?? 'unknown'}`,
+          `errorMessage=${diagnostics.errorMessage}`,
+          `recommendedRepairPath=${diagnostics.recommendedRepairPath}`,
+        ].join('; ');
+        reject(
+          new Error(
+            `build failed: ${pm} run build exited code=${code}` +
+              (signal ? ` signal=${signal}` : '') +
+              (tail ? ` - ${tail}` : '') +
+              ` | build-diagnostics: ${diagnosticsSummary}`,
+          ),
+        );
+      });
+    });
+  }
+
   private async waitForReady(
     port: number,
     timeoutMs: number,

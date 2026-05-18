@@ -25,9 +25,26 @@ export const metadata: Metadata = {
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const themeBootScript = `
+    (() => {
+      try {
+        const saved = window.localStorage.getItem('devteam-theme');
+        const theme = saved === 'light' || saved === 'dark' ? saved : 'dark';
+        const root = document.documentElement;
+        root.dataset.theme = theme;
+        root.classList.toggle('theme-dark', theme === 'dark');
+      } catch {
+        // Keep default dark theme when storage access is blocked.
+      }
+    })();
+  `;
+
   return (
-    <html lang="en" className={`${sans.variable} ${mono.variable}`}>
-      <body className="min-h-screen bg-surface-canvas text-text-primary antialiased">{children}</body>
+    <html lang="en" className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
+      <body className="min-h-screen bg-surface-canvas text-text-primary antialiased" suppressHydrationWarning>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+        {children}
+      </body>
     </html>
   );
 }

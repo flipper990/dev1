@@ -2,7 +2,7 @@
  * Automated generation testing loop.
  *
  * Runs N project generations sequentially against the running API
- * (http://localhost:3003 by default). For each generation:
+ * (http://127.0.0.1:3003 by default). For each generation:
  *
  *   1. POST /api/projects/generate          (real pipeline)
  *   2. Poll GET /api/projects/:id           (until status != 'generating')
@@ -35,7 +35,7 @@ import { detectDevOverlay } from '../preview/preview-content-health.js';
 // Configuration
 // ─────────────────────────────────────────────────────────────
 
-const API_URL = process.env.API_URL ?? 'http://localhost:3003';
+const API_URL = process.env.API_URL ?? 'http://127.0.0.1:3003';
 const RUN_COUNT = Number.parseInt(process.env.COUNT ?? '10', 10);
 const RUNNER_AUTH_TOKEN = (process.env.RUNNER_AUTH_TOKEN ?? '').trim();
 
@@ -63,6 +63,8 @@ const MAX_QA_ITERATIONS = 6;
 
 const POLL_INTERVAL_MS = 3_000;
 const MAX_FIX_ATTEMPTS = 3;
+const UPDATE_READY_TIMEOUT_MS = 90_000;
+const UPDATE_READY_POLL_MS = 2_000;
 
 // ── Preview-readiness gate ─────────────────────────────────
 // After the generation pipeline reports 'completed', we still must
@@ -1243,7 +1245,7 @@ async function resilientGetProject(
 
   throw new Error(
     `getProject exhausted ${MAX_POLL_FETCH_RETRIES + 1} attempts. ` +
-    `Last error: ${lastErr?.message ?? 'unknown'}. ` +
+    `Last error: ${lastErr?.message ?? 'unavailable'}. ` +
     `Health was ${stats.healthEverReachable ? 'reachable' : 'NEVER reachable'} during retries.`,
   );
 }
@@ -1420,6 +1422,26 @@ async function waitForUpdate(projectId: string): Promise<ProjectRecordLite> {
   return waitForCompletion(projectId, MAX_GENERATION_TIMEOUT_MS, 'update');
 }
 
+async function waitForProjectReadyForUpdate(
+  projectId: string,
+  timeoutMs = UPDATE_READY_TIMEOUT_MS,
+): Promise<ProjectRecordLite> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const project = await getProject(projectId);
+    if (!project) {
+      throw new Error(`waitForProjectReadyForUpdate(${projectId}) failed: project not found`);
+    }
+    if (project.status !== 'generating') {
+      return project;
+    }
+    await sleep(UPDATE_READY_POLL_MS);
+  }
+  throw new Error(
+    `waitForProjectReadyForUpdate(${projectId}) timed out after ${Math.floor(timeoutMs / 1000)}s`,
+  );
+}
+
 /**
  * Trigger an auto-fix update against an existing project, threading
  * the build/runtime errors into the prompt so the agents have a real
@@ -1429,6 +1451,9 @@ async function triggerAutoFix(
   projectId: string,
   errors: { buildErrors: string[]; runtimeErrors: string[]; failedSteps: string[]; failureReasons: string[] },
 ): Promise<void> {
+  // Update endpoints reject while generation is still marked in-flight.
+  await waitForProjectReadyForUpdate(projectId);
+
   const buildSlice = errors.buildErrors.slice(0, 8).join('\n');
   const runtimeSlice = errors.runtimeErrors.slice(0, 8).join('\n');
   const stepSlice = errors.failedSteps.join(', ') || 'none';
@@ -1442,12 +1467,17 @@ async function triggerAutoFix(
     (runtimeSlice ? `\nRuntime / probe errors:\n${runtimeSlice}\n` : '') +
     `\nDo NOT change unrelated files. Address only the listed errors.`;
 
-  const res = await http<{ projectId: string; sessionId: string }>(
-    'POST',
-    `/api/projects/${projectId}/update`,
-    { prompts: [prompt], scope: 'code' },
-  );
-  if (res.status !== 202) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await http<{ projectId: string; sessionId: string }>(
+      'POST',
+      `/api/projects/${projectId}/update`,
+      { prompts: [prompt], scope: 'code' },
+    );
+    if (res.status === 202) return;
+    if (res.status === 409 && attempt === 0) {
+      await waitForProjectReadyForUpdate(projectId, 20_000);
+      continue;
+    }
     throw new Error(
       `triggerAutoFix(${projectId}) failed: status=${res.status} body=${res.raw.slice(0, 400)}`,
     );
@@ -1824,7 +1854,15 @@ async function runOne(index: number, prompt: string): Promise<GenerationResult> 
 
     if (final.status === 'failed') {
       status = 'fail-generation-error';
-      finalError = `Project status=failed; error=${final.error ?? 'unknown'}`;
+      const failureDetails = (final as unknown as {
+        failure?: { failureReason?: string; errorMessage?: string };
+      }).failure;
+      finalError = `Project status=failed; error=${
+        final.error
+        ?? failureDetails?.failureReason
+        ?? failureDetails?.errorMessage
+        ?? 'missing persisted error details'
+      }`;
       // Still attempt validation against partial output so the result is useful.
     }
 
@@ -1839,7 +1877,7 @@ async function runOne(index: number, prompt: string): Promise<GenerationResult> 
       previewOutcome = await waitForPreview(projectId);
       if (previewOutcome.outcome === 'failed') {
         status = 'fail-preview-failed';
-        finalError = `Preview failed: ${previewOutcome.previewError ?? 'unknown'}`;
+        finalError = `Preview failed: ${previewOutcome.previewError ?? 'missing preview error details'}`;
         return {
           index,
           projectId,

@@ -5,7 +5,8 @@ export type UnsafePathReason =
   | 'null-byte'
   | 'absolute-path'
   | 'path-traversal'
-  | 'outside-root';
+  | 'outside-root'
+  | 'windows-invalid-char';
 
 export class UnsafeProjectPathError extends Error {
   readonly code = 'UNSAFE_PROJECT_PATH' as const;
@@ -22,6 +23,18 @@ export class UnsafeProjectPathError extends Error {
 
 const WINDOWS_DRIVE_PREFIX = /^[A-Za-z]:[\\/]/;
 const UNC_PREFIX = /^\\\\/;
+const WINDOWS_INVALID_SEGMENT_CHARS = /[<>:"|?*]/;
+
+function normalizeColonRouteSegments(pathValue: string): string {
+  const segments = pathValue.split('/');
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i] ?? '';
+    const m = /^:([A-Za-z0-9_-]+)$/.exec(seg);
+    if (!m) continue;
+    segments[i] = `[${m[1]}]`;
+  }
+  return segments.join('/');
+}
 
 function reject(inputPath: string, reason: UnsafePathReason, message: string): never {
   throw new UnsafeProjectPathError(inputPath, reason, message);
@@ -50,7 +63,7 @@ export function normalizeProjectRelativePath(inputPath: string): string {
     reject(raw, 'absolute-path', 'Absolute paths are not allowed');
   }
 
-  const posixPath = raw.replace(/\\/g, '/');
+  const posixPath = normalizeColonRouteSegments(raw.replace(/\\/g, '/'));
   let normalized = path.posix.normalize(posixPath);
   while (normalized.startsWith('./')) normalized = normalized.slice(2);
   if (normalized === '.' || normalized.length === 0) {
@@ -58,6 +71,9 @@ export function normalizeProjectRelativePath(inputPath: string): string {
   }
   if (normalized === '..' || normalized.startsWith('../') || normalized.includes('/../')) {
     reject(raw, 'path-traversal', 'Parent directory traversal is not allowed');
+  }
+  if (WINDOWS_INVALID_SEGMENT_CHARS.test(normalized)) {
+    reject(raw, 'windows-invalid-char', 'Path contains Windows-invalid segment characters');
   }
 
   return normalized;

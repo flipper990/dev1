@@ -72,7 +72,7 @@ export function Tabs({ items, value, onChange, ariaLabel = 'Tabs', autoFocusSele
     <div
       role="tablist"
       aria-label={ariaLabel}
-      className="flex min-h-11 w-full max-w-full items-center gap-1 overflow-x-auto rounded-[var(--radius-panel)] border border-border-muted bg-surface-tint/80 p-1 [scrollbar-width:thin]"
+      className="flex min-h-11 w-full max-w-full items-center gap-1.5 overflow-x-auto rounded-[var(--radius-panel)] border border-border-muted bg-surface-tint/80 p-1.5 [scrollbar-width:thin]"
     >
       {items.map((item, index) => {
         const selected = item.id === value;
@@ -93,7 +93,7 @@ export function Tabs({ items, value, onChange, ariaLabel = 'Tabs', autoFocusSele
             onClick={() => onChange(item.id)}
             onKeyDown={(event) => handleKeyDown(event, index)}
             className={cn(
-              'inline-flex min-h-9 min-w-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-[var(--radius-control)] border px-3 text-label-m',
+              'inline-flex min-h-9 min-w-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-[var(--radius-control)] border px-3.5 text-label-m',
               'transition-[background-color,border-color,color,box-shadow] duration-120 ease-ledger',
               'focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50',
               selected

@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import type { TextareaHTMLAttributes } from 'react';
 import { cn } from '../../lib/cn';
 
@@ -5,10 +6,14 @@ export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElemen
   invalid?: boolean;
 }
 
-export function Textarea({ className, invalid = false, ...props }: TextareaProps) {
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
+  { className, invalid = false, ...props },
+  ref,
+) {
   return (
     <textarea
       {...props}
+      ref={ref}
       className={cn(
         'w-full rounded-[var(--radius-control)] border bg-surface-raised px-3 py-2.5 text-body-s text-text-primary shadow-hairline',
         'placeholder:text-text-muted transition-colors duration-120 ease-ledger',
@@ -22,4 +27,4 @@ export function Textarea({ className, invalid = false, ...props }: TextareaProps
       aria-invalid={invalid || undefined}
     />
   );
-}
+});

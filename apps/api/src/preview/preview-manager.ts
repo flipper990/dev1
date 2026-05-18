@@ -1,9 +1,9 @@
-// ─────────────────────────────────────────────────────────────
-// Preview manager — orchestrates per-project container lifecycle.
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Preview manager â€” orchestrates per-project container lifecycle.
 //
 //   start(projectId)
-//     └─ detect stack → build image → run container → wait healthy
-//        → register and return URL
+//     â””â”€ detect stack â†’ build image â†’ run container â†’ wait healthy
+//        â†’ register and return URL
 //
 //   stop(projectId)        idempotent
 //   getStatus(projectId)   for UI polling
@@ -11,7 +11,7 @@
 //
 // Concurrency caps + idle TTL prevent the host from drowning when
 // many projects are being tested back-to-back.
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -22,7 +22,7 @@ import type { PreviewHealthStatus, PreviewLifecycleStatus } from '@devteam/types
 import type { ProjectStore } from '../storage/project-store.js';
 import type { DockerRunner } from './docker-runner.js';
 import type { PortAllocator } from './port-allocator.js';
-import type { LocalPreviewRunner } from './local-runner.js';
+import type { LocalPreviewFailureSnapshot, LocalPreviewRunner } from './local-runner.js';
 import type { PreviewFixAttempt, PreviewRecord, PreviewState, PreviewStatus, PreviewStep, PreviewTimelineEvent, PreviewTimelineEventName, StackInfo } from './types.js';
 import { rollupProbes, type ProbeAttempt } from './probe-recorder.js';
 import { detectStack, isRunnableStack } from './stack-detector.js';
@@ -51,7 +51,7 @@ import {
  * "4000:4000" which collide with a busy host port. We rewrite the staged
  * compose file to strip top-level `ports:` from web/api services so our
  * override is the only source of host bindings. Also strips published
- * postgres ports — only the override (or compose network) should expose db.
+ * postgres ports â€” only the override (or compose network) should expose db.
  *
  * This is a conservative line-based YAML edit: the generated file uses
  * canonical 2-space indentation per builder convention.
@@ -139,7 +139,7 @@ interface FailureContext {
   stack?: string;
   /** Dev-overlay detection from the content-health probe. When present
    *  this becomes the canonical record of WHY the preview was rejected
-   *  even though HTTP responded — the UI shows `detectedErrorType` as
+   *  even though HTTP responded â€” the UI shows `detectedErrorType` as
    *  a category badge and `affectedModule` as a copy chip. */
   overlayDetection?: DevOverlayDetection & { bodySample?: string };
 }
@@ -152,7 +152,7 @@ interface FailureContext {
 function composeFailureMessage(ctx: FailureContext): string {
   const out: string[] = [ctx.reason];
   // Surface the dev-overlay detection FIRST (after the reason headline)
-  // because it's almost always the most actionable signal — "Module
+  // because it's almost always the most actionable signal â€” "Module
   // not found: 'class-variance-authority'" is far more useful than
   // "stderr tail" when the dev server itself is healthy.
   if (ctx.overlayDetection) {
@@ -178,7 +178,7 @@ function composeFailureMessage(ctx: FailureContext): string {
 
 /**
  * Env keys that are safe to log + persist in the diagnostic dump. NEVER
- * include process.env wholesale — that would leak secrets like API keys.
+ * include process.env wholesale â€” that would leak secrets like API keys.
  * Match the set forwarded by local-runner's spawn() call.
  */
 const SAFE_ENV_KEYS = [
@@ -200,7 +200,7 @@ function pickSafeEnv(env: NodeJS.ProcessEnv | Record<string, string | undefined>
  * Lifecycle booleans the timeout-cause classifier consumes. Computed
  * from the union of the manager-side `PreviewRecord` (timeline + step
  * history + probe attempts) and the local-runner's record (when
- * present — local previews carry richer install/spawn signal than
+ * present â€” local previews carry richer install/spawn signal than
  * docker). Pure function; no side effects.
  */
 interface TimeoutLifecycleSignals {
@@ -268,7 +268,7 @@ function computeTimeoutLifecycle(
     || stepReached(['preview:building', 'preview:spawning-server', 'preview:waiting-for-port', 'preview:http-probing']);
 
   // Build: docker-only phase. Local runner skips it entirely so
-  // `buildStarted` stays false there — that's correct; the
+  // `buildStarted` stays false there â€” that's correct; the
   // classifier prioritises install-hung over build-hung anyway.
   const buildStarted = has('build-start') || stepReached(['preview:building']);
   const buildCompleted = hasOk('build-end')
@@ -312,7 +312,7 @@ function computeTimeoutLifecycle(
 }
 
 /**
- * Map lifecycle signals to a single timeout cause. Order matters —
+ * Map lifecycle signals to a single timeout cause. Order matters â€”
  * earlier-failing phases mask later ones (an install-hung run never
  * gets a chance to spawn the server, so we should NOT classify it as
  * `server-not-spawned`).
@@ -322,7 +322,7 @@ function classifyTimeoutCause(s: TimeoutLifecycleSignals): TimeoutCause {
   if (s.buildStarted && !s.buildCompleted) return 'build-hung';
   if (!s.serverSpawned) return 'server-not-spawned';
   if (!s.portOpened) return 'server-not-listening';
-  // serverSpawned && portOpened — TCP responded but readiness still
+  // serverSpawned && portOpened â€” TCP responded but readiness still
   // never resolved. Either HTTP attempts kept failing, or the
   // content-health gate kept rejecting responses.
   if (s.firstProbeAttempted) return 'http-probe-failed';
@@ -341,7 +341,7 @@ function describeTimeoutCause(cause: TimeoutCause): string {
     case 'server-not-spawned':   return 'dev server was never spawned (no PID was handed back by the OS)';
     case 'server-not-listening': return 'dev server was spawned but never opened its TCP port (alive but not listening)';
     case 'http-probe-failed':    return 'TCP port opened but HTTP never returned a usable response (probes connected but readiness never resolved)';
-    case 'unknown':              return 'cause indeterminate from lifecycle signals — see last-preview-timeout.json';
+    case 'unknown':              return 'cause indeterminate from lifecycle signals â€” see last-preview-timeout.json';
   }
 }
 
@@ -354,7 +354,7 @@ function newPreviewId(): string {
  * will perform per `start()` call. Set to 2 (= one initial boot + one
  * auto-retry after applying a forced dependency fix). Bumping this
  * higher than 2 invites a tight loop when a bad overlay keeps
- * reporting the SAME missing module — the per-loop `attemptedFixes`
+ * reporting the SAME missing module â€” the per-loop `attemptedFixes`
  * dedupe helps but the cap is the hard ceiling.
  */
 const MAX_PREVIEW_FIX_ATTEMPTS = 2;
@@ -369,19 +369,19 @@ const MAX_PREVIEW_FIX_ATTEMPTS = 2;
  * boot promise resolves promptly. Distinct from the runner-internal
  * timeouts (LocalPreviewRunner's READY_TIMEOUT_MS, docker
  * awaitHealthy's bootBudgetMs) because those only fire on a SPECIFIC
- * step — this one fires when the OVERALL boot has been stuck no
+ * step â€” this one fires when the OVERALL boot has been stuck no
  * matter which phase it's in.
  *
  * Set deliberately below the diagnostic harness's
  * PREVIEW_READY_TIMEOUT_MS (180s) so the manager's structured timeout
- * verdict is visible to the harness BEFORE the harness gives up — the
+ * verdict is visible to the harness BEFORE the harness gives up â€” the
  * harness can then pick up the dump file rather than reporting a bare
  * "preview never reached ready".
  */
 const PREVIEW_BOOT_TIMEOUT_MS = 150_000;
 
 /**
- * Overall wall-clock budget for `startWithAutoFixRetry` — i.e. the
+ * Overall wall-clock budget for `startWithAutoFixRetry` â€” i.e. the
  * sum of every retry attempt + auto-fix work in between. Distinct
  * from `PREVIEW_BOOT_TIMEOUT_MS` (which is per-attempt) because the
  * auto-fix loop can run up to `MAX_PREVIEW_FIX_ATTEMPTS` attempts
@@ -425,7 +425,7 @@ export interface PreviewManagerOptions {
 
 export class PreviewManager {
   private records = new Map<string, PreviewRecord>();
-  /** projectId → in-flight start() promise so concurrent callers share one boot. */
+  /** projectId â†’ in-flight start() promise so concurrent callers share one boot. */
   private starting = new Map<string, Promise<PreviewStatus>>();
   private readonly opts: Required<Omit<PreviewManagerOptions, 'projectStore' | 'docker' | 'ports' | 'logger' | 'localRunner'>> &
     Pick<PreviewManagerOptions, 'projectStore' | 'docker' | 'ports' | 'logger' | 'localRunner'>;
@@ -438,7 +438,7 @@ export class PreviewManager {
    * raw `record.state = ...` assignments so we get:
    *   - lastMeaningfulStep (free-form text matching ProjectRecord.progress)
    *   - readyAtIso captured the first time state hits 'ready'
-   *   - history (last 32 transitions, oldest → newest) for post-mortem
+   *   - history (last 32 transitions, oldest â†’ newest) for post-mortem
    *   - a structured log line on every transition
    */
   private markPreviewStep(
@@ -462,9 +462,9 @@ export class PreviewManager {
       state: nextState,
       step,
       // Status transition surfaced explicitly so a single grep on
-      // `previewStatus` shows the full trajectory queued → building →
-      // starting → ready (or → failed) without needing to translate
-      // PreviewState → public previewStatus mentally.
+      // `previewStatus` shows the full trajectory queued â†’ building â†’
+      // starting â†’ ready (or â†’ failed) without needing to translate
+      // PreviewState â†’ public previewStatus mentally.
       prevPreviewStatus: prevPublic,
       newPreviewStatus: nextPublic,
       llmCalled: false,
@@ -481,11 +481,11 @@ export class PreviewManager {
     // of issuing a redundant write. Per-project lock in the store
     // serialises queued writes, so awaiting the latest also waits for
     // anything previously queued. Errors are surfaced via the result
-    // object — `syncPreviewToProject` itself never throws.
+    // object â€” `syncPreviewToProject` itself never throws.
     record.pendingSync = this.syncPreviewToProject(record);
   }
 
-  /** Translate internal PreviewState → public previewStatus vocabulary. */
+  /** Translate internal PreviewState â†’ public previewStatus vocabulary. */
   private toPublicPreviewStatus(
     state: PreviewState,
     record?: PreviewRecord,
@@ -709,7 +709,7 @@ export class PreviewManager {
 
     // Single canonical "did the durable write happen?" log line.
     // Engineers grepping `event:preview:sync-persisted` get the full
-    // status trajectory plus the writeOk flag — the ground truth for
+    // status trajectory plus the writeOk flag â€” the ground truth for
     // "is the dashboard now seeing what the runner saw?".
     const logFn = result.ok ? this.opts.logger.info.bind(this.opts.logger)
                               : this.opts.logger.error.bind(this.opts.logger);
@@ -746,11 +746,11 @@ export class PreviewManager {
    * local-runner `stagingDir` reads see the updated package.json.
    *
    * MUST run before every backend's install / image build because:
-   *   • The pipeline-side validator runs DURING generation; QA fix
+   *   â€¢ The pipeline-side validator runs DURING generation; QA fix
    *     loops or post-finalization patches can introduce new imports
    *     after that pass.
-   *   • Without this gate, `npm install` will succeed but the dev
-   *     server returns a "Module not found" overlay — which the
+   *   â€¢ Without this gate, `npm install` will succeed but the dev
+   *     server returns a "Module not found" overlay â€” which the
    *     content-health probe then correctly fails. Faster + clearer
    *     to fix it here than to surface it as an overlay-detection
    *     postmortem.
@@ -760,7 +760,7 @@ export class PreviewManager {
    * `ProjectRecord.preview.dependencyFixes` block, the live
    * `PreviewStatus`, and the diagnostic-runner postmortem.
    *
-   * Errors during persistence are fatal — we'd rather fail fast than
+   * Errors during persistence are fatal â€” we'd rather fail fast than
    * launch a preview against a known-stale package.json.
    */
   private async runDepPreflight(record: PreviewRecord): Promise<{
@@ -798,7 +798,7 @@ export class PreviewManager {
       // blocking violation somehow surfaces here without throwing
       // (e.g. dump-write failure path), short-circuit before npm install.
       if (result.hasBlockingViolation && result.blockingHeadline) {
-        this.opts.logger.error('preview: package.json has blocking peer conflict — aborting before npm install', {
+        this.opts.logger.error('preview: package.json has blocking peer conflict â€” aborting before npm install', {
           event: 'preview:dep-preflight-blocked',
           projectId: record.projectId,
           previewId: record.previewId,
@@ -843,7 +843,7 @@ export class PreviewManager {
    * persisted ProjectRecord.preview block via syncPreviewToProject.
    *
    * Calling enterStep with the same phase twice is a no-op (idempotent
-   * — useful when several callsites might race to mark the same
+   * â€” useful when several callsites might race to mark the same
    * boundary).
    */
   private enterStep(record: PreviewRecord, next: PreviewStep): void {
@@ -869,9 +869,9 @@ export class PreviewManager {
     record.step = next;
     record.stepStartedAt = at;
     // For terminal phases (ready/failed) we ALSO stamp completedAt
-    // immediately — they have no successor to close them, but we still
+    // immediately â€” they have no successor to close them, but we still
     // want a closed-phase entry in stepDurations so the duration shows
-    // up as "time from preview:spawning-server → preview:ready".
+    // up as "time from preview:spawning-server â†’ preview:ready".
     if (next === 'preview:ready' || next === 'preview:failed') {
       record.stepCompletedAt = at;
     } else {
@@ -976,7 +976,7 @@ export class PreviewManager {
       );
     } else {
       this.opts.logger.warn(
-        'Preview manager initialised but neither Docker nor local runner is available — preview/start calls will fail',
+        'Preview manager initialised but neither Docker nor local runner is available â€” preview/start calls will fail',
       );
     }
     // Sweep idle containers periodically.
@@ -1031,8 +1031,8 @@ export class PreviewManager {
    * Concurrent calls share one start promise.
    *
    * Routing:
-   *   1. Docker available  → build image + run container
-   *   2. Else local runner → stage files + spawn `npm run dev` on host
+   *   1. Docker available  â†’ build image + run container
+   *   2. Else local runner â†’ stage files + spawn `npm run dev` on host
    *   3. Else                throw
    */
   async start(projectId: string): Promise<PreviewStatus> {
@@ -1042,7 +1042,7 @@ export class PreviewManager {
       );
     }
 
-    // Already running and healthy → return immediately.
+    // Already running and healthy â†’ return immediately.
     const existing = this.records.get(projectId);
     if (existing && (existing.state === 'ready' || existing.state === 'starting' || existing.state === 'building')) {
       existing.lastAccessedAt = Date.now();
@@ -1070,7 +1070,7 @@ export class PreviewManager {
       }
     }
 
-    // ── Final file-integrity gate ──────────────────────────
+    // â”€â”€ Final file-integrity gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Validate the persisted project file set BEFORE any backend is
     // engaged. Catches malformed / duplicate / missing-critical entries
     // upfront so neither the docker build nor the local runner ever
@@ -1102,13 +1102,13 @@ export class PreviewManager {
    *      into the project's root package.json and persist the file
    *      tree.
    *   3. Records the applied fix on the same attempt entry
-   *      (`fixApplied: { kind: 'add-missing-dependency', … }`) and
+   *      (`fixApplied: { kind: 'add-missing-dependency', â€¦ }`) and
    *      flips `retryTriggered: true`.
    *   4. Stops the failed preview record so the next iteration starts
    *      fresh (new previewId, fresh container/process).
    *   5. Loops back and re-attempts the boot.
    *
-   * Cap behaviour: `MAX_PREVIEW_FIX_ATTEMPTS = 2` — i.e. one initial
+   * Cap behaviour: `MAX_PREVIEW_FIX_ATTEMPTS = 2` â€” i.e. one initial
    * boot + one auto-retry. Any attempt past the cap is returned to
    * the caller with the latest `failed` status. Non-auto-fixable
    * failures (hydration errors, runtime exceptions, no module name in
@@ -1116,11 +1116,11 @@ export class PreviewManager {
    * touching the project tree.
    *
    * Two classifier guards keep the loop safe:
-   *   • `attemptedFixes` set prevents the same package being injected
+   *   â€¢ `attemptedFixes` set prevents the same package being injected
    *     twice in a row (defends against a stale overlay reporting the
-   *     SAME module after we've already added it — happens when the
+   *     SAME module after we've already added it â€” happens when the
    *     dev server's compile cache is cold).
-   *   • `retrySkippedReason` is recorded on every non-retried attempt
+   *   â€¢ `retrySkippedReason` is recorded on every non-retried attempt
    *     so the dashboard shows exactly why the loop gave up
    *     ("attempt-cap-reached" vs "fix-injector-no-op" vs
    *     "not-auto-fixable").
@@ -1129,7 +1129,7 @@ export class PreviewManager {
     const attempts: PreviewFixAttempt[] = [];
     const attemptedFixes = new Set<string>();
     let lastStatus: PreviewStatus | null = null;
-    // Overall wall-clock deadline — the manager-side equivalent of
+    // Overall wall-clock deadline â€” the manager-side equivalent of
     // the harness's PREVIEW_READY_TIMEOUT_MS. Ensures we ALWAYS win
     // the race to write `last-preview-timeout.json` even when the
     // per-attempt watchdog would otherwise re-arm into the harness's
@@ -1140,7 +1140,7 @@ export class PreviewManager {
     for (let attempt = 1; attempt <= MAX_PREVIEW_FIX_ATTEMPTS; attempt++) {
       // Bail out before launching a new attempt if the overall budget
       // is exhausted (or there's not enough left to make meaningful
-      // progress — we treat <2s as "no time left"). Forces a structured
+      // progress â€” we treat <2s as "no time left"). Forces a structured
       // timeout dump regardless of which inner phase we're in so the
       // harness never sees a mute "still starting".
       const remaining = overallDeadline - Date.now();
@@ -1182,7 +1182,7 @@ export class PreviewManager {
         return status;
       }
 
-      // Failed attempt — classify and decide whether to retry.
+      // Failed attempt â€” classify and decide whether to retry.
       const classification = classifyPreviewError({
         error: status.error,
         log: status.log,
@@ -1206,7 +1206,7 @@ export class PreviewManager {
         retryTriggered: false,
       };
 
-      // Cap check first — if we've already used our budget, surface
+      // Cap check first â€” if we've already used our budget, surface
       // the failure verbatim to the caller without attempting a fix.
       if (attempt >= MAX_PREVIEW_FIX_ATTEMPTS) {
         entry.retrySkippedReason = 'attempt-cap-reached';
@@ -1223,7 +1223,7 @@ export class PreviewManager {
 
       // Defence-in-depth: never inject the same package twice in a
       // row. A stale dev-overlay sometimes lingers after a fix has
-      // been applied and the dev server is still rebuilding — better
+      // been applied and the dev server is still rebuilding â€” better
       // to surface the failure than spin in a tight loop.
       if (attemptedFixes.has(classification.missingPackage)) {
         entry.retrySkippedReason = 'already-attempted';
@@ -1294,7 +1294,7 @@ export class PreviewManager {
         block: fixResult.block,
       });
 
-      // Persist the cumulative attempt log BEFORE the retry boots —
+      // Persist the cumulative attempt log BEFORE the retry boots â€”
       // a polling client should see the chip "fix applied: <pkg>"
       // even while attempt #2 is still installing.
       await this.attachAttemptsToRecord(projectId, attempts);
@@ -1315,7 +1315,7 @@ export class PreviewManager {
       }
     }
 
-    // Loop terminated — persist the final attempt log onto whatever
+    // Loop terminated â€” persist the final attempt log onto whatever
     // record currently exists for this project, then return the most
     // recent failed status to the caller.
     await this.attachAttemptsToRecord(projectId, attempts);
@@ -1348,7 +1348,7 @@ export class PreviewManager {
   }
 
   /**
-   * Run a single preview boot attempt — picks the right backend
+   * Run a single preview boot attempt â€” picks the right backend
    * (docker-with-fallback OR local-only) and returns its `PreviewStatus`.
    * Extracted so the auto-fix retry loop can call it once per
    * iteration without duplicating the routing logic.
@@ -1372,7 +1372,7 @@ export class PreviewManager {
     // dump `last-preview-timeout.json`, and best-effort tear down
     // the underlying container / local process so the awaiting boot
     // promise resolves promptly. The boot promise itself is NOT
-    // rejected — we let it resolve naturally so the auto-fix retry
+    // rejected â€” we let it resolve naturally so the auto-fix retry
     // loop and the final `attachAttemptsToRecord` can run.
     const watchdogMs = Math.max(1_000, Math.min(PREVIEW_BOOT_TIMEOUT_MS, remainingBudgetMs));
     const watchdog = setTimeout(() => {
@@ -1392,7 +1392,7 @@ export class PreviewManager {
 
   /**
    * Boot-watchdog action. Called once `PREVIEW_BOOT_TIMEOUT_MS` has
-   * elapsed since `runOneStartAttempt` started. Idempotent — if the
+   * elapsed since `runOneStartAttempt` started. Idempotent â€” if the
    * record has already reached a terminal state we exit silently.
    *
    * On a real timeout:
@@ -1420,7 +1420,7 @@ export class PreviewManager {
       // the dashboard never sees a mute timeout.
       const headline =
         `Preview startup timed out after ${PREVIEW_BOOT_TIMEOUT_MS / 1000}s ` +
-        `[cause=unknown] — in-memory record was already evicted; ` +
+        `[cause=unknown] â€” in-memory record was already evicted; ` +
         `see last-preview-timeout.json for forensics.`;
       try {
         await this.opts.projectStore.updatePreview(projectId, {
@@ -1448,7 +1448,7 @@ export class PreviewManager {
     const lr = this.opts.localRunner?.get(record.projectId) ?? null;
     this.captureRuntimeLog(record, lr?.child?.pid ?? null);
 
-    // Liveness probe — `process.kill(pid, 0)` raises ESRCH if the
+    // Liveness probe â€” `process.kill(pid, 0)` raises ESRCH if the
     // PID is gone, otherwise succeeds (or raises EPERM, still alive).
     // Persisted onto the record so syncPreviewToProject can mirror
     // it onto ProjectRecord.preview.previewChildAlive.
@@ -1468,11 +1468,11 @@ export class PreviewManager {
     record.timeoutAtIso = new Date().toISOString();
     record.timeoutDurationMs = PREVIEW_BOOT_TIMEOUT_MS;
     // Capture the full process-lifecycle snapshot BEFORE composing
-    // the headline so the verdict ("crashed" / "alive-hanging" / …)
+    // the headline so the verdict ("crashed" / "alive-hanging" / â€¦)
     // can be folded into the error message.
     this.snapshotProcessLifecycle(record);
     const lifecycle = record.processLifecycle ?? null;
-    // ── Precise timeout-cause classification ─────────────────
+    // â”€â”€ Precise timeout-cause classification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Compute lifecycle booleans (install/build/spawn/probe) and
     // map them to a single category. Persisted on the record (and
     // mirrored to ProjectRecord.preview by syncPreviewToProject)
@@ -1484,7 +1484,7 @@ export class PreviewManager {
     record.timeoutCause = timeoutCause;
     // Compose a diagnosis-led headline from the probe history when
     // available. The raw rollup `kind` answers "what kind of HTTP
-    // failure did we see?" — far more useful than "stuck in
+    // failure did we see?" â€” far more useful than "stuck in
     // <step>" because the same step can fail for completely
     // different reasons (port-never-opened vs http-error-status).
     const rollup = record.probeAttempts && record.probeAttempts.length > 0
@@ -1500,9 +1500,9 @@ export class PreviewManager {
         : 'no attempts';
       return `${rollup.kind} (${rollup.total} probes; ${lastFrag})`;
     })();
-    // Structured, human-readable headline. NEVER empty — even when
+    // Structured, human-readable headline. NEVER empty â€” even when
     // every diagnostic field is null we still get a usable sentence.
-    // Lifecycle verdict ("crashed" / "alive-hanging" / …) is the
+    // Lifecycle verdict ("crashed" / "alive-hanging" / â€¦) is the
     // primary diagnosis; pid + exit code + signal + uptime follow as
     // forensic supporting facts.
     const lifecycleLabel = (() => {
@@ -1512,7 +1512,7 @@ export class PreviewManager {
             (lifecycle.signal ? `, signal=${lifecycle.signal}` : '') +
             (lifecycle.uptimeMs != null ? `, uptime=${(lifecycle.uptimeMs / 1000).toFixed(1)}s` : '') + ')';
         case 'exited-clean':
-          return `exited cleanly (code=0, uptime=${lifecycle.uptimeMs != null ? (lifecycle.uptimeMs / 1000).toFixed(1) + 's' : '?'}) — unexpected during boot`;
+          return `exited cleanly (code=0, uptime=${lifecycle.uptimeMs != null ? (lifecycle.uptimeMs / 1000).toFixed(1) + 's' : '?'}) â€” unexpected during boot`;
         case 'alive-hanging':
           return `alive but not listening (pid=${lifecycle.pid ?? '?'}, uptime=${lifecycle.uptimeMs != null ? (lifecycle.uptimeMs / 1000).toFixed(1) + 's' : '?'})`;
         case 'alive-not-reachable':
@@ -1520,15 +1520,15 @@ export class PreviewManager {
         case 'no-process':
           return 'no process was ever spawned';
         case 'alive-healthy':
-          return 'process healthy (unexpected — record state is not ready)';
+          return 'process healthy (unexpected â€” record state is not ready)';
         default:
-          // Unknown state — fall back to the legacy alive flag.
+          // Unknown state â€” fall back to the legacy alive flag.
           return childAlive === true ? 'alive (state unknown)' : childAlive === false ? 'dead' : 'unknown';
       }
     })();
     const headline =
       `Preview startup timed out after ${PREVIEW_BOOT_TIMEOUT_MS / 1000}s ` +
-      `[cause=${timeoutCause}] — ${describeTimeoutCause(timeoutCause)}. ` +
+      `[cause=${timeoutCause}] â€” ${describeTimeoutCause(timeoutCause)}. ` +
       `Step at timeout: ${record.step ?? '<no-step>'} ` +
       `(last successful: ${record.lastMeaningfulStep ?? '<none>'}). ` +
       `Lifecycle: install ${timeoutLifecycle.installStarted ? (timeoutLifecycle.installCompleted ? 'completed' : 'STARTED-NOT-FINISHED') : 'not-started'}` +
@@ -1542,9 +1542,9 @@ export class PreviewManager {
 
     // Move the record into the public-failed bucket so polling
     // clients stop seeing 'starting' forever. We do NOT call fail()
-    // here — fail() composes its own error message and assumes a
+    // here â€” fail() composes its own error message and assumes a
     // runtime exit code; the timeout marker is structurally distinct
-    // (no exit code, no signal, no overlay match — just "deadline
+    // (no exit code, no signal, no overlay match â€” just "deadline
     // exceeded").
     this.markPreviewStep(record, 'failed', headline.slice(0, 200));
     this.enterStep(record, 'preview:timeout');
@@ -1584,7 +1584,7 @@ export class PreviewManager {
       headline,
     });
 
-    // Persist the dump file. Best-effort — write failures must not
+    // Persist the dump file. Best-effort â€” write failures must not
     // mask the timeout itself.
     try {
       await this.dumpPreviewTimeout(record);
@@ -1593,7 +1593,7 @@ export class PreviewManager {
         projectId, error: (err as Error).message,
       });
     }
-    // Local-runner-specific timeout dump — same writer used by the
+    // Local-runner-specific timeout dump â€” same writer used by the
     // doStartLocal catch block. Lets engineers see the LOCAL
     // lifecycle facts (install completed, server spawned, port ever
     // opened, exact cmd/args/cwd/env) on every timeout, not just
@@ -1615,7 +1615,7 @@ export class PreviewManager {
     }
 
     // Tear down the underlying runtime so the awaiting promise
-    // resolves promptly. Best-effort — both calls are idempotent
+    // resolves promptly. Best-effort â€” both calls are idempotent
     // and safe to invoke even if the runtime never actually started.
     if (this.opts.localRunner) {
       void this.opts.localRunner.stop(projectId).catch(() => {});
@@ -1632,11 +1632,11 @@ export class PreviewManager {
   /**
    * Snapshot the dev-server process lifecycle and stamp it onto
    * `record.processLifecycle`. Combines:
-   *   • PID + spawn timestamp + exit timestamp from the local-runner
+   *   â€¢ PID + spawn timestamp + exit timestamp from the local-runner
    *     record (when present).
-   *   • A live `process.kill(pid, 0)` liveness probe to disambiguate
+   *   â€¢ A live `process.kill(pid, 0)` liveness probe to disambiguate
    *     "alive but hanging" from "process already gone".
-   *   • The probe rollup (port-never-opened vs http-not-ready) to
+   *   â€¢ The probe rollup (port-never-opened vs http-not-ready) to
    *     refine the alive case into `alive-hanging` vs `alive-not-
    *     reachable`.
    *
@@ -1644,7 +1644,7 @@ export class PreviewManager {
    *   no-process | crashed | exited-clean | alive-hanging |
    *   alive-not-reachable | alive-healthy.
    *
-   * Idempotent — safe to call from multiple sites (boot watchdog,
+   * Idempotent â€” safe to call from multiple sites (boot watchdog,
    * runtime-exit, fail()). Each call overwrites the snapshot so the
    * persisted record always reflects the freshest verdict.
    */
@@ -1686,7 +1686,7 @@ export class PreviewManager {
       // Crash vs clean exit. Any non-zero code OR any terminating
       // signal counts as a crash. exit code 0 with no signal during
       // boot is unexpected (the dev server should have stayed up
-      // until ready) — flag it as 'exited-clean'.
+      // until ready) â€” flag it as 'exited-clean'.
       const isCrash = (exitCode !== null && exitCode !== 0) || signal !== null;
       classification = isCrash ? 'crashed' : 'exited-clean';
     } else if (alive === true) {
@@ -1700,7 +1700,7 @@ export class PreviewManager {
     } else if (pid == null && startedAt == null) {
       classification = 'no-process';
     } else {
-      // Unknown liveness with PID present — most likely a race; lean
+      // Unknown liveness with PID present â€” most likely a race; lean
       // toward "alive-hanging" because the most common cause of an
       // unknown verdict is a permissions hiccup on the kill(0) probe.
       classification = 'alive-hanging';
@@ -1726,7 +1726,7 @@ export class PreviewManager {
    * polling clients see the live probe history. Idempotent.
    *
    * The local-runner ALSO maintains its own probeAttempts buffer for
-   * its internal use — this method is the path the manager's record
+   * its internal use â€” this method is the path the manager's record
    * uses, kept separate so a teardown of the local-runner record
    * doesn't clobber the manager's (longer-lived) probe history.
    */
@@ -1755,7 +1755,7 @@ export class PreviewManager {
    * when available; falls back to the docker container log tail
    * (which may be empty before the container starts emitting).
    *
-   * Always overwrites — the snapshot is meant to reflect the
+   * Always overwrites â€” the snapshot is meant to reflect the
    * "current" state, so a fresh capture replaces the previous one.
    */
   private captureRuntimeLog(record: PreviewRecord, pidHint: number | null): void {
@@ -1785,19 +1785,19 @@ export class PreviewManager {
    * `apps/api/src/testing/last-preview-timeout.json`. Always
    * single-file (overwrites previous timeout) so the most recent
    * stuck preview is one path to check. Includes:
-   *   • projectId / previewId / step / status
-   *   • child pid / cmd / cwd / port
-   *   • stdout + stderr tails (≤3 KB each)
-   *   • whether the child process is still alive
-   *   • whether the HTTP probe ever connected (timeline scan)
-   *   • last probe error from the timeline (if any)
+   *   â€¢ projectId / previewId / step / status
+   *   â€¢ child pid / cmd / cwd / port
+   *   â€¢ stdout + stderr tails (â‰¤3 KB each)
+   *   â€¢ whether the child process is still alive
+   *   â€¢ whether the HTTP probe ever connected (timeline scan)
+   *   â€¢ last probe error from the timeline (if any)
    */
   private async dumpPreviewTimeout(record: PreviewRecord): Promise<void> {
     const dumpPath = previewTimeoutDumpPath();
     const lr = this.opts.localRunner?.get(record.projectId) ?? null;
     const pid = record.runtimeLog?.pid ?? lr?.child?.pid ?? null;
 
-    // Liveness probe — `process.kill(pid, 0)` raises ESRCH if the PID
+    // Liveness probe â€” `process.kill(pid, 0)` raises ESRCH if the PID
     // is gone, otherwise succeeds (or raises EPERM, which still
     // means "alive but not ours"). Best-effort: we treat any error
     // OTHER than ESRCH as "alive". Reuses the verdict already
@@ -1815,7 +1815,7 @@ export class PreviewManager {
     }
 
     // Did the HTTP probe ever connect? Scan the timeline for an
-    // `http-probe-ok` event — its absence is itself diagnostic.
+    // `http-probe-ok` event â€” its absence is itself diagnostic.
     const timeline = record.timeline ?? [];
     const httpProbeOk = timeline.find((e) => e.event === 'http-probe-ok');
     const failedEvent = timeline.find((e) => e.event === 'failed');
@@ -1832,7 +1832,7 @@ export class PreviewManager {
     const probeRollup = rollupProbes(probeAttempts);
     const probeDiagnosis = (() => {
       switch (probeRollup.kind) {
-        case 'no-probes':           return 'No HTTP probes were issued — boot stalled before the readiness wait.';
+        case 'no-probes':           return 'No HTTP probes were issued â€” boot stalled before the readiness wait.';
         case 'port-never-opened':   return 'The host port never accepted a TCP connection (process did not bind, or bound to a different port).';
         case 'tcp-opened-no-http':  return 'TCP connected but no HTTP response was received (process bound the port but is not serving HTTP yet).';
         case 'http-error-status':   return 'HTTP responded with a non-OK status (server is up but returning errors).';
@@ -1867,7 +1867,7 @@ export class PreviewManager {
         startedAt: lr?.processStartedAt ?? null,
         exitedAt: lr?.processExitedAt ?? null,
       },
-      // Classified server-process lifecycle verdict — the single
+      // Classified server-process lifecycle verdict â€” the single
       // most actionable field for "is the boot hanging or
       // crashing?". Captured by `snapshotProcessLifecycle()`
       // before this dump runs (handleBootTimeout/fail() both
@@ -1886,13 +1886,13 @@ export class PreviewManager {
       envSafe: record.runtime?.envSafe ?? null,
       stdoutTail: record.runtimeLog?.stdoutTail ?? lr?.stdoutLog.slice(-3_000) ?? null,
       stderrTail: record.runtimeLog?.stderrTail ?? lr?.stderrLog.slice(-3_000) ?? null,
-      // Legacy field — kept for backwards compatibility with any
+      // Legacy field â€” kept for backwards compatibility with any
       // tooling that already greps for it. Now redundant with
       // `probeDiagnosis` / `probeSummary`.
       httpProbeEverConnected: probeRollup.httpEverResponded || !!httpProbeOk,
       httpProbeOkAt: httpProbeOk?.at ?? null,
       lastProbeError,
-      // Rich probe diagnostics — answers "what kind of startup
+      // Rich probe diagnostics â€” answers "what kind of startup
       // failure occurred?" without the reader needing to interpret
       // the raw timeline.
       probeDiagnosis,
@@ -1911,7 +1911,7 @@ export class PreviewManager {
       // (Next.js / Vite / React build-error overlay etc.) in any
       // probe response body. Distinct from `probeRollup.kind ===
       // 'http-not-ready'` because the rollup only knows the readiness
-      // gate rejected the response — this field surfaces the
+      // gate rejected the response â€” this field surfaces the
       // overlay-classifier's specific verdict.
       contentIndicatedFrameworkError: !!record.overlayDetection,
       overlayDetection: record.overlayDetection
@@ -1951,7 +1951,7 @@ export class PreviewManager {
    * Stamp the cumulative `previewFixAttempts` array onto whatever
    * preview record currently exists for `projectId` AND mirror onto
    * the persisted `ProjectRecord.preview.previewFixAttempts`. Idempotent
-   * — safe to call after every loop iteration.
+   * â€” safe to call after every loop iteration.
    *
    * Tolerates a missing record (e.g. the loop was torn down between
    * iterations): in that case it patches the on-disk preview block
@@ -2017,13 +2017,13 @@ export class PreviewManager {
    * If the fallback succeeds, the returned status carries
    *   mode = 'local-fallback', state = 'ready'
    * and the docker error is logged but discarded from the user-facing
-   * `previewError` (the preview is working — no need to scare the
+   * `previewError` (the preview is working â€” no need to scare the
    * user).
    *
    * If the fallback ALSO fails, both errors are composed into the
    * final `previewError` AND mirrored onto
    * ProjectRecord.preview.previewFallbackErrors so the UI can show
-   * "we tried docker AND local, both died — here's why".
+   * "we tried docker AND local, both died â€” here's why".
    */
   private async startWithDockerThenLocalFallback(projectId: string): Promise<PreviewStatus> {
     const dockerStatus = await this.doStart(projectId);
@@ -2058,7 +2058,7 @@ export class PreviewManager {
 
   /**
    * Best-effort check that the project has a runnable npm dev script.
-   * Used as the gate for the docker→local fallback path so we don't
+   * Used as the gate for the dockerâ†’local fallback path so we don't
    * waste time spawning `npm run dev` on a static-site project.
    * Returns false on any read/parse error (= skip fallback).
    */
@@ -2079,7 +2079,7 @@ export class PreviewManager {
   /**
    * Final integrity gate. Returns a failed PreviewStatus when the
    * project's persisted file set is unfit for preview, otherwise null
-   * (= proceed). Never throws — gate failures must surface as a
+   * (= proceed). Never throws â€” gate failures must surface as a
    * structured `failed` status, not an uncaught error.
    */
   private async runIntegrityGate(projectId: string): Promise<PreviewStatus | null> {
@@ -2209,7 +2209,7 @@ export class PreviewManager {
     this.records.delete(projectId);
   }
 
-  /** Stop everything — call on API shutdown. */
+  /** Stop everything â€” call on API shutdown. */
   async shutdown(): Promise<void> {
     if (this.cleanupTimer) clearInterval(this.cleanupTimer);
     const ids = [...this.records.keys()];
@@ -2217,7 +2217,7 @@ export class PreviewManager {
     if (this.opts.localRunner) await this.opts.localRunner.shutdown().catch(() => {});
   }
 
-  // ── internals ─────────────────────────────────────────
+  // â”€â”€ internals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private toStatus(rec: PreviewRecord): PreviewStatus {
     const state = this.toPublicPreviewStatus(rec.state, rec);
@@ -2288,7 +2288,7 @@ export class PreviewManager {
     this.records.set(projectId, record);
 
     // Initial mirror onto ProjectRecord.preview ('preparing'). Lets
-    // polling clients show "Preview starting…" the instant generation
+    // polling clients show "Preview startingâ€¦" the instant generation
     // completes, even before docker build kicks in.
     void this.syncPreviewToProject(record).catch(() => {});
     this.opts.logger.info('preview: starting docker runtime', {
@@ -2306,7 +2306,7 @@ export class PreviewManager {
     //    persisted file tree off disk and choosing the dockerfile).
     this.enterStep(record, 'preview:staging-files');
 
-    // 1a. Dependency preflight — re-scan the persisted source tree
+    // 1a. Dependency preflight â€” re-scan the persisted source tree
     //     for bare-module imports and auto-add anything missing from
     //     package.json. Runs BEFORE detectStack so the patched
     //     package.json is on disk by the time `docker build` reads it.
@@ -2328,7 +2328,7 @@ export class PreviewManager {
       return this.fail(record, `Cannot preview: ${stack.detectionNote}`);
     }
 
-    // ── Fullstack monorepo branch (web + api + postgres via compose) ──
+    // â”€â”€ Fullstack monorepo branch (web + api + postgres via compose) â”€â”€
     if (stack.kind === 'fullstack') {
       return this.doStartFullstack(record, contextDir);
     }
@@ -2429,15 +2429,15 @@ export class PreviewManager {
 
     // 4. Health check
     // Two-phase wait inside the awaitHealthy budget:
-    //   • preview:waiting-for-port — TCP-listen on hostPort.
-    //   • preview:http-probing     — GET healthPath returns non-error.
+    //   â€¢ preview:waiting-for-port â€” TCP-listen on hostPort.
+    //   â€¢ preview:http-probing     â€” GET healthPath returns non-error.
     // awaitHealthy doesn't expose the boundary, so we mark
     // waiting-for-port up-front and flip to http-probing once the
     // probe loop has started returning ANY HTTP response (success or
     // 5xx). For docker the cheap heuristic is: enter http-probing
     // 1.5s after waiting-for-port (well before any reasonable dev
     // server has listened, so the UI message is "waiting for port"
-    // for the first connect attempt). The transition is best-effort —
+    // for the first connect attempt). The transition is best-effort â€”
     // it never races the actual readiness check.
     this.enterStep(record, 'preview:waiting-for-port');
     const probeFlipTimer = setTimeout(() => {
@@ -2471,7 +2471,7 @@ export class PreviewManager {
       // Append container logs to help diagnose, AND probe `docker
       // inspect` for the exit code/signal/OOM flag so the user-facing
       // error explains *why* the container died rather than just "it
-      // didn't respond". inspectExit is best-effort — if the container
+      // didn't respond". inspectExit is best-effort â€” if the container
       // is already gone we fall through with all-null fields.
       const tail = await this.opts.docker.logs(run.containerId).catch(() => '');
       const inspect = await this.opts.docker.inspectExit(run.containerId).catch(() => ({
@@ -2567,7 +2567,7 @@ export class PreviewManager {
       // Carry the docker error forward so a subsequent fail() can
       // compose a dual-failure message AND so syncPreviewToProject
       // mirrors `previewFallbackErrors.docker` immediately (lets the
-      // UI show "docker failed, trying local…" while we boot).
+      // UI show "docker failed, trying localâ€¦" while we boot).
       fallbackErrors: isFallback
         ? { docker: fallbackOpts!.fallbackFromDockerError, local: null }
         : undefined,
@@ -2601,10 +2601,10 @@ export class PreviewManager {
       // Pre-flight validation: refuse to stage if any file entry is
       // malformed. We fail clean here rather than letting an
       // `undefined` slip into `fs.writeFile` and crash with the cryptic
-      // low-level "data argument must be of type string …" error.
+      // low-level "data argument must be of type string â€¦" error.
       this.enterStep(record, 'preview:staging-files');
 
-      // Dependency preflight — re-scan project.files for missing
+      // Dependency preflight â€” re-scan project.files for missing
       // imports and auto-add them to package.json. Returns the
       // post-fix file tree so we stage the patched copy (the
       // in-memory `project.files` reference is now stale w.r.t.
@@ -2647,28 +2647,28 @@ export class PreviewManager {
         fileCount: validation.staged.length,
         sample: validation.staged.slice(0, 5).map((f) => ({ path: f.path, bytes: f.contents.length })),
       });
-      // local-runner.start() runs install → spawn dev → waitForReady
+      // local-runner.start() runs install â†’ spawn dev â†’ waitForReady
       // serially inside one call. We use its `onPhase` callback to
       // drive precise step transitions:
       //
-      //   preview:installing      ── install phase running
-      //   preview:spawning-server ── about to spawn(npm run dev …)
-      //   preview:waiting-for-port── child PID exists, polling TCP
-      //   preview:http-probing    ── (collapsed: waitForReady IS HTTP-probing)
+      //   preview:installing      â”€â”€ install phase running
+      //   preview:spawning-server â”€â”€ about to spawn(npm run dev â€¦)
+      //   preview:waiting-for-portâ”€â”€ child PID exists, polling TCP
+      //   preview:http-probing    â”€â”€ (collapsed: waitForReady IS HTTP-probing)
       //   preview:ready
       //
       // `preview:building` is a docker-only concept (image build); it
       // never appears for the local runner.
       this.enterStep(record, 'preview:installing');
-      // First-probe latch — used to promote step from
-      // preview:waiting-for-port → preview:http-probing the moment
+      // First-probe latch â€” used to promote step from
+      // preview:waiting-for-port â†’ preview:http-probing the moment
       // the readiness loop issues its first HTTP attempt. Lets the
       // dump distinguish "TCP never opened" (stuck in waiting-for-port)
       // from "HTTP never returned a usable response" (stuck in
       // http-probing).
       let firstProbeSeen = false;
       const onPhase = (
-        phase: 'spawning-server' | 'waiting-for-port',
+        phase: 'building' | 'spawning-server' | 'waiting-for-port',
         meta?: {
           pid?: number | null;
           port?: number | null;
@@ -2696,7 +2696,9 @@ export class PreviewManager {
             envSafe: meta?.envSafe ?? record.runtime?.envSafe ?? pickSafeEnv(process.env),
           };
           this.captureRuntimeLog(record, meta?.pid ?? null);
-          if (phase === 'spawning-server') {
+          if (phase === 'building') {
+            this.enterStep(record, 'preview:building');
+          } else if (phase === 'spawning-server') {
             this.enterStep(record, 'preview:spawning-server');
           } else if (phase === 'waiting-for-port') {
             this.enterStep(record, 'preview:waiting-for-port');
@@ -2715,7 +2717,7 @@ export class PreviewManager {
         // local-runner buffers) sees the same attempt history.
         // Best-effort: never let mirror failures abort boot.
         try {
-          // Promote step on the first probe — once the readiness
+          // Promote step on the first probe â€” once the readiness
           // loop has actually started issuing HTTP attempts we are
           // no longer "waiting for the port to open"; we're
           // probing it.
@@ -2732,7 +2734,7 @@ export class PreviewManager {
         }
       };
 
-      // ── ONE SAFE RETRY ─────────────────────────────────────
+      // â”€â”€ ONE SAFE RETRY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // Local startup is occasionally flaky for transient reasons
       // (port-bind race after install, dev-server crash on first
       // boot, EBUSY on Windows). Retry exactly once when the FIRST
@@ -2740,7 +2742,7 @@ export class PreviewManager {
       // Once the port has accepted a connection the failure is
       // deterministic (post-bind crash, overlay, content-health) and
       // a retry would just mask a real bug, so we let it surface.
-      // The retry never runs more than once — a permanent failure
+      // The retry never runs more than once â€” a permanent failure
       // (peer-dep mismatch, missing module) will fail the second
       // attempt the same way and surface to the user.
       record.localStartAttempts = [];
@@ -2782,7 +2784,7 @@ export class PreviewManager {
           const attemptEndedAt = Date.now();
           const startMsg = (startErr as Error).message;
           // Determine whether the port was ever observed open during
-          // this attempt — single source of truth is the live runner
+          // this attempt â€” single source of truth is the live runner
           // record's probeAttempts plus our mirror.
           const lrSnap = this.opts.localRunner.get(projectId);
           const portOpened =
@@ -2821,7 +2823,7 @@ export class PreviewManager {
             void this.syncPreviewToProject(record).catch(() => {});
             throw startErr;
           }
-          this.opts.logger.warn('preview: local-runner first attempt failed before port opened — retrying once', {
+          this.opts.logger.warn('preview: local-runner first attempt failed before port opened â€” retrying once', {
             event: 'preview:local-retry-scheduled',
             projectId,
             previewId,
@@ -2850,7 +2852,7 @@ export class PreviewManager {
           // handle (.install.fp, .next cache) to settle, short enough
           // that the user-perceived boot time stays bounded.
           await new Promise((r) => setTimeout(r, 2000));
-          // Reset step so the retry shows a clean install→spawn
+          // Reset step so the retry shows a clean installâ†’spawn
           // progression instead of inheriting the failed attempt's
           // last step.
           this.enterStep(record, 'preview:installing');
@@ -2894,7 +2896,7 @@ export class PreviewManager {
         details: { url: `/preview/${projectId}/`, hostPort: lr.port, mode: 'local', stack: lr.stack.kind },
       });
       record.lastAccessedAt = Date.now();
-      // DURABILITY GATE — see equivalent block in doStart().
+      // DURABILITY GATE â€” see equivalent block in doStart().
       await record.pendingSync;
       this.opts.logger.info('Local preview ready', {
         projectId, hostPort: lr.port, stack: lr.stack.kind,
@@ -2903,20 +2905,22 @@ export class PreviewManager {
     } catch (err) {
       const msg = (err as Error).message;
       const lr = this.opts.localRunner.get(projectId);
-      if (lr?.log) record.log = lr.log;
+      const lrFailed = this.opts.localRunner.getLastFailure(projectId);
+      const lrSnapshot = lr ?? lrFailed;
+      if (lrSnapshot?.log) record.log = lrSnapshot.log;
       // Mirror runner-level metadata onto the record so the diagnostic
       // dump shows cmd/cwd/port even when staging failed before spawn.
-      if (lr) {
+      if (lrSnapshot) {
         record.runtime = {
           ...(record.runtime ?? { type: runtimeMode }),
           type: runtimeMode,
-          cwd: lr.stagingDir,
-          port: lr.port,
+          cwd: lrSnapshot.stagingDir,
+          port: lrSnapshot.port,
         };
       }
       this.recordTimelineEvent(record, 'install-end', {
         details: { ok: false, error: msg },
-        stderr: lr?.stderrLog ?? lr?.log,
+        stderr: lrSnapshot?.stderrLog ?? lrSnapshot?.log,
       });
       // If the local-runner attached a structured ERESOLVE report onto
       // the thrown error (see local-runner.runInstall), use the parser's
@@ -2933,19 +2937,19 @@ export class PreviewManager {
             : `Local preview failed: ${msg}`);
       // If this was a fallback attempt, capture the local error onto
       // record.fallbackErrors.local BEFORE fail() composes the
-      // user-facing message — fail() will surface both errors.
+      // user-facing message â€” fail() will surface both errors.
       if (isFallback && record.fallbackErrors) {
         record.fallbackErrors.local = `Local preview failed: ${msg}`;
       }
       // Local-runner-specific forensic dump. Distinct from
       // dumpRuntimeFailure (which fail() also writes) because this
       // file carries the LOCAL lifecycle facts engineers need to make
-      // an intermittent local-fallback failure reproducible — exact
+      // an intermittent local-fallback failure reproducible â€” exact
       // command + args, child pid, install-completed flag,
       // server-spawned flag, port-ever-opened flag, full stdout/stderr
       // tails. Best-effort: never let dump-write failures mask the
       // original preview failure.
-      void this.dumpLocalPreviewFailure(record, lr, msg).catch((dumpErr) => {
+      void this.dumpLocalPreviewFailure(record, lrSnapshot ?? null, msg).catch((dumpErr) => {
         this.opts.logger.warn('preview: failed to write last-local-preview-failure.json', {
           projectId,
           error: (dumpErr as Error).message,
@@ -2953,11 +2957,11 @@ export class PreviewManager {
       });
       return this.fail(record, {
         reason: failureReason,
-        exitCode: lr?.exitCode ?? null,
-        signal: lr?.exitSignal ?? null,
-        stdoutTail: PreviewManager.tail(lr?.stdoutLog),
-        stderrTail: PreviewManager.tail(lr?.stderrLog ?? lr?.log),
-        lastSuccessfulStep: lr?.lastSuccessfulStep,
+        exitCode: lrSnapshot?.exitCode ?? null,
+        signal: lrSnapshot?.exitSignal ?? null,
+        stdoutTail: PreviewManager.tail(lrSnapshot?.stdoutLog),
+        stderrTail: PreviewManager.tail(lrSnapshot?.stderrLog ?? lrSnapshot?.log),
+        lastSuccessfulStep: lrSnapshot?.lastSuccessfulStep,
         stack: (err as Error).stack,
       });
     }
@@ -3025,7 +3029,7 @@ export class PreviewManager {
       '      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/app?schema=public"',
       '      PORT: "4000"',
       '  postgres:',
-      // Don't publish postgres on a fixed port — keeps host port pool free.
+      // Don't publish postgres on a fixed port â€” keeps host port pool free.
       // It's reachable via the compose network as `postgres:5432`.
       '    ports: []',
       '',
@@ -3065,9 +3069,9 @@ export class PreviewManager {
 
     // Health-check loop: web first (the iframe target). If web becomes
     // healthy, return ready. We also probe the api separately and surface
-    // its log tail when web is up but api is down — so the QA auto-fix loop
+    // its log tail when web is up but api is down â€” so the QA auto-fix loop
     // can pick up the failure as runtimeFeedback.
-    this.markPreviewStep(record, 'starting', 'compose up — awaiting web health');
+    this.markPreviewStep(record, 'starting', 'compose up â€” awaiting web health');
     this.recordTimelineEvent(record, 'devserver-start', {
       details: { webHostPort, apiHostPort, composeProject },
     });
@@ -3107,13 +3111,13 @@ export class PreviewManager {
     });
 
     // Content-health gate on the web service (see verifyContentHealth
-    // doc). Run before we even consider the api probe — a fullstack
+    // doc). Run before we even consider the api probe â€” a fullstack
     // preview where the iframe shows a build overlay is no more usable
     // than a frontend-only one.
     const contentFail = await this.verifyContentHealth(record, webHostPort, '/');
     if (contentFail) return contentFail;
 
-    // Verify api too — non-fatal if down, but include in log so the runtime
+    // Verify api too â€” non-fatal if down, but include in log so the runtime
     // validator + auto-fix loop can drive QA to fix it.
     const apiProbe = await this.opts.docker.httpProbe(apiHostPort, '/health', 4_000);
     if (!apiProbe.ok) {
@@ -3132,7 +3136,7 @@ export class PreviewManager {
       },
     });
     record.lastAccessedAt = Date.now();
-    // DURABILITY GATE — see equivalent block in doStart().
+    // DURABILITY GATE â€” see equivalent block in doStart().
     await record.pendingSync;
     this.opts.logger.info('Fullstack preview ready', {
       projectId, webHostPort, apiHostPort, composeProject, apiHealthy: apiProbe.ok,
@@ -3145,12 +3149,12 @@ export class PreviewManager {
    *  only checks that the port responds 2xx/3xx; this gate inspects the
    *  body and rejects responses whose HTML contains overlay sentinels
    *  ("Module not found", "Build Error", "__nextjs_original-stack-frame",
-   *  …). Returns:
-   *   • null            — content is healthy, caller may mark ready
-   *   • PreviewStatus   — content unhealthy; caller must propagate the
+   *  â€¦). Returns:
+   *   â€¢ null            â€” content is healthy, caller may mark ready
+   *   â€¢ PreviewStatus   â€” content unhealthy; caller must propagate the
    *                       returned status (record is now in 'failed').
    *
-   *  `path` defaults to '/' which works for every supported stack —
+   *  `path` defaults to '/' which works for every supported stack â€”
    *  Next.js, Vite and CRA all serve their dev overlay on the root
    *  document. */
   private async verifyContentHealth(
@@ -3163,7 +3167,7 @@ export class PreviewManager {
     try {
       probe = await probePreviewContent(hostPort, path, timeoutMs);
     } catch (err) {
-      // probePreviewContent never throws by contract — but if the runtime
+      // probePreviewContent never throws by contract â€” but if the runtime
       // surprises us, treat it as a soft failure (LOG and proceed) so we
       // don't block a healthy preview on a bug in the probe itself.
       this.opts.logger.warn('preview content-health probe threw unexpectedly', {
@@ -3230,7 +3234,7 @@ export class PreviewManager {
       : ctxOrMessage;
 
     // If the boot watchdog already classified this run as a timeout,
-    // PRESERVE its structured verdict — the timeout headline
+    // PRESERVE its structured verdict â€” the timeout headline
     // ("Preview startup timed out while in step <step>. Last probe:
     // <reason>. Process: <classification>.") is more actionable than
     // any downstream catch-block message we'd compose here. Without
@@ -3261,7 +3265,7 @@ export class PreviewManager {
         preservedError: record.error.slice(0, 200),
       });
       // Even on the suppressed path the failure metadata (exitInfo,
-      // process lifecycle) was just updated — durably persist it
+      // process lifecycle) was just updated â€” durably persist it
       // before returning to the caller. Without the await the HTTP
       // response can race the disk write.
       await this.syncPreviewToProject(record).catch(() => {});
@@ -3269,10 +3273,10 @@ export class PreviewManager {
     }
 
     // Compose a multi-line `record.error` that surfaces the real failure
-    // reason verbatim — exit code, signal, last successful step, and the
+    // reason verbatim â€” exit code, signal, last successful step, and the
     // tail of stderr (or stdout if stderr is empty). This is the SAME
-    // string that flows through syncPreviewToProject → ProjectRecord
-    // .preview.previewError → the UI's preview-failed pane, replacing the
+    // string that flows through syncPreviewToProject â†’ ProjectRecord
+    // .preview.previewError â†’ the UI's preview-failed pane, replacing the
     // old generic "container exited unexpectedly" message.
     let composed = composeFailureMessage(ctx);
     // Dual-failure mode: this record was the local-fallback attempt
@@ -3282,22 +3286,36 @@ export class PreviewManager {
     // doStartLocal catch block.
     if (record.fallbackErrors?.docker) {
       composed = [
-        '⚠ Both preview backends failed:',
+        'âš  Both preview backends failed:',
         '',
-        '── Docker attempt ──',
+        'â”€â”€ Docker attempt â”€â”€',
         record.fallbackErrors.docker,
         '',
-        '── Local fallback attempt ──',
+        'â”€â”€ Local fallback attempt â”€â”€',
         composed,
       ].join('\n');
       // Mirror onto fallbackErrors.local for downstream consumers
       // (UI failure card, diagnostic dump). Already set in
       // doStartLocal but harmless to overwrite with the fully
       // composed message so persisted JSON shows the rich form.
-      record.fallbackErrors.local = composed.split('── Local fallback attempt ──\n')[1] ?? composed;
+      record.fallbackErrors.local = composed.split('â”€â”€ Local fallback attempt â”€â”€\n')[1] ?? composed;
     }
     this.markPreviewStep(record, 'failed', composed.slice(0, 200));
     record.error = composed;
+    // Persist forensic block on the record itself before lifecycle
+    // classification so snapshotProcessLifecycle can consume exitCode/signal
+    // even when the local-runner live record has already been removed.
+    record.exitInfo = {
+      exitCode: ctx.exitCode ?? null,
+      signal: ctx.signal ?? null,
+      oomKilled: ctx.oomKilled ?? false,
+      dockerError: ctx.dockerError ?? null,
+      stdoutTail: ctx.stdoutTail,
+      stderrTail: ctx.stderrTail,
+      lastSuccessfulStep: ctx.lastSuccessfulStep ?? record.lastMeaningfulStep,
+      errorStack: ctx.stack,
+      capturedAt: new Date().toISOString(),
+    };
     // Capture the process-lifecycle verdict on every failure path so
     // the persisted record carries "crashed (exit=1)" / "alive-not-
     // reachable" etc. — not just on the boot-watchdog timeout path.
@@ -3314,19 +3332,6 @@ export class PreviewManager {
     // stepDurations so the UI can show "died after 4.2s in
     // preview:installing".
     this.enterStep(record, 'preview:failed');
-    // Persist forensic block on the record itself so polling clients
-    // and the diagnostic dump both see the same numbers.
-    record.exitInfo = {
-      exitCode: ctx.exitCode ?? null,
-      signal: ctx.signal ?? null,
-      oomKilled: ctx.oomKilled ?? false,
-      dockerError: ctx.dockerError ?? null,
-      stdoutTail: ctx.stdoutTail,
-      stderrTail: ctx.stderrTail,
-      lastSuccessfulStep: ctx.lastSuccessfulStep ?? record.lastMeaningfulStep,
-      errorStack: ctx.stack,
-      capturedAt: new Date().toISOString(),
-    };
     // Persist the structured overlay detection on the record (and
     // therefore on every PreviewStatus snapshot) so the UI / generation
     // runner can render the category + module without re-parsing the
@@ -3367,7 +3372,7 @@ export class PreviewManager {
       stderrTail: ctx.stderrTail?.slice(-2_000),
     });
     // Persist a structured diagnostic JSON next to last-preview-stage
-    // -failure.json. Best-effort — write failures must never mask the
+    // -failure.json. Best-effort â€” write failures must never mask the
     // real preview failure.
     void this.dumpRuntimeFailure(record, ctx).catch(() => {});
     // Best-effort cleanup of any started container or compose stack.
@@ -3388,8 +3393,8 @@ export class PreviewManager {
       this.opts.ports.release(record.apiHostPort);
       record.apiHostPort = null;
     }
-    // DURABILITY GATE: the markPreviewStep('failed', …) call above
-    // queued a syncPreviewToProject — wait for it to land on disk
+    // DURABILITY GATE: the markPreviewStep('failed', â€¦) call above
+    // queued a syncPreviewToProject â€” wait for it to land on disk
     // before returning so polling clients observe previewStatus =
     // 'failed' + previewError on the very next read.
     await record.pendingSync;
@@ -3466,32 +3471,32 @@ export class PreviewManager {
    *
    * Captures the LOCAL lifecycle facts an engineer needs to make
    * an intermittent local-fallback failure reproducible:
-   *   • exact spawned command + args + cwd + port + host + envSafe
-   *   • child pid (when spawn succeeded)
-   *   • full rolling stdout / stderr tails (≤16 KB each)
-   *   • current step + last successful step
-   *   • install-completed flag (was node_modules ever populated?)
-   *   • server-spawned flag (did the OS hand us a PID?)
-   *   • port-ever-opened flag (did any TCP probe connect, even if
+   *   â€¢ exact spawned command + args + cwd + port + host + envSafe
+   *   â€¢ child pid (when spawn succeeded)
+   *   â€¢ full rolling stdout / stderr tails (â‰¤16 KB each)
+   *   â€¢ current step + last successful step
+   *   â€¢ install-completed flag (was node_modules ever populated?)
+   *   â€¢ server-spawned flag (did the OS hand us a PID?)
+   *   â€¢ port-ever-opened flag (did any TCP probe connect, even if
    *     HTTP didn't respond?)
-   *   • install-fallback metadata (was --legacy-peer-deps used?)
+   *   â€¢ install-fallback metadata (was --legacy-peer-deps used?)
    *
    * Distinct from `last-preview-runtime-failure.json` (shared
    * docker+local writer) and `last-preview-timeout.json`
    * (boot-watchdog writer) so triage tooling can land here without
    * having to reason about which runtime was in flight. Best-effort
-   * — write failures must not mask the original preview failure.
+   * â€” write failures must not mask the original preview failure.
    */
   private async dumpLocalPreviewFailure(
     record: PreviewRecord,
-    lr: ReturnType<NonNullable<typeof this.opts.localRunner>['get']> | null,
+    lr: ReturnType<NonNullable<typeof this.opts.localRunner>['get']> | LocalPreviewFailureSnapshot | null,
     reason: string,
   ): Promise<void> {
     const dumpPath = path.resolve(
       fileURLToPath(import.meta.url),
       '..', '..', 'testing', 'last-local-preview-failure.json',
     );
-    // Lifecycle booleans — derived from the runner's record so the
+    // Lifecycle booleans â€” derived from the runner's record so the
     // dump can answer the three "where did it die?" questions
     // directly. `install-completed` is true when ANY install
     // succeeded (standard OR --legacy-peer-deps fallback).
@@ -3500,8 +3505,13 @@ export class PreviewManager {
           || /install completed/i.test(lr.lastSuccessfulStep ?? '')
           || /install cache hit/i.test(lr.lastSuccessfulStep ?? ''))
       : false;
+    const childPid = lr
+      ? ('childPid' in lr
+          ? lr.childPid
+          : (typeof lr.child?.pid === 'number' ? lr.child.pid : null))
+      : null;
     const serverSpawned = lr
-      ? (typeof lr.child?.pid === 'number' || lr.processStartedAt !== null)
+      ? (typeof childPid === 'number' || lr.processStartedAt !== null)
       : false;
     const portEverOpened = lr
       ? lr.probeAttempts.some((a) => a.tcpConnected || a.ok)
@@ -3509,7 +3519,7 @@ export class PreviewManager {
     const httpEverResponded = lr
       ? lr.probeAttempts.some((a) => a.ok || (typeof a.status === 'number' && a.status > 0))
       : false;
-    // ── Manual reproduction block ────────────────────────
+    // â”€â”€ Manual reproduction block â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // The staging directory is INTENTIONALLY preserved across
     // failures (writeFiles only wipes it at the start of the *next*
     // staging) so an engineer can `cd` into it and reproduce the
@@ -3517,7 +3527,7 @@ export class PreviewManager {
     // re-run install + dev exactly the way the runner did.
     //
     // Package manager is derived from the spawn cmd basename
-    // ('npm.cmd' → 'npm'), defaulting to npm when unavailable.
+    // ('npm.cmd' â†’ 'npm'), defaulting to npm when unavailable.
     const runtimePath = record.runtime?.cwd ?? lr?.stagingDir ?? null;
     const packageJsonPath = runtimePath ? path.join(runtimePath, 'package.json') : null;
     const devCmdRaw = record.runtime?.cmd ?? null;
@@ -3537,7 +3547,7 @@ export class PreviewManager {
     const installCommandFallback = lr?.installFallback?.triggered
       ? `${pm} install ${(lr.installFallback.fallbackArgs ?? []).join(' ')}`.trim()
       : null;
-    // Start command — what the runner actually spawned. We use the
+    // Start command â€” what the runner actually spawned. We use the
     // human-friendly `<pm> run dev` form rather than the
     // platform-specific `npm.cmd` so the block works on macOS/Linux
     // too (engineers often inspect failures from a different host
@@ -3545,18 +3555,18 @@ export class PreviewManager {
     const startCommand = devArgs && devArgs.length > 0
       ? `${pm} ${devArgs.join(' ')}`.trim()
       : `${pm} run dev`;
-    // Reproducible block — array of shell lines an engineer can
+    // Reproducible block â€” array of shell lines an engineer can
     // copy-paste verbatim. We include both the standard install and
     // the fallback (when triggered) as separate lines so the engineer
     // can choose; the runner's behaviour is documented inline.
     const reproduceCommand: string[] = [
-      runtimePath ? `cd "${runtimePath}"` : '# cd <runtimePath unavailable — staging never started>',
+      runtimePath ? `cd "${runtimePath}"` : '# cd <runtimePath unavailable â€” staging never started>',
       `# Install (the runner used: ${lr?.installMode ?? 'unknown'})`,
       installCommandStandard,
     ];
     if (installCommandFallback) {
       reproduceCommand.push(
-        `# Standard install failed with ERESOLVE — runner retried with --legacy-peer-deps:`,
+        `# Standard install failed with ERESOLVE â€” runner retried with --legacy-peer-deps:`,
         installCommandFallback,
       );
     }
@@ -3570,15 +3580,15 @@ export class PreviewManager {
       previewId: record.previewId,
       runtime: record.runtime?.type ?? record.mode ?? 'local-fallback',
       reason,
-      // ── timeout classification (only populated on timeout path) ──
+      // â”€â”€ timeout classification (only populated on timeout path) â”€â”€
       timeoutCause: record.timeoutCause ?? null,
       timeoutLifecycle: record.timeoutLifecycle ?? null,
-      // ── exact spawned process ─────────────────────────────
+      // â”€â”€ exact spawned process â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       command: record.runtime?.cmd ?? null,
       commandArgs: record.runtime?.args ?? null,
       cwd: record.runtime?.cwd ?? lr?.stagingDir ?? null,
-      // ── manual reproduction ──────────────────────────────
-      // Staging dir is preserved on failure (see writeFiles —
+      // â”€â”€ manual reproduction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // Staging dir is preserved on failure (see writeFiles â€”
       // wipe only happens at the start of the NEXT staging). An
       // engineer can `cd` here, run the install command, then
       // run the start command to reproduce the failure exactly.
@@ -3592,8 +3602,8 @@ export class PreviewManager {
       host: '127.0.0.1',
       port: record.runtime?.port ?? lr?.port ?? record.hostPort ?? null,
       envSafe: record.runtime?.envSafe ?? null,
-      pid: lr?.child?.pid ?? record.runtimeLog?.pid ?? null,
-      // ── lifecycle classification ──────────────────────────
+      pid: childPid ?? record.runtimeLog?.pid ?? null,
+      // â”€â”€ lifecycle classification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       currentStep: record.step ?? null,
       lastSuccessfulStep: lr?.lastSuccessfulStep ?? record.lastMeaningfulStep ?? null,
       installCompleted,
@@ -3606,15 +3616,15 @@ export class PreviewManager {
       processExitedAt: lr?.processExitedAt ?? null,
       exitCode: lr?.exitCode ?? null,
       exitSignal: lr?.exitSignal ?? null,
-      // ── stdio tails ───────────────────────────────────────
+      // â”€â”€ stdio tails â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // Cap at 16 KB each (the runner's ring buffer is 32 KB,
       // half goes to each stream tail to keep the dump browsable).
       stdoutTail: lr?.stdoutLog ? lr.stdoutLog.slice(-16_000) : null,
       stderrTail: lr?.stderrLog ? lr.stderrLog.slice(-16_000) : null,
-      // ── probe history rollup ──────────────────────────────
+      // â”€â”€ probe history rollup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       probeAttemptsTotal: lr?.probeAttempts.length ?? 0,
       probeAttemptsTail: (lr?.probeAttempts ?? []).slice(-16),
-      // ── install-fallback (TEMPORARY) audit trail ──────────
+      // â”€â”€ install-fallback (TEMPORARY) audit trail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       installFallback: lr?.installFallback
         ? {
             triggered: lr.installFallback.triggered,
@@ -3625,10 +3635,10 @@ export class PreviewManager {
             dumpPath: lr.installFallback.dumpPath,
           }
         : null,
-      // ── step history (lightweight) ────────────────────────
+      // â”€â”€ step history (lightweight) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       stepDurations: record.stepDurations ?? [],
       previewStatusTransitions: (record.history ?? []).map((h) => ({ step: h.step, at: h.at })),
-      // ── safe-retry history ────────────────────────────────
+      // â”€â”€ safe-retry history â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // One row per local-runner start() invocation. Capped at two.
       // `localRetrySucceeded` mirrors the field of the same name on
       // PreviewRecord and is `null`/undefined when no retry was
@@ -3651,7 +3661,7 @@ export class PreviewManager {
         serverSpawned,
         portEverOpened,
         pid: payload.pid,
-        // Reproduction surface — engineers can copy these directly
+        // Reproduction surface â€” engineers can copy these directly
         // from the structured log without opening the dump file.
         runtimePath,
         packageJsonPath,
@@ -3719,7 +3729,7 @@ export class PreviewManager {
     err: Error | null,
   ): Promise<void> {
     const dumpPath = path.resolve(
-      // apps/api/src/preview/preview-manager.ts → apps/api/src/testing/last-preview-stage-failure.json
+      // apps/api/src/preview/preview-manager.ts â†’ apps/api/src/testing/last-preview-stage-failure.json
       fileURLToPath(import.meta.url),
       '..', '..', 'testing', 'last-preview-stage-failure.json',
     );
@@ -3779,3 +3789,4 @@ const DEFAULT_DOCKERIGNORE = [
   'docker-compose.yml',
   'docker-compose.*.yml',
 ].join('\n');
+

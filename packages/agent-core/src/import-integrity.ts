@@ -19,6 +19,13 @@ export interface MissingImport {
   triedPaths: string[];
 }
 
+export interface ValidateImportIntegrityOptions {
+  /** Optional importer-path filter to skip known non-critical files. */
+  ignoreImporter?: (importerPath: string) => boolean;
+  /** Optional alias roots for "@/..." resolution. */
+  aliasRoots?: string[];
+}
+
 const SOURCE_EXT = /\.(?:tsx?|jsx?|mjs|cjs|mts|cts)$/i;
 const RESOLVE_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
 
@@ -90,16 +97,23 @@ function resolveCandidates(importer: string, spec: string): string[] {
  * common roots (apps/web, apps/api, src, .) since we don't parse tsconfig
  * paths. False-positives are filtered out by checking ALL candidate roots.
  */
-export function validateImportIntegrity(files: FileLike[]): MissingImport[] {
+export function validateImportIntegrity(
+  files: FileLike[],
+  options: ValidateImportIntegrityOptions = {},
+): MissingImport[] {
   const fileSet = new Set(files.map((f) => f.path.replace(/\\/g, '/').replace(/^\.\//, '')));
   const missing: MissingImport[] = [];
+  const ignoreImporter = options.ignoreImporter;
 
   // Possible roots for `@/...` aliases — match if any candidate root resolves.
-  const aliasRoots = ['apps/web', 'apps/api', 'apps/web/src', 'apps/api/src', 'src', ''];
+  const aliasRoots = Array.isArray(options.aliasRoots) && options.aliasRoots.length > 0
+    ? options.aliasRoots
+    : ['apps/web', 'apps/api', 'apps/web/src', 'apps/api/src', 'src', ''];
 
   for (const f of files) {
     const path = f.path.replace(/\\/g, '/');
     if (!SOURCE_EXT.test(path)) continue;
+    if (ignoreImporter && ignoreImporter(path)) continue;
 
     const specs = extractImportSpecifiers(f.content);
     for (const spec of specs) {

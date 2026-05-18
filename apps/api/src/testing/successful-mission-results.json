@@ -1,6 +1,6 @@
 {
-  "startedAt": "2026-05-18T20:56:37.353Z",
-  "completedAt": "2026-05-18T21:02:32.769Z",
+  "startedAt": "2026-05-18T21:14:25.294Z",
+  "completedAt": "2026-05-18T21:20:40.295Z",
   "apiUrl": "http://127.0.0.1:3303",
   "prompts": [
     "Build a simple landing page with hero section, features, and CTA.",
@@ -17,7 +17,7 @@
     "succeeded": 6,
     "failed": 0,
     "successRate": 1,
-    "averageCompletionMs": 59115,
+    "averageCompletionMs": 62377,
     "retryFrequency": 0,
     "previewStartupSuccess": 1,
     "exportSuccessRate": 1,
@@ -48,7 +48,7 @@
   },
   "preflightBefore": {
     "ok": true,
-    "checkedAt": "2026-05-18T20:56:37.371Z",
+    "checkedAt": "2026-05-18T21:14:25.311Z",
     "requiredProviders": [
       "azure"
     ],
@@ -62,18 +62,18 @@
           "provider": "openai",
           "healthy": false,
           "reason": "provider-healthcheck-failed",
-          "checkedAt": "2026-05-18T20:56:37.371Z",
+          "checkedAt": "2026-05-18T21:14:25.311Z",
           "latencyMs": 114
         },
         "azure": {
           "provider": "azure",
           "healthy": true,
           "reason": "ok",
-          "checkedAt": "2026-05-18T20:56:37.485Z",
+          "checkedAt": "2026-05-18T21:14:25.425Z",
           "latencyMs": 0
         }
       },
-      "checkedAt": "2026-05-18T20:56:37.371Z"
+      "checkedAt": "2026-05-18T21:14:25.311Z"
     },
     "services": {
       "storage": {
@@ -89,7 +89,7 @@
   },
   "preflightAfter": {
     "ok": true,
-    "checkedAt": "2026-05-18T21:02:32.178Z",
+    "checkedAt": "2026-05-18T21:20:39.689Z",
     "requiredProviders": [
       "azure"
     ],
@@ -103,18 +103,18 @@
           "provider": "openai",
           "healthy": false,
           "reason": "provider-healthcheck-failed",
-          "checkedAt": "2026-05-18T21:02:32.181Z",
-          "latencyMs": 468
+          "checkedAt": "2026-05-18T21:20:39.694Z",
+          "latencyMs": 475
         },
         "azure": {
           "provider": "azure",
           "healthy": true,
           "reason": "ok",
-          "checkedAt": "2026-05-18T21:02:32.649Z",
+          "checkedAt": "2026-05-18T21:20:40.169Z",
           "latencyMs": 0
         }
       },
-      "checkedAt": "2026-05-18T21:02:32.181Z"
+      "checkedAt": "2026-05-18T21:20:39.694Z"
     },
     "services": {
       "storage": {
@@ -129,14 +129,14 @@
     "reason": null
   },
   "runtimeTelemetry": {
-    "observedAt": "2026-05-18T21:02:32.769Z",
+    "observedAt": "2026-05-18T21:20:40.294Z",
     "missions": {
       "accepted": 6,
       "terminal": 6,
       "completed": 6,
       "failed": 0,
       "successRate": 1,
-      "avgCompletionMs": 70716
+      "avgCompletionMs": 104138
     },
     "reliability": {
       "failuresByCategory": {},
@@ -153,14 +153,14 @@
           "provider": "openai",
           "healthy": false,
           "reason": "provider-healthcheck-failed",
-          "checkedAt": "2026-05-18T21:02:32.656Z",
+          "checkedAt": "2026-05-18T21:20:40.180Z",
           "latencyMs": 113
         },
         "azure": {
           "provider": "azure",
           "healthy": true,
           "reason": "ok",
-          "checkedAt": "2026-05-18T21:02:32.769Z",
+          "checkedAt": "2026-05-18T21:20:40.293Z",
           "latencyMs": 0
         }
       },
@@ -186,19 +186,19 @@
       "index": 0,
       "tier": "custom",
       "prompt": "Build a simple landing page with hero section, features, and CTA.",
-      "projectId": "GKXCsojJmQfk",
-      "sessionId": "fKzQoNH7mUikN557",
+      "projectId": "_FEWGskOKw_w",
+      "sessionId": "wyD9aX29-P7h2e5p",
       "status": "pass",
-      "durationMs": 60670,
+      "durationMs": 59012,
       "filesCount": 15,
       "previewState": "ready",
-      "previewUrl": "/preview/GKXCsojJmQfk/",
+      "previewUrl": "/preview/_FEWGskOKw_w/",
       "exportOk": true,
       "exportState": "ok",
       "retriesObserved": 0,
       "phasesSeen": [
         "init",
-        "planning",
+        "queued",
         "artifact_packaging"
       ],
       "failureCategory": null,
@@ -217,13 +217,13 @@
       "index": 1,
       "tier": "custom",
       "prompt": "Build a simple SaaS dashboard with sidebar, KPI cards, and recent activity.",
-      "projectId": "U4CHaSEtPTGT",
-      "sessionId": "zURa6-5qzQ2cdGwJ",
+      "projectId": "jGJkajkz1fMO",
+      "sessionId": "R6Pe7-cZNwM8lwbU",
       "status": "pass",
-      "durationMs": 71978,
+      "durationMs": 71282,
       "filesCount": 15,
       "previewState": "ready",
-      "previewUrl": "/preview/U4CHaSEtPTGT/",
+      "previewUrl": "/preview/jGJkajkz1fMO/",
       "exportOk": true,
       "exportState": "ok",
       "retriesObserved": 0,
@@ -248,13 +248,13 @@
       "index": 2,
       "tier": "custom",
       "prompt": "Build a simple pricing page with three plans and feature comparison.",
-      "projectId": "geI192LnIW3I",
-      "sessionId": "xk5pUhGQeZXGEnE5",
+      "projectId": "vH7_6WwTzorW",
+      "sessionId": "388fXYphIyvhZ-3p",
       "status": "pass",
-      "durationMs": 59059,
+      "durationMs": 59936,
       "filesCount": 14,
       "previewState": "ready",
-      "previewUrl": "/preview/geI192LnIW3I/",
+      "previewUrl": "/preview/vH7_6WwTzorW/",
       "exportOk": true,
       "exportState": "ok",
       "retriesObserved": 0,
@@ -279,13 +279,13 @@
       "index": 3,
       "tier": "custom",
       "prompt": "Build a CRUD app with list/add/edit/delete and search filters.",
-      "projectId": "ih4CNFiLjyRh",
-      "sessionId": "vqWzTnTUfhHLeFrb",
+      "projectId": "kUFD9FSrbrlf",
+      "sessionId": "P2jla-C8047P62_7",
       "status": "pass",
-      "durationMs": 57917,
+      "durationMs": 69776,
       "filesCount": 12,
       "previewState": "ready",
-      "previewUrl": "/preview/ih4CNFiLjyRh/",
+      "previewUrl": "/preview/kUFD9FSrbrlf/",
       "exportOk": true,
       "exportState": "ok",
       "retriesObserved": 0,
@@ -310,13 +310,13 @@
       "index": 4,
       "tier": "custom",
       "prompt": "Build an admin dashboard with forms, validation, filters, and complex state.",
-      "projectId": "rAAqPsntsBbp",
-      "sessionId": "5dg-rujUTJqnwetr",
+      "projectId": "3cmOnawhMTim",
+      "sessionId": "c0aG5wYw0lNGWPZ_",
       "status": "pass",
-      "durationMs": 50559,
+      "durationMs": 67291,
       "filesCount": 12,
       "previewState": "ready",
-      "previewUrl": "/preview/rAAqPsntsBbp/",
+      "previewUrl": "/preview/3cmOnawhMTim/",
       "exportOk": true,
       "exportState": "ok",
       "retriesObserved": 0,
@@ -341,13 +341,13 @@
       "index": 5,
       "tier": "custom",
       "prompt": "Build a fullstack SaaS app with user accounts, projects, dashboard, API routes, and persistent CRUD data model.",
-      "projectId": "re2g1KGkURqI",
-      "sessionId": "NfiFpngLnU4yZWD3",
+      "projectId": "ZlIgGTgtu1Uc",
+      "sessionId": "aIFhYPXiusTp5S7W",
       "status": "pass",
-      "durationMs": 54506,
+      "durationMs": 46963,
       "filesCount": 19,
       "previewState": "ready",
-      "previewUrl": "/preview/re2g1KGkURqI/",
+      "previewUrl": "/preview/ZlIgGTgtu1Uc/",
       "exportOk": true,
       "exportState": "ok",
       "retriesObserved": 0,

@@ -1,0 +1,372 @@
+{
+  "startedAt": "2026-05-18T21:07:47.197Z",
+  "completedAt": "2026-05-18T21:13:27.222Z",
+  "apiUrl": "http://127.0.0.1:3303",
+  "prompts": [
+    "Build a simple landing page with hero section, features, and CTA.",
+    "Build a simple SaaS dashboard with sidebar, KPI cards, and recent activity.",
+    "Build a simple pricing page with three plans and feature comparison.",
+    "Build a CRUD app with list/add/edit/delete and search filters.",
+    "Build an admin dashboard with forms, validation, filters, and complex state.",
+    "Build a fullstack SaaS app with user accounts, projects, dashboard, API routes, and persistent CRUD data model."
+  ],
+  "repeatCycles": 1,
+  "minSuccessMissions": 1,
+  "summary": {
+    "total": 6,
+    "succeeded": 6,
+    "failed": 0,
+    "successRate": 1,
+    "averageCompletionMs": 56545,
+    "retryFrequency": 0,
+    "previewStartupSuccess": 1,
+    "exportSuccessRate": 1,
+    "failureCategories": {},
+    "reliabilityByTier": [
+      {
+        "tier": "tier1",
+        "total": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "successRate": 0
+      },
+      {
+        "tier": "tier2",
+        "total": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "successRate": 0
+      },
+      {
+        "tier": "tier3",
+        "total": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "successRate": 0
+      }
+    ]
+  },
+  "preflightBefore": {
+    "ok": true,
+    "checkedAt": "2026-05-18T21:07:47.213Z",
+    "requiredProviders": [
+      "azure"
+    ],
+    "providerPreflight": {
+      "ok": true,
+      "requiredProviders": [
+        "azure"
+      ],
+      "providers": {
+        "openai": {
+          "provider": "openai",
+          "healthy": false,
+          "reason": "provider-healthcheck-failed",
+          "checkedAt": "2026-05-18T21:07:47.213Z",
+          "latencyMs": 115
+        },
+        "azure": {
+          "provider": "azure",
+          "healthy": true,
+          "reason": "ok",
+          "checkedAt": "2026-05-18T21:07:47.328Z",
+          "latencyMs": 0
+        }
+      },
+      "checkedAt": "2026-05-18T21:07:47.213Z"
+    },
+    "services": {
+      "storage": {
+        "ok": true,
+        "reason": "ok"
+      },
+      "preview": {
+        "ok": true,
+        "reason": "ok"
+      }
+    },
+    "reason": null
+  },
+  "preflightAfter": {
+    "ok": true,
+    "checkedAt": "2026-05-18T21:13:26.602Z",
+    "requiredProviders": [
+      "azure"
+    ],
+    "providerPreflight": {
+      "ok": true,
+      "requiredProviders": [
+        "azure"
+      ],
+      "providers": {
+        "openai": {
+          "provider": "openai",
+          "healthy": false,
+          "reason": "provider-healthcheck-failed",
+          "checkedAt": "2026-05-18T21:13:26.606Z",
+          "latencyMs": 493
+        },
+        "azure": {
+          "provider": "azure",
+          "healthy": true,
+          "reason": "ok",
+          "checkedAt": "2026-05-18T21:13:27.099Z",
+          "latencyMs": 0
+        }
+      },
+      "checkedAt": "2026-05-18T21:13:26.606Z"
+    },
+    "services": {
+      "storage": {
+        "ok": true,
+        "reason": "ok"
+      },
+      "preview": {
+        "ok": true,
+        "reason": "ok"
+      }
+    },
+    "reason": null
+  },
+  "runtimeTelemetry": {
+    "observedAt": "2026-05-18T21:13:27.223Z",
+    "missions": {
+      "accepted": 6,
+      "terminal": 6,
+      "completed": 6,
+      "failed": 0,
+      "successRate": 1,
+      "avgCompletionMs": 113694
+    },
+    "reliability": {
+      "failuresByCategory": {},
+      "failuresByPhase": {},
+      "artifactCorruptionRate": 0
+    },
+    "providers": {
+      "preflightBlockedLaunches": 0,
+      "requiredProviders": [
+        "azure"
+      ],
+      "currentStatus": {
+        "openai": {
+          "provider": "openai",
+          "healthy": false,
+          "reason": "provider-healthcheck-failed",
+          "checkedAt": "2026-05-18T21:13:27.109Z",
+          "latencyMs": 114
+        },
+        "azure": {
+          "provider": "azure",
+          "healthy": true,
+          "reason": "ok",
+          "checkedAt": "2026-05-18T21:13:27.223Z",
+          "latencyMs": 0
+        }
+      },
+      "failureRate": 0.5
+    },
+    "retries": {
+      "averageRetriesPerSession": 0
+    },
+    "preview": {
+      "attempted": 3,
+      "ready": 3,
+      "startupSuccessRate": 1
+    },
+    "export": {
+      "attempts": 6,
+      "successes": 6,
+      "failures": 0,
+      "successRate": 1
+    }
+  },
+  "results": [
+    {
+      "index": 0,
+      "tier": "custom",
+      "prompt": "Build a simple landing page with hero section, features, and CTA.",
+      "projectId": "9KnoMGWbpXlN",
+      "sessionId": "yBssVX_04Y12cL09",
+      "status": "pass",
+      "durationMs": 55592,
+      "filesCount": 15,
+      "previewState": "ready",
+      "previewUrl": "/preview/9KnoMGWbpXlN/",
+      "exportOk": true,
+      "exportState": "ok",
+      "retriesObserved": 0,
+      "phasesSeen": [
+        "init",
+        "planning",
+        "artifact_packaging"
+      ],
+      "failureCategory": null,
+      "failurePhase": null,
+      "failureReason": null,
+      "failedAgent": null,
+      "failedStep": null,
+      "retryCount": 0,
+      "lastValidCheckpoint": null,
+      "filesGeneratedBeforeFailure": 15,
+      "recoveryAttempted": false,
+      "recommendedNextAction": null,
+      "zeroFileClassification": null
+    },
+    {
+      "index": 1,
+      "tier": "custom",
+      "prompt": "Build a simple SaaS dashboard with sidebar, KPI cards, and recent activity.",
+      "projectId": "9kmYPrWjUDeJ",
+      "sessionId": "hGKSrZxpjI-2dl5i",
+      "status": "pass",
+      "durationMs": 53192,
+      "filesCount": 15,
+      "previewState": "ready",
+      "previewUrl": "/preview/9kmYPrWjUDeJ/",
+      "exportOk": true,
+      "exportState": "ok",
+      "retriesObserved": 0,
+      "phasesSeen": [
+        "init",
+        "planning",
+        "artifact_packaging"
+      ],
+      "failureCategory": null,
+      "failurePhase": null,
+      "failureReason": null,
+      "failedAgent": null,
+      "failedStep": null,
+      "retryCount": 0,
+      "lastValidCheckpoint": null,
+      "filesGeneratedBeforeFailure": 15,
+      "recoveryAttempted": false,
+      "recommendedNextAction": null,
+      "zeroFileClassification": null
+    },
+    {
+      "index": 2,
+      "tier": "custom",
+      "prompt": "Build a simple pricing page with three plans and feature comparison.",
+      "projectId": "pGcLxJxPgZ6Y",
+      "sessionId": "9mh1XEL-60a8f1mq",
+      "status": "pass",
+      "durationMs": 51099,
+      "filesCount": 14,
+      "previewState": "ready",
+      "previewUrl": "/preview/pGcLxJxPgZ6Y/",
+      "exportOk": true,
+      "exportState": "ok",
+      "retriesObserved": 0,
+      "phasesSeen": [
+        "init",
+        "planning",
+        "artifact_packaging"
+      ],
+      "failureCategory": null,
+      "failurePhase": null,
+      "failureReason": null,
+      "failedAgent": null,
+      "failedStep": null,
+      "retryCount": 0,
+      "lastValidCheckpoint": null,
+      "filesGeneratedBeforeFailure": 14,
+      "recoveryAttempted": false,
+      "recommendedNextAction": null,
+      "zeroFileClassification": null
+    },
+    {
+      "index": 3,
+      "tier": "custom",
+      "prompt": "Build a CRUD app with list/add/edit/delete and search filters.",
+      "projectId": "GG6ofc-QDhlm",
+      "sessionId": "CTqXk1nRlmGQuWgQ",
+      "status": "pass",
+      "durationMs": 57687,
+      "filesCount": 12,
+      "previewState": "ready",
+      "previewUrl": "/preview/GG6ofc-QDhlm/",
+      "exportOk": true,
+      "exportState": "ok",
+      "retriesObserved": 0,
+      "phasesSeen": [
+        "init",
+        "planning",
+        "artifact_packaging"
+      ],
+      "failureCategory": null,
+      "failurePhase": null,
+      "failureReason": null,
+      "failedAgent": null,
+      "failedStep": null,
+      "retryCount": 0,
+      "lastValidCheckpoint": null,
+      "filesGeneratedBeforeFailure": 12,
+      "recoveryAttempted": false,
+      "recommendedNextAction": null,
+      "zeroFileClassification": null
+    },
+    {
+      "index": 4,
+      "tier": "custom",
+      "prompt": "Build an admin dashboard with forms, validation, filters, and complex state.",
+      "projectId": "_r9weaCDbpsg",
+      "sessionId": "88UCvHV_K26G6HQG",
+      "status": "pass",
+      "durationMs": 55393,
+      "filesCount": 12,
+      "previewState": "ready",
+      "previewUrl": "/preview/_r9weaCDbpsg/",
+      "exportOk": true,
+      "exportState": "ok",
+      "retriesObserved": 0,
+      "phasesSeen": [
+        "init",
+        "planning",
+        "artifact_packaging"
+      ],
+      "failureCategory": null,
+      "failurePhase": null,
+      "failureReason": null,
+      "failedAgent": null,
+      "failedStep": null,
+      "retryCount": 0,
+      "lastValidCheckpoint": null,
+      "filesGeneratedBeforeFailure": 12,
+      "recoveryAttempted": false,
+      "recommendedNextAction": null,
+      "zeroFileClassification": null
+    },
+    {
+      "index": 5,
+      "tier": "custom",
+      "prompt": "Build a fullstack SaaS app with user accounts, projects, dashboard, API routes, and persistent CRUD data model.",
+      "projectId": "Y5LwKDjAChdD",
+      "sessionId": "puTkylWYVCxqSKgK",
+      "status": "pass",
+      "durationMs": 66304,
+      "filesCount": 19,
+      "previewState": "ready",
+      "previewUrl": "/preview/Y5LwKDjAChdD/",
+      "exportOk": true,
+      "exportState": "ok",
+      "retriesObserved": 0,
+      "phasesSeen": [
+        "init",
+        "planning",
+        "artifact_packaging"
+      ],
+      "failureCategory": null,
+      "failurePhase": null,
+      "failureReason": null,
+      "failedAgent": null,
+      "failedStep": null,
+      "retryCount": 0,
+      "lastValidCheckpoint": null,
+      "filesGeneratedBeforeFailure": 19,
+      "recoveryAttempted": false,
+      "recommendedNextAction": null,
+      "zeroFileClassification": null
+    }
+  ]
+}

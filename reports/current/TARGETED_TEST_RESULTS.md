@@ -1,23 +1,22 @@
 # Targeted Test Results
 
-## Commands and outcomes
-1. `npx tsx --test apps/api/src/pipeline/ui-foundation.test.ts apps/api/src/pipeline/generation-failure-classifier.test.ts apps/api/src/pipeline/deterministic-generation-contract.test.ts apps/api/src/pipeline/import-repair.test.ts`
-- Result: PASS (45/45)
+## Commands executed
+1. `npx tsx --test apps/api/src/pipeline/orchestration-router.test.ts apps/api/src/pipeline/prompt-tier-classifier.test.ts apps/api/src/pipeline/tier-policy.test.ts apps/api/src/pipeline/fast-tier1-runner.test.ts apps/api/src/pipeline/tier2-structured-runner.test.ts apps/api/src/pipeline/tier3-contract-runner.test.ts apps/api/src/pipeline/terminal-quality.test.ts`
+2. `npm run test:contracts:fast --workspace=@devteam/api`
+3. `npm run test:package:unit --workspace=@devteam/api`
+4. `npm run typecheck --workspace=@devteam/api`
+5. `npm run build --workspace=@devteam/api`
 
-2. `npx tsx --test apps/api/src/preview/local-runner.failure-snapshot.test.ts apps/api/src/preview/preview-manager.fail-classification.test.ts`
-- Result: PASS (4/4)
+## Results
+- Router tests: pass
+- Tier policy tests: pass
+- Tier 1 fast path tests: pass
+- Tier 2 path tests: pass
+- Tier 3 contract tests: pass
+- Terminal quality tests: pass
+- Fast contracts: pass
+- Package tests: pass
+- API typecheck/build: pass
 
-3. `npm run test:contracts:fast --workspace=@devteam/api`
-- Result: PASS
-
-4. `npm run test:package:unit --workspace=@devteam/api`
-- Result: PASS (6/6)
-
-5. `npm run typecheck --workspace=@devteam/api`
-- Result: PASS
-
-6. `npm run build --workspace=@devteam/api`
-- Result: PASS
-
-## Notes
-- One classifier test initially failed and was fixed by tightening TS error matching; rerun was fully green.
+## Summary
+All requested validation gates passed before canary execution.

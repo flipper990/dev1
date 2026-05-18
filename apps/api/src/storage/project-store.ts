@@ -823,6 +823,7 @@ export interface ProjectRecord {
         | 'project_persistence_failure'
         | 'filesystem_permission_failure'
         | 'tier1_scope_violation'
+        | 'tier3_contract_missing'
         | 'unknown';
       code: string;
       reason: string;

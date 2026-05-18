@@ -1,0 +1,276 @@
+{
+  "startedAt": "2026-05-18T19:38:28.439Z",
+  "completedAt": "2026-05-18T19:41:29.643Z",
+  "apiUrl": "http://127.0.0.1:3303",
+  "prompts": [
+    "Build a simple landing page with hero section, features, and CTA.",
+    "Build a simple SaaS dashboard with sidebar, KPI cards, and recent activity.",
+    "Build a simple pricing page with three plans and feature comparison."
+  ],
+  "repeatCycles": 1,
+  "minSuccessMissions": 3,
+  "summary": {
+    "total": 3,
+    "succeeded": 3,
+    "failed": 0,
+    "successRate": 1,
+    "averageCompletionMs": 60153,
+    "retryFrequency": 0,
+    "previewStartupSuccess": 1,
+    "exportSuccessRate": 1,
+    "failureCategories": {},
+    "reliabilityByTier": [
+      {
+        "tier": "tier1",
+        "total": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "successRate": 0
+      },
+      {
+        "tier": "tier2",
+        "total": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "successRate": 0
+      },
+      {
+        "tier": "tier3",
+        "total": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "successRate": 0
+      }
+    ]
+  },
+  "preflightBefore": {
+    "ok": true,
+    "checkedAt": "2026-05-18T19:38:28.457Z",
+    "requiredProviders": [
+      "azure"
+    ],
+    "providerPreflight": {
+      "ok": true,
+      "requiredProviders": [
+        "azure"
+      ],
+      "providers": {
+        "openai": {
+          "provider": "openai",
+          "healthy": false,
+          "reason": "provider-healthcheck-failed",
+          "checkedAt": "2026-05-18T19:38:28.458Z",
+          "latencyMs": 114
+        },
+        "azure": {
+          "provider": "azure",
+          "healthy": true,
+          "reason": "ok",
+          "checkedAt": "2026-05-18T19:38:28.572Z",
+          "latencyMs": 0
+        }
+      },
+      "checkedAt": "2026-05-18T19:38:28.458Z"
+    },
+    "services": {
+      "storage": {
+        "ok": true,
+        "reason": "ok"
+      },
+      "preview": {
+        "ok": true,
+        "reason": "ok"
+      }
+    },
+    "reason": null
+  },
+  "preflightAfter": {
+    "ok": true,
+    "checkedAt": "2026-05-18T19:41:29.036Z",
+    "requiredProviders": [
+      "azure"
+    ],
+    "providerPreflight": {
+      "ok": true,
+      "requiredProviders": [
+        "azure"
+      ],
+      "providers": {
+        "openai": {
+          "provider": "openai",
+          "healthy": false,
+          "reason": "provider-healthcheck-failed",
+          "checkedAt": "2026-05-18T19:41:29.037Z",
+          "latencyMs": 488
+        },
+        "azure": {
+          "provider": "azure",
+          "healthy": true,
+          "reason": "ok",
+          "checkedAt": "2026-05-18T19:41:29.525Z",
+          "latencyMs": 0
+        }
+      },
+      "checkedAt": "2026-05-18T19:41:29.037Z"
+    },
+    "services": {
+      "storage": {
+        "ok": true,
+        "reason": "ok"
+      },
+      "preview": {
+        "ok": true,
+        "reason": "ok"
+      }
+    },
+    "reason": null
+  },
+  "runtimeTelemetry": {
+    "observedAt": "2026-05-18T19:41:29.643Z",
+    "missions": {
+      "accepted": 3,
+      "terminal": 3,
+      "completed": 3,
+      "failed": 0,
+      "successRate": 1,
+      "avgCompletionMs": 36
+    },
+    "reliability": {
+      "failuresByCategory": {},
+      "failuresByPhase": {},
+      "artifactCorruptionRate": 0
+    },
+    "providers": {
+      "preflightBlockedLaunches": 0,
+      "requiredProviders": [
+        "azure"
+      ],
+      "currentStatus": {
+        "openai": {
+          "provider": "openai",
+          "healthy": false,
+          "reason": "provider-healthcheck-failed",
+          "checkedAt": "2026-05-18T19:41:29.529Z",
+          "latencyMs": 114
+        },
+        "azure": {
+          "provider": "azure",
+          "healthy": true,
+          "reason": "ok",
+          "checkedAt": "2026-05-18T19:41:29.643Z",
+          "latencyMs": 0
+        }
+      },
+      "failureRate": 0.5
+    },
+    "retries": {
+      "averageRetriesPerSession": 0
+    },
+    "preview": {
+      "attempted": 3,
+      "ready": 3,
+      "startupSuccessRate": 1
+    },
+    "export": {
+      "attempts": 3,
+      "successes": 3,
+      "failures": 0,
+      "successRate": 1
+    }
+  },
+  "results": [
+    {
+      "index": 0,
+      "tier": "custom",
+      "prompt": "Build a simple landing page with hero section, features, and CTA.",
+      "projectId": "Wa3JYZP3aW3P",
+      "sessionId": "3nhLh5PG3zrIXzzZ",
+      "status": "pass",
+      "durationMs": 51025,
+      "filesCount": 15,
+      "previewState": "ready",
+      "previewUrl": "/preview/Wa3JYZP3aW3P/",
+      "exportOk": true,
+      "exportState": "ok",
+      "retriesObserved": 0,
+      "phasesSeen": [
+        "init",
+        "planning",
+        "artifact_packaging"
+      ],
+      "failureCategory": null,
+      "failurePhase": null,
+      "failureReason": null,
+      "failedAgent": null,
+      "failedStep": null,
+      "retryCount": 0,
+      "lastValidCheckpoint": null,
+      "filesGeneratedBeforeFailure": 15,
+      "recoveryAttempted": false,
+      "recommendedNextAction": null,
+      "zeroFileClassification": null
+    },
+    {
+      "index": 1,
+      "tier": "custom",
+      "prompt": "Build a simple SaaS dashboard with sidebar, KPI cards, and recent activity.",
+      "projectId": "nbku60IQKW2u",
+      "sessionId": "gxbk58omqCH8ba_v",
+      "status": "pass",
+      "durationMs": 60736,
+      "filesCount": 15,
+      "previewState": "ready",
+      "previewUrl": "/preview/nbku60IQKW2u/",
+      "exportOk": true,
+      "exportState": "ok",
+      "retriesObserved": 0,
+      "phasesSeen": [
+        "init",
+        "planning",
+        "artifact_packaging"
+      ],
+      "failureCategory": null,
+      "failurePhase": null,
+      "failureReason": null,
+      "failedAgent": null,
+      "failedStep": null,
+      "retryCount": 0,
+      "lastValidCheckpoint": null,
+      "filesGeneratedBeforeFailure": 15,
+      "recoveryAttempted": false,
+      "recommendedNextAction": null,
+      "zeroFileClassification": null
+    },
+    {
+      "index": 2,
+      "tier": "custom",
+      "prompt": "Build a simple pricing page with three plans and feature comparison.",
+      "projectId": "mj1Tj5ZDJl0H",
+      "sessionId": "LPendR6Scj2_AXf0",
+      "status": "pass",
+      "durationMs": 68698,
+      "filesCount": 14,
+      "previewState": "ready",
+      "previewUrl": "/preview/mj1Tj5ZDJl0H/",
+      "exportOk": true,
+      "exportState": "ok",
+      "retriesObserved": 0,
+      "phasesSeen": [
+        "init",
+        "planning",
+        "artifact_packaging"
+      ],
+      "failureCategory": null,
+      "failurePhase": null,
+      "failureReason": null,
+      "failedAgent": null,
+      "failedStep": null,
+      "retryCount": 0,
+      "lastValidCheckpoint": null,
+      "filesGeneratedBeforeFailure": 14,
+      "recoveryAttempted": false,
+      "recommendedNextAction": null,
+      "zeroFileClassification": null
+    }
+  ]
+}

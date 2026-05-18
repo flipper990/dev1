@@ -93,6 +93,9 @@ export function recommendNextAction(input: {
   if (input.classification.category === 'tier1_scope_violation') {
     return 'Exclude backend/runtime artifacts from Tier 1 final files and rerun deterministic contract.';
   }
+  if (input.classification.category === 'tier3_contract_missing') {
+    return 'Generate and retain src/contracts/* artifacts before frontend/backend assembly, then rerun Tier 3 contract-first validation.';
+  }
   if (input.classification.category === 'timeout') {
     return 'Inspect watchdog/session heartbeat timeline and unblock the stalled phase before rerun.';
   }

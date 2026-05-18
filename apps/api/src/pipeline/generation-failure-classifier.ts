@@ -15,6 +15,7 @@ export type GenerationFailureCategory =
   | 'project_persistence_failure'
   | 'filesystem_permission_failure'
   | 'tier1_scope_violation'
+  | 'tier3_contract_missing'
   | 'unknown';
 
 export interface GenerationFailureClassification {
@@ -122,6 +123,13 @@ export function classifyGenerationFailure(input: {
       category: 'tier1_scope_violation',
       code: 'TIER1_SCOPE_VIOLATION',
       reason: 'Tier 1 artifact scope includes backend/runtime files that must be excluded.',
+    };
+  }
+  if (/\b(tier3_contract_missing|required contract artifacts missing|required contracts missing|missing contract artifact)\b/.test(source)) {
+    return {
+      category: 'tier3_contract_missing',
+      code: 'TIER3_CONTRACT_MISSING',
+      reason: 'Tier 3 contract-first flow is missing required contract artifacts.',
     };
   }
   if (/\b(module not found|cannot find module|dependency|package\.json|eoverride|eresolve)\b/.test(source)) {

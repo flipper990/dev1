@@ -57,6 +57,13 @@ import {
 } from './slice-runner.js';
 import { runDeterministicImportRepair, type ImportRepairDiagnostics } from './import-repair.js';
 import { evaluateQaGateDecision } from './qa-gate-policy.js';
+import { classifyPromptTier, type PromptTierClassification } from './prompt-tier-classifier.js';
+import { runFastTier1Generation } from './fast-tier1-runner.js';
+import { runTier2StructuredGeneration } from './tier2-structured-runner.js';
+import { runTier3ContractFirstGeneration } from './tier3-contract-runner.js';
+import { routeOrchestrationTier } from './orchestration-router.js';
+import { deriveQualityTerminalStatus } from './terminal-quality.js';
+import { summarizePhaseDurationsFromLedger } from './phase-duration-summary.js';
 import {
   buildPreviewValidationArtifacts as buildPreviewValidationArtifactsForScheduler,
   scheduleRuntimeValidation as scheduleRuntimeValidationForScheduler,
@@ -2132,6 +2139,29 @@ export class ProjectGenerator {
     const { projectId, sessionId, request, project, session, cacheKey, phaseRef } = ctx;
     const bus = new InMemoryMessageBus();
     const pipelineStartedAt = Date.now();
+    const tier = classifyPromptTier(request.prompts);
+    const route = routeOrchestrationTier(tier.tier, {
+      tier1FastEnabled: config.pipeline.fastTier1Path,
+      tier2StructuredEnabled: config.pipeline.fastTier2Path,
+      tier3ContractFirstEnabled: config.pipeline.tier3ContractFirstPath,
+      tier1: {
+        timeoutMs: config.pipeline.tier1TimeoutMs,
+        retryBudget: config.pipeline.tier1RetryBudget,
+      },
+      tier2: {
+        timeoutMs: config.pipeline.tier2TimeoutMs,
+        retryBudget: config.pipeline.tier2RetryBudget,
+      },
+      tier3: {
+        timeoutMs: config.pipeline.tier3TimeoutMs,
+        retryBudget: config.pipeline.tier3RetryBudget,
+      },
+    });
+    project.diagnostics = project.diagnostics ?? {};
+    (project.diagnostics as Record<string, unknown>).tierClassification = tier.tier;
+    (project.diagnostics as Record<string, unknown>).fastPathUsed = false;
+    (project.diagnostics as Record<string, unknown>).orchestrationRoute = route;
+    let fastPathFallbackReason: string | null = null;
     phaseRef.current = 'spec';
     /**
      * Soft deadline computed after slice planning (see below). When reached
@@ -2142,6 +2172,90 @@ export class ProjectGenerator {
      */
     let softDeadlineMs = pipelineStartedAt + this.pipelineHardTimeoutMs;
     let softDeadlineHit = false;
+
+    if (config.pipeline.multiTierRouter) {
+      if (route.generationPath === 'tier1-fast') {
+        phaseRef.current = 'fast-tier1';
+        phaseRef.currentStep = 'classified';
+        await this.markProgress(project, { phase: 'fast-tier1', step: 'classified' });
+        try {
+          return await this.runFastTier1Pipeline({
+            projectId,
+            sessionId,
+            request,
+            project,
+            tierClassification: tier.tier,
+            pipelineStartedAt,
+          });
+        } catch (err) {
+          if (!config.pipeline.fastTier1FallbackToLegacy) {
+            throw err;
+          }
+          fastPathFallbackReason = err instanceof Error ? err.message : String(err);
+          this.logger.warn('[fast-tier1] fast path failed, falling back to legacy pipeline', {
+            event: 'fast-tier1:fallback-to-legacy',
+            projectId,
+            sessionId,
+            reason: fastPathFallbackReason,
+          });
+          (project.diagnostics as Record<string, unknown>).fastPathUsed = false;
+          (project.diagnostics as Record<string, unknown>).fastTier1 = {
+            fastPathUsed: true,
+            fallbackToLegacy: true,
+            terminalStatus: 'completed_degraded',
+            failureReason: fastPathFallbackReason,
+          };
+        }
+      } else if (route.generationPath === 'tier2-structured') {
+        phaseRef.current = 'tier2-structured';
+        phaseRef.currentStep = 'classified';
+        await this.markProgress(project, { phase: 'tier2-structured', step: 'classified' });
+        try {
+          return await this.runTier2StructuredPipeline({
+            projectId,
+            sessionId,
+            request,
+            project,
+            tierClassification: tier.tier,
+            pipelineStartedAt,
+            routeBudgets: route.budgets,
+          });
+        } catch (err) {
+          if (!config.pipeline.multiTierFallbackToLegacy) throw err;
+          fastPathFallbackReason = err instanceof Error ? err.message : String(err);
+          this.logger.warn('[tier2-structured] path failed, falling back to legacy pipeline', {
+            event: 'tier2-structured:fallback-to-legacy',
+            projectId,
+            sessionId,
+            reason: fastPathFallbackReason,
+          });
+        }
+      } else if (route.generationPath === 'tier3-contract-first') {
+        phaseRef.current = 'tier3-contract-first';
+        phaseRef.currentStep = 'classified';
+        await this.markProgress(project, { phase: 'tier3-contract-first', step: 'classified' });
+        try {
+          return await this.runTier3ContractPipeline({
+            projectId,
+            sessionId,
+            request,
+            project,
+            tierClassification: tier.tier,
+            pipelineStartedAt,
+            routeBudgets: route.budgets,
+          });
+        } catch (err) {
+          if (!config.pipeline.multiTierFallbackToLegacy) throw err;
+          fastPathFallbackReason = err instanceof Error ? err.message : String(err);
+          this.logger.warn('[tier3-contract-first] path failed, falling back to legacy pipeline', {
+            event: 'tier3-contract-first:fallback-to-legacy',
+            projectId,
+            sessionId,
+            reason: fastPathFallbackReason,
+          });
+        }
+      }
+    }
 
     // Multi-orchestrator pipelines (Phase 1 spec, then per-slice
     // builder/qa/polish, then per-slice rebuilds) all emit their own
@@ -4114,6 +4228,47 @@ export class ProjectGenerator {
         stepsSkipped:   stepSummaries.filter(s => s.status === 'skipped').length,
       });
 
+      {
+        const timing = summarizePhaseDurationsFromLedger(project.diagnostics?.pipelineLedger);
+        const observability = this.deriveObservabilityCounters(project);
+        project.diagnostics = project.diagnostics ?? {};
+        (project.diagnostics as Record<string, unknown>).phaseDurations = timing.phaseDurations;
+        (project.diagnostics as Record<string, unknown>).slowestPhasesTop5 = timing.slowestPhasesTop5;
+        (project.diagnostics as Record<string, unknown>).totalRuntimeMs = Date.now() - pipelineStartedAt;
+        (project.diagnostics as Record<string, unknown>).providerCallCount = observability.providerCallCount;
+        (project.diagnostics as Record<string, unknown>).repairAttemptCount = observability.repairAttemptCount;
+        (project.diagnostics as Record<string, unknown>).slicesGenerated =
+          Number((project.diagnostics as Record<string, unknown>).slicesGenerated ?? 0);
+        (project.diagnostics as Record<string, unknown>).slicesRejected =
+          Number((project.diagnostics as Record<string, unknown>).slicesRejected ?? 0);
+        (project.diagnostics as Record<string, unknown>).slicesRepaired =
+          Number((project.diagnostics as Record<string, unknown>).slicesRepaired ?? 0);
+        const qualityTerminalStatus = deriveQualityTerminalStatus({
+          generated: project.status === 'generated',
+          fallbackUsed: Boolean(fastPathFallbackReason),
+          failureCategory: project.failure?.classification?.category ?? null,
+        });
+        (project.diagnostics as Record<string, unknown>).qualityTerminalStatus = qualityTerminalStatus;
+        if (fastPathFallbackReason) {
+          (project.diagnostics as Record<string, unknown>).fastTier1 = {
+            fastPathUsed: false,
+            fallbackToLegacy: true,
+            terminalStatus: project.status === 'generated' ? 'completed_degraded' : 'failed',
+            failureReason: fastPathFallbackReason,
+            tierClassification: tier.tier,
+            qualityTerminalStatus,
+          };
+        } else {
+          (project.diagnostics as Record<string, unknown>).fastTier1 = {
+            fastPathUsed: false,
+            fallbackToLegacy: false,
+            terminalStatus: project.status === 'generated' ? 'completed_full_quality' : 'failed',
+            tierClassification: tier.tier,
+            qualityTerminalStatus,
+          };
+        }
+      }
+
       return {
         projectId, sessionId, success: pipelineState.status === 'completed' && qaPassed,
         cached: false, project, steps: stepSummaries,
@@ -4127,6 +4282,353 @@ export class ProjectGenerator {
         error: pipelineState.error ?? (qaPassed ? undefined : qaDecision.reason),
       };
     }
+  }
+
+  private async runFastTier1Pipeline(ctx: {
+    projectId: string;
+    sessionId: string;
+    request: GenerateRequest;
+    project: ProjectRecord;
+    tierClassification: PromptTierClassification;
+    pipelineStartedAt: number;
+  }): Promise<GenerateResult> {
+    const { projectId, sessionId, request, project, tierClassification, pipelineStartedAt } = ctx;
+
+    await this.markProgress(project, { phase: 'fast-tier1', step: 'template_ready' });
+    const fast = await runFastTier1Generation({
+      projectId,
+      prompt: request.prompts.join('\n'),
+      logger: this.logger,
+    });
+
+    for (const phaseName of [
+      'page_slice_generating',
+      'component_slice_generating',
+      'style_slice_generating',
+      'mock_data_generating',
+      'slice_validating',
+      'slice_repairing',
+      'assembling',
+      'final_build',
+    ]) {
+      if ((fast.phaseDurations[phaseName] ?? 0) > 0) {
+        await this.markProgress(project, { phase: 'fast-tier1', step: phaseName });
+      }
+    }
+
+    const finalIntegrity = runFinalIntegrityGate(fast.files);
+    if (finalIntegrity.verdict !== 'pass') {
+      throw new Error(`fast-tier1 integrity failed: ${describeIntegrityFailure(finalIntegrity)}`);
+    }
+    this.assertArtifactIntegrityOrThrow(fast.files, {
+      phase: 'fast-tier1',
+      step: 'final_build',
+      requireAppEntry: true,
+    });
+
+    project.status = 'generated';
+    project.projectStatus = 'generated';
+    project.completedAt = new Date().toISOString();
+    project.files = fast.files.map((f) => ({ path: f.path, content: f.content }));
+    project.tasks = [
+      {
+        id: 'fast-tier1',
+        agentRole: 'builder',
+        status: 'completed',
+        durationMs: project.durationMs,
+        tokensUsed: project.totalTokens ?? 0,
+        costUsd: project.totalCostUsd ?? 0,
+      },
+    ];
+    project.durationMs = Date.now() - pipelineStartedAt;
+    project.integrityReport = finalIntegrity;
+
+    const slowestPhasesTop5 = Object.entries(fast.phaseDurations)
+      .map(([phase, durationMs]) => ({ phase, durationMs }))
+      .sort((a, b) => b.durationMs - a.durationMs)
+      .slice(0, 5);
+
+    project.diagnostics = project.diagnostics ?? {};
+    const observability = this.deriveObservabilityCounters(project);
+    (project.diagnostics as Record<string, unknown>).fastPathUsed = true;
+    (project.diagnostics as Record<string, unknown>).tierClassification = tierClassification;
+    (project.diagnostics as Record<string, unknown>).phaseDurations = fast.phaseDurations;
+    (project.diagnostics as Record<string, unknown>).slowestPhasesTop5 = slowestPhasesTop5;
+    (project.diagnostics as Record<string, unknown>).slicesGenerated = fast.slicesGenerated;
+    (project.diagnostics as Record<string, unknown>).slicesRepaired = fast.slicesRepaired;
+    (project.diagnostics as Record<string, unknown>).slicesRejected = fast.slicesRejected;
+    (project.diagnostics as Record<string, unknown>).totalRuntimeMs = project.durationMs;
+    (project.diagnostics as Record<string, unknown>).providerCallCount = observability.providerCallCount;
+    (project.diagnostics as Record<string, unknown>).repairAttemptCount = observability.repairAttemptCount;
+    (project.diagnostics as Record<string, unknown>).finalBuildDurationMs = fast.finalBuildDurationMs;
+    (project.diagnostics as Record<string, unknown>).previewDurationMs = 0;
+    (project.diagnostics as Record<string, unknown>).fastTier1 = {
+      fastPathUsed: true,
+      tierClassification,
+      terminalStatus: 'completed_full_quality',
+      qualityTerminalStatus: deriveQualityTerminalStatus({ generated: true, fallbackUsed: false }),
+      workerOutputs: fast.workerOutputs,
+      validation: fast.validation,
+      retries: fast.retries,
+      phaseDurations: fast.phaseDurations,
+      slicesGenerated: fast.slicesGenerated,
+      slicesRepaired: fast.slicesRepaired,
+      slicesRejected: fast.slicesRejected,
+    };
+
+    await this.projectStore.save(project, {
+      caller: 'project-generator:fast-tier1',
+      reason: 'fast tier1 final save',
+    });
+
+    await this.markProgress(project, { phase: 'fast-tier1', step: 'preview_starting' });
+    this.scheduleExecutionValidation(project);
+    this.scheduleRuntimeValidation(project);
+    await this.markProgress(project, { phase: 'fast-tier1', step: 'export_ready' });
+
+    return {
+      projectId,
+      sessionId,
+      success: true,
+      cached: false,
+      project,
+      steps: [],
+      optimization: {
+        requestCacheHit: false,
+        pipelineCacheHits: 0,
+        pipelineCacheMisses: 0,
+        skippedSteps: 0,
+        estimatedApiCallsSaved: 0,
+      },
+    };
+  }
+
+  private async runTier2StructuredPipeline(ctx: {
+    projectId: string;
+    sessionId: string;
+    request: GenerateRequest;
+    project: ProjectRecord;
+    tierClassification: PromptTierClassification;
+    pipelineStartedAt: number;
+    routeBudgets: { timeoutMs: number; retryBudget: number };
+  }): Promise<GenerateResult> {
+    const { projectId, sessionId, request, project, tierClassification, pipelineStartedAt, routeBudgets } = ctx;
+    await this.markProgress(project, { phase: 'tier2-structured', step: 'template_ready' });
+    const tier2 = await runTier2StructuredGeneration({
+      projectId,
+      prompt: request.prompts.join('\n'),
+      logger: this.logger,
+    });
+
+    for (const phaseName of [
+      'app_planner_generating',
+      'route_slice_generating',
+      'component_slice_generating',
+      'state_form_slice_generating',
+      'mock_data_generating',
+      'slice_validating',
+      'assembling',
+      'final_build',
+    ]) {
+      if ((tier2.phaseDurations[phaseName] ?? 0) > 0) {
+        await this.markProgress(project, { phase: 'tier2-structured', step: phaseName });
+      }
+    }
+
+    const finalIntegrity = runFinalIntegrityGate(tier2.files);
+    if (finalIntegrity.verdict !== 'pass') {
+      throw new Error(`tier2 integrity failed: ${describeIntegrityFailure(finalIntegrity)}`);
+    }
+    this.assertArtifactIntegrityOrThrow(tier2.files, {
+      phase: 'tier2-structured',
+      step: 'final_build',
+      requireAppEntry: true,
+    });
+
+    project.status = 'generated';
+    project.projectStatus = 'generated';
+    project.completedAt = new Date().toISOString();
+    project.files = tier2.files.map((f) => ({ path: f.path, content: f.content }));
+    project.tasks = [
+      {
+        id: 'tier2-structured',
+        agentRole: 'builder',
+        status: 'completed',
+        durationMs: project.durationMs,
+        tokensUsed: project.totalTokens ?? 0,
+        costUsd: project.totalCostUsd ?? 0,
+      },
+    ];
+    project.durationMs = Date.now() - pipelineStartedAt;
+    project.integrityReport = finalIntegrity;
+    project.diagnostics = project.diagnostics ?? {};
+    const observability = this.deriveObservabilityCounters(project);
+    (project.diagnostics as Record<string, unknown>).fastPathUsed = true;
+    (project.diagnostics as Record<string, unknown>).tierClassification = tierClassification;
+    (project.diagnostics as Record<string, unknown>).phaseDurations = tier2.phaseDurations;
+    (project.diagnostics as Record<string, unknown>).slicesGenerated = tier2.slicesGenerated;
+    (project.diagnostics as Record<string, unknown>).slicesRepaired = tier2.slicesRepaired;
+    (project.diagnostics as Record<string, unknown>).slicesRejected = tier2.slicesRejected;
+    (project.diagnostics as Record<string, unknown>).totalRuntimeMs = project.durationMs;
+    (project.diagnostics as Record<string, unknown>).providerCallCount = observability.providerCallCount;
+    (project.diagnostics as Record<string, unknown>).repairAttemptCount = observability.repairAttemptCount;
+    (project.diagnostics as Record<string, unknown>).finalBuildDurationMs = tier2.finalBuildDurationMs;
+    (project.diagnostics as Record<string, unknown>).previewDurationMs = 0;
+    (project.diagnostics as Record<string, unknown>).tier2 = {
+      fastPathUsed: true,
+      tierClassification,
+      terminalStatus: 'completed_full_quality',
+      qualityTerminalStatus: deriveQualityTerminalStatus({ generated: true, fallbackUsed: false }),
+      workerOutputs: tier2.workerOutputs,
+      validation: tier2.validation,
+      retries: tier2.retries,
+      budgets: routeBudgets,
+      phaseDurations: tier2.phaseDurations,
+      slicesGenerated: tier2.slicesGenerated,
+      slicesRepaired: tier2.slicesRepaired,
+      slicesRejected: tier2.slicesRejected,
+    };
+
+    await this.projectStore.save(project, {
+      caller: 'project-generator:tier2-structured',
+      reason: 'tier2 structured final save',
+    });
+
+    await this.markProgress(project, { phase: 'tier2-structured', step: 'preview_starting' });
+    this.scheduleExecutionValidation(project);
+    this.scheduleRuntimeValidation(project);
+    await this.markProgress(project, { phase: 'tier2-structured', step: 'export_ready' });
+
+    return {
+      projectId,
+      sessionId,
+      success: true,
+      cached: false,
+      project,
+      steps: [],
+      optimization: {
+        requestCacheHit: false,
+        pipelineCacheHits: 0,
+        pipelineCacheMisses: 0,
+        skippedSteps: 0,
+        estimatedApiCallsSaved: 0,
+      },
+    };
+  }
+
+  private async runTier3ContractPipeline(ctx: {
+    projectId: string;
+    sessionId: string;
+    request: GenerateRequest;
+    project: ProjectRecord;
+    tierClassification: PromptTierClassification;
+    pipelineStartedAt: number;
+    routeBudgets: { timeoutMs: number; retryBudget: number };
+  }): Promise<GenerateResult> {
+    const { projectId, sessionId, request, project, tierClassification, pipelineStartedAt, routeBudgets } = ctx;
+    await this.markProgress(project, { phase: 'tier3-contract-first', step: 'product_spec_generating' });
+    const tier3 = await runTier3ContractFirstGeneration({
+      projectId,
+      prompt: request.prompts.join('\n'),
+      logger: this.logger,
+    });
+
+    for (const phaseName of [
+      'architecture_generating',
+      'contract_generating',
+      'frontend_slice_generating',
+      'backend_slice_generating',
+      'database_slice_generating',
+      'integration_slice_generating',
+      'slice_validating',
+      'assembling',
+      'final_build',
+    ]) {
+      if ((tier3.phaseDurations[phaseName] ?? 0) > 0) {
+        await this.markProgress(project, { phase: 'tier3-contract-first', step: phaseName });
+      }
+    }
+
+    const finalIntegrity = runFinalIntegrityGate(tier3.files);
+    if (finalIntegrity.verdict !== 'pass') {
+      throw new Error(`tier3 integrity failed: ${describeIntegrityFailure(finalIntegrity)}`);
+    }
+    this.assertArtifactIntegrityOrThrow(tier3.files, {
+      phase: 'tier3-contract-first',
+      step: 'final_build',
+      requireAppEntry: true,
+    });
+
+    project.status = 'generated';
+    project.projectStatus = 'generated';
+    project.completedAt = new Date().toISOString();
+    project.files = tier3.files.map((f) => ({ path: f.path, content: f.content }));
+    project.tasks = [
+      {
+        id: 'tier3-contract-first',
+        agentRole: 'builder',
+        status: 'completed',
+        durationMs: project.durationMs,
+        tokensUsed: project.totalTokens ?? 0,
+        costUsd: project.totalCostUsd ?? 0,
+      },
+    ];
+    project.durationMs = Date.now() - pipelineStartedAt;
+    project.integrityReport = finalIntegrity;
+    project.diagnostics = project.diagnostics ?? {};
+    const observability = this.deriveObservabilityCounters(project);
+    (project.diagnostics as Record<string, unknown>).fastPathUsed = true;
+    (project.diagnostics as Record<string, unknown>).tierClassification = tierClassification;
+    (project.diagnostics as Record<string, unknown>).phaseDurations = tier3.phaseDurations;
+    (project.diagnostics as Record<string, unknown>).slicesGenerated = tier3.slicesGenerated;
+    (project.diagnostics as Record<string, unknown>).slicesRepaired = tier3.slicesRepaired;
+    (project.diagnostics as Record<string, unknown>).slicesRejected = tier3.slicesRejected;
+    (project.diagnostics as Record<string, unknown>).totalRuntimeMs = project.durationMs;
+    (project.diagnostics as Record<string, unknown>).providerCallCount = observability.providerCallCount;
+    (project.diagnostics as Record<string, unknown>).repairAttemptCount = observability.repairAttemptCount;
+    (project.diagnostics as Record<string, unknown>).finalBuildDurationMs = tier3.finalBuildDurationMs;
+    (project.diagnostics as Record<string, unknown>).previewDurationMs = 0;
+    (project.diagnostics as Record<string, unknown>).tier3 = {
+      fastPathUsed: true,
+      tierClassification,
+      terminalStatus: 'completed_full_quality',
+      qualityTerminalStatus: deriveQualityTerminalStatus({ generated: true, fallbackUsed: false }),
+      contracts: tier3.contracts,
+      workerOutputs: tier3.workerOutputs,
+      validation: tier3.validation,
+      retries: tier3.retries,
+      budgets: routeBudgets,
+      phaseDurations: tier3.phaseDurations,
+      slicesGenerated: tier3.slicesGenerated,
+      slicesRepaired: tier3.slicesRepaired,
+      slicesRejected: tier3.slicesRejected,
+    };
+
+    await this.projectStore.save(project, {
+      caller: 'project-generator:tier3-contract-first',
+      reason: 'tier3 contract-first final save',
+    });
+
+    await this.markProgress(project, { phase: 'tier3-contract-first', step: 'preview_starting' });
+    this.scheduleExecutionValidation(project);
+    this.scheduleRuntimeValidation(project);
+    await this.markProgress(project, { phase: 'tier3-contract-first', step: 'export_ready' });
+
+    return {
+      projectId,
+      sessionId,
+      success: true,
+      cached: false,
+      project,
+      steps: [],
+      optimization: {
+        requestCacheHit: false,
+        pipelineCacheHits: 0,
+        pipelineCacheMisses: 0,
+        skippedSteps: 0,
+        estimatedApiCallsSaved: 0,
+      },
+    };
   }
 
   async update(request: UpdateRequest): Promise<UpdateResult> {
@@ -4161,6 +4663,34 @@ export class ProjectGenerator {
 
   private shouldAllowBackendRuntimeArtifactsForTier1(prompts: string[]): boolean {
     return prompts.some((prompt) => BACKEND_OR_FULLSTACK_INTENT_RE.test(prompt));
+  }
+
+  private deriveObservabilityCounters(project: ProjectRecord): {
+    providerCallCount: number;
+    repairAttemptCount: number;
+  } {
+    const records = (((project.diagnostics?.pipelineLedger as { records?: unknown } | undefined)?.records ?? []) as Array<{
+      provider?: string | null;
+      model?: string | null;
+      inputTokens?: number;
+      outputTokens?: number;
+      costUsd?: number;
+      validationResult?: { repairCount?: number } | null;
+    }>);
+    const providerCallCountFromLedger = records.filter((record) => {
+      if (record.provider || record.model) return true;
+      const totalTokens = Number(record.inputTokens ?? 0) + Number(record.outputTokens ?? 0);
+      return totalTokens > 0 || Number(record.costUsd ?? 0) > 0;
+    }).length;
+    const providerCallCount = Math.max(
+      providerCallCountFromLedger,
+      Number(project.progress?.llmCallCount ?? 0),
+    );
+    const repairAttemptCount = records.reduce((sum, record) => {
+      const count = Number(record.validationResult?.repairCount ?? 0);
+      return sum + (Number.isFinite(count) && count > 0 ? count : 0);
+    }, 0);
+    return { providerCallCount, repairAttemptCount };
   }
 
   private async readResultCache(cacheKey: string): Promise<ProjectRecord | null> {

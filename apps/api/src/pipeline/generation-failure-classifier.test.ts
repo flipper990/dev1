@@ -92,6 +92,16 @@ test('tier1 backend path violation maps to tier1_scope_violation', () => {
   assert.equal(out.code, 'TIER1_SCOPE_VIOLATION');
 });
 
+test('tier3 missing contracts maps to tier3_contract_missing', () => {
+  const out = classifyGenerationFailure({
+    failedPhase: 'tier3-contract-first',
+    failedStep: 'contract_validating',
+    errorMessage: 'tier3_contract_missing: required contract artifacts missing: src/contracts/api-contract.ts',
+  });
+  assert.equal(out.category, 'tier3_contract_missing');
+  assert.equal(out.code, 'TIER3_CONTRACT_MISSING');
+});
+
 test('generic backend path mention without deterministic tier1 context does not map to tier1_scope_violation', () => {
   const out = classifyGenerationFailure({
     failedPhase: 'slice-1',

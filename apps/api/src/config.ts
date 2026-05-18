@@ -88,6 +88,18 @@ export const config = {
   pipeline: {
     maxConcurrentSessions: parseInt(process.env.MAX_CONCURRENT_SESSIONS ?? '10', 10),
     sessionTimeoutMs: parseInt(process.env.SESSION_TIMEOUT_MS ?? '300000', 10),
+    multiTierRouter: envBool(process.env.MULTI_TIER_ROUTER, true),
+    fastTier1Path: envBool(process.env.FAST_TIER1_PATH, false),
+    fastTier1FallbackToLegacy: envBool(process.env.FAST_TIER1_FALLBACK_TO_LEGACY, false),
+    fastTier2Path: envBool(process.env.FAST_TIER2_PATH, true),
+    tier3ContractFirstPath: envBool(process.env.TIER3_CONTRACT_FIRST_PATH, true),
+    multiTierFallbackToLegacy: envBool(process.env.MULTI_TIER_FALLBACK_TO_LEGACY, true),
+    tier1TimeoutMs: parseInt(process.env.TIER1_TIMEOUT_MS ?? '600000', 10),
+    tier2TimeoutMs: parseInt(process.env.TIER2_TIMEOUT_MS ?? '1200000', 10),
+    tier3TimeoutMs: parseInt(process.env.TIER3_TIMEOUT_MS ?? '1800000', 10),
+    tier1RetryBudget: parseInt(process.env.TIER1_RETRY_BUDGET ?? '1', 10),
+    tier2RetryBudget: parseInt(process.env.TIER2_RETRY_BUDGET ?? '2', 10),
+    tier3RetryBudget: parseInt(process.env.TIER3_RETRY_BUDGET ?? '3', 10),
   },
 
   generationBudget: {

@@ -1,0 +1,340 @@
+{
+  "startedAt": "2026-05-18T19:41:43.722Z",
+  "completedAt": "2026-05-18T19:46:48.933Z",
+  "apiUrl": "http://127.0.0.1:3303",
+  "prompts": [
+    "Build a simple landing page with hero section, features, and CTA.",
+    "Build a simple SaaS dashboard with sidebar, KPI cards, and recent activity.",
+    "Build a simple marketing website with home, features, and contact sections.",
+    "Build a simple pricing page with three plans and feature comparison.",
+    "Build a simple waitlist page with email capture form and confirmation state."
+  ],
+  "repeatCycles": 1,
+  "minSuccessMissions": 5,
+  "summary": {
+    "total": 5,
+    "succeeded": 5,
+    "failed": 0,
+    "successRate": 1,
+    "averageCompletionMs": 60896,
+    "retryFrequency": 0,
+    "previewStartupSuccess": 1,
+    "exportSuccessRate": 1,
+    "failureCategories": {},
+    "reliabilityByTier": [
+      {
+        "tier": "tier1",
+        "total": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "successRate": 0
+      },
+      {
+        "tier": "tier2",
+        "total": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "successRate": 0
+      },
+      {
+        "tier": "tier3",
+        "total": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "successRate": 0
+      }
+    ]
+  },
+  "preflightBefore": {
+    "ok": true,
+    "checkedAt": "2026-05-18T19:41:43.740Z",
+    "requiredProviders": [
+      "azure"
+    ],
+    "providerPreflight": {
+      "ok": true,
+      "requiredProviders": [
+        "azure"
+      ],
+      "providers": {
+        "openai": {
+          "provider": "openai",
+          "healthy": false,
+          "reason": "provider-healthcheck-failed",
+          "checkedAt": "2026-05-18T19:41:43.740Z",
+          "latencyMs": 114
+        },
+        "azure": {
+          "provider": "azure",
+          "healthy": true,
+          "reason": "ok",
+          "checkedAt": "2026-05-18T19:41:43.854Z",
+          "latencyMs": 0
+        }
+      },
+      "checkedAt": "2026-05-18T19:41:43.740Z"
+    },
+    "services": {
+      "storage": {
+        "ok": true,
+        "reason": "ok"
+      },
+      "preview": {
+        "ok": true,
+        "reason": "ok"
+      }
+    },
+    "reason": null
+  },
+  "preflightAfter": {
+    "ok": true,
+    "checkedAt": "2026-05-18T19:46:48.340Z",
+    "requiredProviders": [
+      "azure"
+    ],
+    "providerPreflight": {
+      "ok": true,
+      "requiredProviders": [
+        "azure"
+      ],
+      "providers": {
+        "openai": {
+          "provider": "openai",
+          "healthy": false,
+          "reason": "provider-healthcheck-failed",
+          "checkedAt": "2026-05-18T19:46:48.343Z",
+          "latencyMs": 471
+        },
+        "azure": {
+          "provider": "azure",
+          "healthy": true,
+          "reason": "ok",
+          "checkedAt": "2026-05-18T19:46:48.814Z",
+          "latencyMs": 0
+        }
+      },
+      "checkedAt": "2026-05-18T19:46:48.343Z"
+    },
+    "services": {
+      "storage": {
+        "ok": true,
+        "reason": "ok"
+      },
+      "preview": {
+        "ok": true,
+        "reason": "ok"
+      }
+    },
+    "reason": null
+  },
+  "runtimeTelemetry": {
+    "observedAt": "2026-05-18T19:46:48.934Z",
+    "missions": {
+      "accepted": 5,
+      "terminal": 5,
+      "completed": 5,
+      "failed": 0,
+      "successRate": 1,
+      "avgCompletionMs": 40163
+    },
+    "reliability": {
+      "failuresByCategory": {},
+      "failuresByPhase": {},
+      "artifactCorruptionRate": 0
+    },
+    "providers": {
+      "preflightBlockedLaunches": 0,
+      "requiredProviders": [
+        "azure"
+      ],
+      "currentStatus": {
+        "openai": {
+          "provider": "openai",
+          "healthy": false,
+          "reason": "provider-healthcheck-failed",
+          "checkedAt": "2026-05-18T19:46:48.821Z",
+          "latencyMs": 113
+        },
+        "azure": {
+          "provider": "azure",
+          "healthy": true,
+          "reason": "ok",
+          "checkedAt": "2026-05-18T19:46:48.934Z",
+          "latencyMs": 0
+        }
+      },
+      "failureRate": 0.5
+    },
+    "retries": {
+      "averageRetriesPerSession": 0
+    },
+    "preview": {
+      "attempted": 3,
+      "ready": 3,
+      "startupSuccessRate": 1
+    },
+    "export": {
+      "attempts": 5,
+      "successes": 5,
+      "failures": 0,
+      "successRate": 1
+    }
+  },
+  "results": [
+    {
+      "index": 0,
+      "tier": "custom",
+      "prompt": "Build a simple landing page with hero section, features, and CTA.",
+      "projectId": "pFqKN4N5YfUh",
+      "sessionId": "Z3Hz1jHjpQhBzRUq",
+      "status": "pass",
+      "durationMs": 65843,
+      "filesCount": 15,
+      "previewState": "ready",
+      "previewUrl": "/preview/pFqKN4N5YfUh/",
+      "exportOk": true,
+      "exportState": "ok",
+      "retriesObserved": 0,
+      "phasesSeen": [
+        "init",
+        "planning",
+        "artifact_packaging"
+      ],
+      "failureCategory": null,
+      "failurePhase": null,
+      "failureReason": null,
+      "failedAgent": null,
+      "failedStep": null,
+      "retryCount": 0,
+      "lastValidCheckpoint": null,
+      "filesGeneratedBeforeFailure": 15,
+      "recoveryAttempted": false,
+      "recommendedNextAction": null,
+      "zeroFileClassification": null
+    },
+    {
+      "index": 1,
+      "tier": "custom",
+      "prompt": "Build a simple SaaS dashboard with sidebar, KPI cards, and recent activity.",
+      "projectId": "veoMXDOUWM8K",
+      "sessionId": "PrM3dtdv9mpJMsVm",
+      "status": "pass",
+      "durationMs": 69218,
+      "filesCount": 15,
+      "previewState": "ready",
+      "previewUrl": "/preview/veoMXDOUWM8K/",
+      "exportOk": true,
+      "exportState": "ok",
+      "retriesObserved": 0,
+      "phasesSeen": [
+        "init",
+        "planning",
+        "artifact_packaging"
+      ],
+      "failureCategory": null,
+      "failurePhase": null,
+      "failureReason": null,
+      "failedAgent": null,
+      "failedStep": null,
+      "retryCount": 0,
+      "lastValidCheckpoint": null,
+      "filesGeneratedBeforeFailure": 15,
+      "recoveryAttempted": false,
+      "recommendedNextAction": null,
+      "zeroFileClassification": null
+    },
+    {
+      "index": 2,
+      "tier": "custom",
+      "prompt": "Build a simple marketing website with home, features, and contact sections.",
+      "projectId": "7AP-Iuh0LCrD",
+      "sessionId": "ZT1imSZr5y7Lkv0E",
+      "status": "pass",
+      "durationMs": 61331,
+      "filesCount": 15,
+      "previewState": "ready",
+      "previewUrl": "/preview/7AP-Iuh0LCrD/",
+      "exportOk": true,
+      "exportState": "ok",
+      "retriesObserved": 0,
+      "phasesSeen": [
+        "init",
+        "planning",
+        "artifact_packaging"
+      ],
+      "failureCategory": null,
+      "failurePhase": null,
+      "failureReason": null,
+      "failedAgent": null,
+      "failedStep": null,
+      "retryCount": 0,
+      "lastValidCheckpoint": null,
+      "filesGeneratedBeforeFailure": 15,
+      "recoveryAttempted": false,
+      "recommendedNextAction": null,
+      "zeroFileClassification": null
+    },
+    {
+      "index": 3,
+      "tier": "custom",
+      "prompt": "Build a simple pricing page with three plans and feature comparison.",
+      "projectId": "6px_ZBw97jUl",
+      "sessionId": "5w5bBIGEUrzB50Vg",
+      "status": "pass",
+      "durationMs": 54120,
+      "filesCount": 14,
+      "previewState": "ready",
+      "previewUrl": "/preview/6px_ZBw97jUl/",
+      "exportOk": true,
+      "exportState": "ok",
+      "retriesObserved": 0,
+      "phasesSeen": [
+        "init",
+        "planning",
+        "artifact_packaging"
+      ],
+      "failureCategory": null,
+      "failurePhase": null,
+      "failureReason": null,
+      "failedAgent": null,
+      "failedStep": null,
+      "retryCount": 0,
+      "lastValidCheckpoint": null,
+      "filesGeneratedBeforeFailure": 14,
+      "recoveryAttempted": false,
+      "recommendedNextAction": null,
+      "zeroFileClassification": null
+    },
+    {
+      "index": 4,
+      "tier": "custom",
+      "prompt": "Build a simple waitlist page with email capture form and confirmation state.",
+      "projectId": "WRn5FHm7zt_-",
+      "sessionId": "XNSaltmDkjvash_o",
+      "status": "pass",
+      "durationMs": 53970,
+      "filesCount": 14,
+      "previewState": "ready",
+      "previewUrl": "/preview/WRn5FHm7zt_-/",
+      "exportOk": true,
+      "exportState": "ok",
+      "retriesObserved": 0,
+      "phasesSeen": [
+        "init",
+        "queued",
+        "artifact_packaging"
+      ],
+      "failureCategory": null,
+      "failurePhase": null,
+      "failureReason": null,
+      "failedAgent": null,
+      "failedStep": null,
+      "retryCount": 0,
+      "lastValidCheckpoint": null,
+      "filesGeneratedBeforeFailure": 14,
+      "recoveryAttempted": false,
+      "recommendedNextAction": null,
+      "zeroFileClassification": null
+    }
+  ]
+}

@@ -12,12 +12,19 @@ export interface QaGateDecision {
 export function evaluateQaGateDecision(
   report: QAReport,
   input: {
-    tier: 'tier1';
+    tier: 'tier1' | 'tier2' | 'tier3';
     pipelineCompleted: boolean;
     minScore?: number;
   },
 ): QaGateDecision {
-  const threshold = Number.isFinite(input.minScore) ? Number(input.minScore) : 95;
+  const defaultThresholdByTier: Record<'tier1' | 'tier2' | 'tier3', number> = {
+    tier1: 95,
+    tier2: 95,
+    tier3: 96,
+  };
+  const threshold = Number.isFinite(input.minScore)
+    ? Number(input.minScore)
+    : defaultThresholdByTier[input.tier];
   const blockerCount = Array.isArray(report.blockers) ? report.blockers.length : 0;
   const findings = Array.isArray(report.findings) ? report.findings : [];
   const errorCount = findings.filter((f) => f.severity === 'error').length;
@@ -62,4 +69,3 @@ export function evaluateQaGateDecision(
     reason: `QA gate passed: score ${report.score}/100 (>=${threshold}), blockers=${blockerCount}, errors=${errorCount}, warnings=${warningCount}.`,
   };
 }
-

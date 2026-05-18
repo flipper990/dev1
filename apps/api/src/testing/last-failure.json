@@ -1,238 +1,58 @@
 {
-  "writtenAt": "2026-05-17T22:11:00.580Z",
-  "projectId": "x0DteHoUxYOG",
-  "sessionId": "jAB-GQlxtELuT-fX",
+  "writtenAt": "2026-05-18T20:40:52.468Z",
+  "projectId": "BDBid6rkkRPr",
+  "sessionId": "64UDX0AjIF_JlOH6",
   "status": "failed",
-  "phase": "finalize",
-  "step": "finalize:manifest-refreshed",
-  "llmCallCount": 9,
-  "totalTokens": 10710,
-  "totalCostUsd": 0.043362,
-  "filesWritten": 44,
-  "slicesPlanned": 2,
-  "lastSuccessfulPhase": "qa-gate",
-  "lastSuccessfulStep": "qa-gate:assign-optimization",
-  "error": "Pipeline did not reach 'completed' state (state=failed, error=Critical step \"QA\" failed: All models exhausted after 0ms. Tried: [azure/gpt-4.1, azure/gpt-4o-mini]. Last error: unavailable)",
+  "phase": "tier3-contract-first",
+  "step": "final_build",
+  "llmCallCount": 0,
+  "totalTokens": 0,
+  "totalCostUsd": 0,
+  "filesWritten": 0,
+  "slicesPlanned": 0,
+  "lastSuccessfulPhase": "reserved",
+  "lastSuccessfulStep": "reserved",
+  "error": "[artifact-integrity] tier3-contract-first -> final_build: MISSING_APP_ENTRY: No application entry page was generated.",
   "errorName": "Error",
-  "errorStack": "Error: Pipeline did not reach 'completed' state (state=failed, error=Critical step \"QA\" failed: All models exhausted after 0ms. Tried: [azure/gpt-4.1, azure/gpt-4o-mini]. Last error: unavailable)\n    at ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:3734:16)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2080:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:738:22)",
-  "failedPhase": "qa-gate",
-  "failedStep": "qa-gate:pipeline-not-completed",
-  "failedAt": "2026-05-17T22:11:00.533Z",
-  "durationMs": 2,
-  "diagnosticContextStartedAt": "2026-05-17T22:09:07.529Z",
-  "postPersistStepStatuses": [
-    {
-      "step": "final-assembly:merge-cumulative-artifacts",
-      "sliceId": "slice-2/2",
-      "startedAt": "2026-05-17T22:11:00.346Z",
-      "durationMs": 1,
-      "status": "ok"
-    },
-    {
-      "step": "final-assembly:assembleProject",
-      "sliceId": "slice-2/2",
-      "startedAt": "2026-05-17T22:11:00.347Z",
-      "durationMs": 2,
-      "status": "ok"
-    },
-    {
-      "step": "final-assembly:validateAndFixDependencies",
-      "sliceId": "slice-2/2",
-      "startedAt": "2026-05-17T22:11:00.364Z",
-      "durationMs": 1,
-      "status": "ok"
-    },
-    {
-      "step": "final-assembly:deterministic-contract",
-      "sliceId": "slice-2/2",
-      "startedAt": "2026-05-17T22:11:00.381Z",
-      "durationMs": 1,
-      "status": "ok"
-    },
-    {
-      "step": "final-assembly:buildTaskSummaries",
-      "sliceId": "slice-2/2",
-      "startedAt": "2026-05-17T22:11:00.382Z",
-      "durationMs": 1,
-      "status": "ok"
-    },
-    {
-      "step": "final-assembly:buildStepSummaries",
-      "sliceId": "slice-2/2",
-      "startedAt": "2026-05-17T22:11:00.383Z",
-      "durationMs": 0,
-      "status": "ok"
-    },
-    {
-      "step": "qa-gate:runQualityAssurance",
-      "sliceId": "slice-2/2",
-      "startedAt": "2026-05-17T22:11:00.397Z",
-      "durationMs": 3,
-      "status": "ok"
-    },
-    {
-      "step": "qa-gate:validateAndFixDependencies-after-qa",
-      "sliceId": "slice-2/2",
-      "startedAt": "2026-05-17T22:11:00.435Z",
-      "durationMs": 0,
-      "status": "ok"
-    },
-    {
-      "step": "qa-gate:apply-soft-deadline-warning",
-      "sliceId": "slice-2/2",
-      "startedAt": "2026-05-17T22:11:00.528Z",
-      "durationMs": 1,
-      "status": "ok"
-    },
-    {
-      "step": "qa-gate:assign-artifacts",
-      "sliceId": "slice-2/2",
-      "startedAt": "2026-05-17T22:11:00.529Z",
-      "durationMs": 0,
-      "status": "ok"
-    },
-    {
-      "step": "qa-gate:assign-qa-assurance",
-      "sliceId": "slice-2/2",
-      "startedAt": "2026-05-17T22:11:00.529Z",
-      "durationMs": 0,
-      "status": "ok"
-    },
-    {
-      "step": "qa-gate:assign-tasks-and-totals",
-      "sliceId": "slice-2/2",
-      "startedAt": "2026-05-17T22:11:00.529Z",
-      "durationMs": 0,
-      "status": "ok"
-    },
-    {
-      "step": "qa-gate:assign-optimization",
-      "sliceId": "slice-2/2",
-      "startedAt": "2026-05-17T22:11:00.529Z",
-      "durationMs": 0,
-      "status": "ok"
-    }
-  ],
-  "usageLog": [
-    {
-      "at": "2026-05-17T22:09:34.573Z",
-      "phase": "spec",
-      "agent": "spec",
-      "model": "gpt-4.1",
-      "provider": "azure",
-      "promptTokens": 7053,
-      "completionTokens": 3657,
-      "totalTokens": 10710,
-      "costUsd": 0.043362,
-      "latencyMs": 27035
-    },
-    {
-      "at": "2026-05-17T22:11:00.153Z",
-      "phase": "slice-1/2",
-      "agent": "builder",
-      "promptTokens": 0,
-      "completionTokens": 0,
-      "totalTokens": 0,
-      "costUsd": 0,
-      "latencyMs": 85546
-    },
-    {
-      "at": "2026-05-17T22:11:00.175Z",
-      "phase": "slice-1/2",
-      "agent": "builder",
-      "promptTokens": 0,
-      "completionTokens": 0,
-      "totalTokens": 0,
-      "costUsd": 0,
-      "latencyMs": 1
-    },
-    {
-      "at": "2026-05-17T22:11:00.252Z",
-      "phase": "slice-2/2",
-      "agent": "builder",
-      "promptTokens": 0,
-      "completionTokens": 0,
-      "totalTokens": 0,
-      "costUsd": 0,
-      "latencyMs": 1
-    },
-    {
-      "at": "2026-05-17T22:11:00.291Z",
-      "phase": "slice-2/2",
-      "agent": "builder",
-      "promptTokens": 0,
-      "completionTokens": 0,
-      "totalTokens": 0,
-      "costUsd": 0,
-      "latencyMs": 1
-    }
-  ],
-  "warnings": [
-    {
-      "code": "QUICK_CHECK_AUTO_REPAIR",
-      "message": "Slice 1/2 'marketing-content#1': quick-check auto-fixed 0 issue(s) before next slice [added scripts: dev, build, start, preview, typecheck]",
-      "details": {
-        "sliceLabel": "1/2 'marketing-content#1'",
-        "issues": [],
-        "synthesizedPackageJson": false,
-        "addedScripts": [
-          "dev",
-          "build",
-          "start",
-          "preview",
-          "typecheck"
-        ],
-        "touchedPackageJson": "package.json"
-      }
-    },
-    {
-      "code": "QUICK_CHECK_AUTO_REPAIR",
-      "message": "Slice 2/2 'marketing-content#2': quick-check auto-fixed 0 issue(s) before next slice [added scripts: dev, build, start, preview, typecheck]",
-      "details": {
-        "sliceLabel": "2/2 'marketing-content#2'",
-        "issues": [],
-        "synthesizedPackageJson": false,
-        "addedScripts": [
-          "dev",
-          "build",
-          "start",
-          "preview",
-          "typecheck"
-        ],
-        "touchedPackageJson": "package.json"
-      }
-    }
-  ],
+  "errorStack": "Error: [artifact-integrity] tier3-contract-first -> final_build: MISSING_APP_ENTRY: No application entry page was generated.\n    at ProjectGenerator.assertArtifactIntegrityOrThrow (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:596:11)\n    at ProjectGenerator.runTier3ContractPipeline (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:4541:10)\n    at async ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2238:18)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2088:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:746:22)",
+  "failedPhase": "tier3-contract-first",
+  "failedStep": "classified",
+  "failedAt": "2026-05-18T20:40:52.460Z",
+  "durationMs": 0,
+  "diagnosticContextStartedAt": "2026-05-18T20:40:52.369Z",
+  "postPersistStepStatuses": [],
+  "usageLog": [],
+  "warnings": [],
   "failure": {
-    "failedPhase": "qa-gate",
+    "failedPhase": "tier3-contract-first",
     "errorName": "Error",
-    "errorMessage": "Pipeline did not reach 'completed' state (state=failed, error=Critical step \"QA\" failed: All models exhausted after 0ms. Tried: [azure/gpt-4.1, azure/gpt-4o-mini]. Last error: unavailable)",
-    "stack": "Error: Pipeline did not reach 'completed' state (state=failed, error=Critical step \"QA\" failed: All models exhausted after 0ms. Tried: [azure/gpt-4.1, azure/gpt-4o-mini]. Last error: unavailable)\n    at ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:3734:16)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2080:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:738:22)",
-    "errorStack": "Error: Pipeline did not reach 'completed' state (state=failed, error=Critical step \"QA\" failed: All models exhausted after 0ms. Tried: [azure/gpt-4.1, azure/gpt-4o-mini]. Last error: unavailable)\n    at ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:3734:16)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2080:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:738:22)",
-    "failedAt": "2026-05-17T22:11:00.533Z",
-    "lastSuccessfulPhase": "qa-gate",
-    "llmCallCount": 9,
-    "failedStep": "qa-gate:pipeline-not-completed",
-    "lastSuccessfulStep": "qa-gate:assign-optimization",
+    "errorMessage": "[artifact-integrity] tier3-contract-first -> final_build: MISSING_APP_ENTRY: No application entry page was generated.",
+    "stack": "Error: [artifact-integrity] tier3-contract-first -> final_build: MISSING_APP_ENTRY: No application entry page was generated.\n    at ProjectGenerator.assertArtifactIntegrityOrThrow (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:596:11)\n    at ProjectGenerator.runTier3ContractPipeline (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:4541:10)\n    at async ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2238:18)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2088:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:746:22)",
+    "errorStack": "Error: [artifact-integrity] tier3-contract-first -> final_build: MISSING_APP_ENTRY: No application entry page was generated.\n    at ProjectGenerator.assertArtifactIntegrityOrThrow (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:596:11)\n    at ProjectGenerator.runTier3ContractPipeline (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:4541:10)\n    at async ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2238:18)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2088:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:746:22)",
+    "failedAt": "2026-05-18T20:40:52.460Z",
+    "lastSuccessfulPhase": "reserved",
+    "llmCallCount": 0,
+    "failedStep": "classified",
+    "lastSuccessfulStep": "reserved",
     "classification": {
-      "category": "orchestration_failure",
-      "code": "PIPELINE_ORCHESTRATION",
-      "reason": "Pipeline orchestration failed during phase execution."
+      "category": "artifact_corruption",
+      "code": "ARTIFACT_INTEGRITY",
+      "reason": "Generated artifacts were malformed, empty, or structurally invalid."
     },
-    "failureCategory": "orchestration_failure",
-    "failurePhase": "qa-gate",
-    "failureReason": "Pipeline did not reach 'completed' state (state=failed, error=Critical step \"QA\" failed: All models exhausted after 0ms. Tried: [azure/gpt-4.1, azure/gpt-4o-mini]. Last error: unavailable)",
-    "failedAgent": "qa",
+    "failureCategory": "artifact_corruption",
+    "failurePhase": "tier3-contract-first",
+    "failureReason": "[artifact-integrity] tier3-contract-first -> final_build: MISSING_APP_ENTRY: No application entry page was generated.",
+    "failedAgent": "pipeline",
     "retryCount": 0,
-    "lastValidCheckpoint": "kktTGr1Xv6",
-    "filesGeneratedBeforeFailure": 44,
+    "lastValidCheckpoint": null,
+    "filesGeneratedBeforeFailure": 0,
     "recoveryAttempted": false,
-    "recommendedNextAction": "Inspect phase timeline + failed step diagnostics and rerun only after the first failing step has a concrete fix.",
-    "zeroFileClassification": null
+    "recommendedNextAction": "Review deterministic contract violations and fix rejected imports/paths before retrying generation.",
+    "zeroFileClassification": "contract_rejected_all_files"
   },
   "failureClassification": {
-    "category": "orchestration_failure",
-    "code": "PIPELINE_ORCHESTRATION",
-    "reason": "Pipeline orchestration failed during phase execution."
+    "category": "artifact_corruption",
+    "code": "ARTIFACT_INTEGRITY",
+    "reason": "Generated artifacts were malformed, empty, or structurally invalid."
   }
 }

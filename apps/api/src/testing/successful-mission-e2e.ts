@@ -83,8 +83,32 @@ interface MissionResult {
   previewUrl: string | null;
   exportOk: boolean;
   exportState?: 'ok' | 'not_attempted' | 'failed';
+  exportDurationMs?: number | null;
   retriesObserved: number;
   phasesSeen: string[];
+  previewStageDurations?: Record<string, number | null> | null;
+  installDurationMs?: number | null;
+  buildDurationMs?: number | null;
+  serverStartDurationMs?: number | null;
+  healthProbeDurationMs?: number | null;
+  contentHealthDurationMs?: number | null;
+  previewStartupTotalMs?: number | null;
+  previewFailurePhase?: string | null;
+  previewFailureReason?: string | null;
+  cacheDecision?: string | null;
+  cacheHit?: boolean | null;
+  dependencyHash?: string | null;
+  installSkipped?: boolean | null;
+  installExitCode?: number | null;
+  buildExitCode?: number | null;
+  startCommand?: string | null;
+  runtimeCwd?: string | null;
+  timeoutSource?: string | null;
+  timeoutLimit?: number | null;
+  currentPreviewPhase?: string | null;
+  elapsedTime?: number | null;
+  lastPreviewLogLine?: string | null;
+  processState?: string | null;
 }
 
 interface RuntimePreflight {
@@ -309,6 +333,41 @@ async function verifyExport(projectId: string): Promise<boolean> {
   return bytes.byteLength > 256;
 }
 
+function extractPreviewObservability(project: any): Partial<MissionResult> {
+  const preview = project?.preview ?? null;
+  const diagnostics = project?.diagnostics?.previewValidationArtifacts ?? null;
+  const from = <T>(key: string, fallback: T): T => {
+    if (preview && key in preview) return preview[key] as T;
+    if (diagnostics && key in diagnostics) return diagnostics[key] as T;
+    return fallback;
+  };
+  return {
+    previewStageDurations: from<Record<string, number | null> | null>('previewStageDurations', null),
+    installDurationMs: from<number | null>('installDurationMs', null),
+    buildDurationMs: from<number | null>('buildDurationMs', null),
+    serverStartDurationMs: from<number | null>('serverStartDurationMs', null),
+    healthProbeDurationMs: from<number | null>('healthProbeDurationMs', null),
+    contentHealthDurationMs: from<number | null>('contentHealthDurationMs', null),
+    previewStartupTotalMs: from<number | null>('previewStartupTotalMs', null),
+    previewFailurePhase: from<string | null>('previewFailurePhase', null),
+    previewFailureReason: from<string | null>('previewFailureReason', null),
+    cacheDecision: from<string | null>('cacheDecision', null),
+    cacheHit: from<boolean | null>('cacheHit', null),
+    dependencyHash: from<string | null>('dependencyHash', null),
+    installSkipped: from<boolean | null>('installSkipped', null),
+    installExitCode: from<number | null>('installExitCode', null),
+    buildExitCode: from<number | null>('buildExitCode', null),
+    startCommand: from<string | null>('startCommand', null),
+    runtimeCwd: from<string | null>('runtimeCwd', null),
+    timeoutSource: from<string | null>('timeoutSource', null),
+    timeoutLimit: from<number | null>('timeoutLimit', null),
+    currentPreviewPhase: from<string | null>('currentPreviewPhase', null),
+    elapsedTime: from<number | null>('elapsedTime', null),
+    lastPreviewLogLine: from<string | null>('lastPreviewLogLine', null),
+    processState: from<string | null>('processState', null),
+  };
+}
+
 async function main(): Promise<void> {
   const startedAt = new Date().toISOString();
   const preflightBefore = await jsonRequest<RuntimePreflight>('/api/runtime/preflight');
@@ -379,10 +438,16 @@ async function main(): Promise<void> {
       }
 
       const preview = await waitPreview(projectId);
+      const exportStartedAt = Date.now();
       const exportOk = await verifyExport(projectId);
+      const exportDurationMs = Date.now() - exportStartedAt;
       if (!exportOk) {
         throw new Error('export response too small');
       }
+      const latestProject = await jsonRequest<any>(`/api/projects/${projectId}`);
+      const observability = latestProject.status === 200
+        ? extractPreviewObservability(latestProject.body)
+        : {};
 
       results.push({
         index: i,
@@ -397,6 +462,7 @@ async function main(): Promise<void> {
         previewUrl: preview.url,
         exportOk,
         exportState: exportOk ? 'ok' : 'failed',
+        exportDurationMs,
         retriesObserved: mission.retriesObserved,
         phasesSeen: mission.phasesSeen,
         failureCategory: null,
@@ -410,6 +476,7 @@ async function main(): Promise<void> {
         recoveryAttempted: false,
         recommendedNextAction: null,
         zeroFileClassification: null,
+        ...observability,
       });
     } catch (err) {
       let filesCount = -1;
@@ -445,6 +512,13 @@ async function main(): Promise<void> {
         : fallbackFailureReason;
       const timeoutFailureReason = timedOut ? normalizedFailureReason : null;
       const timeoutShouldOverride = timedOut && !diagnostics;
+      let observability: Partial<MissionResult> = {};
+      if (projectId) {
+        const latestProject = await jsonRequest<any>(`/api/projects/${projectId}`);
+        if (latestProject.status === 200) {
+          observability = extractPreviewObservability(latestProject.body);
+        }
+      }
       results.push({
         index: i,
         tier,
@@ -461,6 +535,7 @@ async function main(): Promise<void> {
         previewUrl: null,
         exportOk: false,
         exportState: 'not_attempted',
+        exportDurationMs: null,
         retriesObserved,
         phasesSeen,
         failureCategory: timeoutShouldOverride ? 'timeout' : (diagnostics?.failureCategory ?? 'orchestration_failure'),
@@ -477,6 +552,7 @@ async function main(): Promise<void> {
           ?? (filesCount === 0
             ? 'orchestration_abort'
             : (!artifactsVerified && filesCount < 0 ? 'artifact_assembly_failure' : null)),
+        ...observability,
       });
     }
   }

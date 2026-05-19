@@ -112,6 +112,36 @@ export function buildPreviewValidationArtifacts(
     return raw ? 'unknown' : null;
   })();
 
+  const previewStageDurations = preview?.previewStageDurations ?? null;
+  const installDurationMs = preview?.installDurationMs ?? null;
+  const buildDurationMs = preview?.buildDurationMs ?? null;
+  const serverStartDurationMs = preview?.serverStartDurationMs ?? null;
+  const healthProbeDurationMs = preview?.healthProbeDurationMs ?? null;
+  const contentHealthDurationMs = preview?.contentHealthDurationMs ?? null;
+  const previewStartupTotalMs = preview?.previewStartupTotalMs ?? null;
+  const previewFailurePhase = preview?.previewFailurePhase ?? null;
+  const previewFailureReason = preview?.previewFailureReason ?? null;
+  const cacheHit = typeof rec.optimization?.cacheHit === 'boolean'
+    ? rec.optimization.cacheHit
+    : (typeof preview?.cacheHit === 'boolean' ? preview.cacheHit : null);
+  const cacheDecision = preview?.cacheDecision
+    ?? (cacheHit === true ? 'hit' : (cacheHit === false ? 'miss' : null));
+  const dependencyHash = preview?.dependencyHash ?? null;
+  const installSkipped = typeof preview?.installSkipped === 'boolean'
+    ? preview.installSkipped
+    : null;
+  const installExitCode = preview?.installExitCode ?? null;
+  const buildExitCode = preview?.buildExitCode ?? null;
+  const startCommand = preview?.startCommand ?? null;
+  const runtimeCwd = preview?.runtimeCwd ?? null;
+  const timeoutSource = preview?.timeoutSource ?? null;
+  const timeoutLimit = preview?.timeoutLimit ?? null;
+  const currentPreviewPhase = preview?.currentPreviewPhase ?? preview?.previewStep ?? null;
+  const elapsedTime = preview?.elapsedTime ?? null;
+  const lastPreviewLogLine = preview?.lastPreviewLogLine ?? null;
+  const processState = preview?.processState ?? preview?.previewProcessLifecycle?.classification ?? null;
+  const exportDurationMs = null;
+
   return {
     schemaVersion: 1 as const,
     updatedAt: new Date().toISOString(),
@@ -125,6 +155,30 @@ export function buildPreviewValidationArtifacts(
       stderrSnippet: sanitizeSnippet(preview?.previewRuntimeLog?.stderrTail ?? null),
     },
     dependencyErrors: depErrors,
+    previewStageDurations,
+    installDurationMs,
+    buildDurationMs,
+    serverStartDurationMs,
+    healthProbeDurationMs,
+    contentHealthDurationMs,
+    previewStartupTotalMs,
+    previewFailurePhase,
+    previewFailureReason,
+    cacheDecision,
+    cacheHit,
+    dependencyHash,
+    installSkipped,
+    installExitCode,
+    buildExitCode,
+    startCommand,
+    runtimeCwd,
+    timeoutSource,
+    timeoutLimit,
+    currentPreviewPhase,
+    elapsedTime,
+    lastPreviewLogLine,
+    processState,
+    exportDurationMs,
     packageInstallResult: mapStep(install),
     buildResult: mapStep(build),
     devServerResult: mapStep(dev),

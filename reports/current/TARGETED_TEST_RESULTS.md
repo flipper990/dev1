@@ -1,22 +1,28 @@
-# TARGETED_TEST_RESULTS
+﻿# TARGETED_TEST_RESULTS
 
-Date: 2026-05-18
+Date: 2026-05-19
 
-## Commands Run
+## Commands and outcomes
+1. `npm --workspace=@devteam/api exec -- tsx --test src/preview/local-runner.env.test.ts src/preview/local-runner.failure-snapshot.test.ts`
+- PASS (7/7)
 
-1. `npx tsx --test apps/api/src/pipeline/orchestration-router.test.ts apps/api/src/pipeline/prompt-tier-classifier.test.ts apps/api/src/pipeline/tier-policy.test.ts apps/api/src/pipeline/fast-tier1-runner.test.ts apps/api/src/pipeline/tier2-structured-runner.test.ts apps/api/src/pipeline/tier3-contract-runner.test.ts apps/api/src/pipeline/terminal-quality.test.ts`
-- Result: pass (34/34)
+2. `npm --workspace=@devteam/api exec -- tsx --test src/preview/preview-manager.fail-classification.test.ts src/preview/preview-manager.observability-persistence.test.ts`
+- PASS (2/2)
 
-2. `npm run test:contracts:fast --workspace=@devteam/api`
-- Result: pass
+3. `npm --workspace=@devteam/api exec -- tsx --test src/pipeline/generation-failure-classifier.test.ts src/testing/mission-failure-diagnostics.test.ts src/pipeline/failure-diagnostics.test.ts src/pipeline/preview-scheduler.observability-artifacts.test.ts`
+- PASS (29/29)
 
-3. `npm run test:package:unit --workspace=@devteam/api`
-- Result: pass
+4. `npm run test:contracts:fast --workspace=@devteam/api`
+- PASS
 
-4. `npm run typecheck --workspace=@devteam/api`
-- Result: pass
+5. `npm run test:package:unit --workspace=@devteam/api`
+- PASS (6/6)
 
-5. `npm run build --workspace=@devteam/api`
-- Result: pass
+6. `npm run typecheck --workspace=@devteam/api`
+- PASS
 
-Overall: all targeted regression gates passed.
+7. `npm run build --workspace=@devteam/api`
+- PASS
+
+## Notes
+A typecheck issue in a newly added test was fixed (`capturedPatch` typing) and typecheck/build then passed.

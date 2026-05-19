@@ -548,6 +548,42 @@ export interface PreviewStatus {
   stepCompletedAt?: string | null;
   /** Per-phase duration log. */
   stepDurations?: PreviewRecord['stepDurations'];
+  /** Aggregated phase duration map for quick diagnostics surfaces. */
+  previewStageDurations?: {
+    queued?: number | null;
+    stagingFiles?: number | null;
+    installing?: number | null;
+    building?: number | null;
+    spawningServer?: number | null;
+    waitingForPort?: number | null;
+    httpProbing?: number | null;
+    ready?: number | null;
+    failed?: number | null;
+    timeout?: number | null;
+  } | null;
+  installDurationMs?: number | null;
+  buildDurationMs?: number | null;
+  serverStartDurationMs?: number | null;
+  healthProbeDurationMs?: number | null;
+  contentHealthDurationMs?: number | null;
+  exportDurationMs?: number | null;
+  previewStartupTotalMs?: number | null;
+  previewFailurePhase?: string | null;
+  previewFailureReason?: string | null;
+  cacheDecision?: 'hit' | 'miss' | 'skip' | null;
+  cacheHit?: boolean | null;
+  dependencyHash?: string | null;
+  installSkipped?: boolean | null;
+  installExitCode?: number | null;
+  buildExitCode?: number | null;
+  startCommand?: string | null;
+  runtimeCwd?: string | null;
+  timeoutSource?: string | null;
+  timeoutLimit?: number | null;
+  currentPreviewPhase?: string | null;
+  elapsedTime?: number | null;
+  lastPreviewLogLine?: string | null;
+  processState?: string | null;
   /** Both errors when a docker→local fallback chain ended in failure. */
   fallbackErrors?: PreviewRecord['fallbackErrors'];
   /** Dev-overlay detection from the content-health probe (when the

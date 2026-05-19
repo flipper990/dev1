@@ -345,6 +345,43 @@ function describeTimeoutCause(cause: TimeoutCause): string {
   }
 }
 
+function aggregateStepDurationMs(
+  steps: PreviewRecord['stepDurations'] | undefined,
+  step: PreviewStep,
+): number | null {
+  if (!steps || steps.length === 0) return null;
+  let total = 0;
+  let found = false;
+  for (const entry of steps) {
+    if (entry.step !== step) continue;
+    if (typeof entry.durationMs !== 'number' || !Number.isFinite(entry.durationMs)) continue;
+    total += entry.durationMs;
+    found = true;
+  }
+  return found ? total : null;
+}
+
+function lastNonEmptyLine(input: string | null | undefined): string | null {
+  if (!input) return null;
+  const lines = input
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (lines.length === 0) return null;
+  return lines[lines.length - 1] ?? null;
+}
+
+function parseExitCode(raw: string | null | undefined, phase: 'install' | 'build'): number | null {
+  if (!raw) return null;
+  const regex = phase === 'install'
+    ? /install(?:[^.\n]*?)exited code[=\s]+(-?\d+)/i
+    : /build(?:[^.\n]*?)exited code[=\s]+(-?\d+)/i;
+  const match = raw.match(regex);
+  if (!match || !match[1]) return null;
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function newPreviewId(): string {
   return randomBytes(6).toString('hex');
 }
@@ -539,6 +576,57 @@ export class PreviewManager {
   }> {
     const previewStatus = this.toPublicPreviewStatus(record.state, record);
     const previewHealth = this.toPublicPreviewHealth(record, previewStatus);
+    const localRecord = this.opts.localRunner?.get(record.projectId) ?? null;
+    const stageDurations = {
+      queued: aggregateStepDurationMs(record.stepDurations, 'preview:queued'),
+      stagingFiles: aggregateStepDurationMs(record.stepDurations, 'preview:staging-files'),
+      installing: aggregateStepDurationMs(record.stepDurations, 'preview:installing'),
+      building: aggregateStepDurationMs(record.stepDurations, 'preview:building'),
+      spawningServer: aggregateStepDurationMs(record.stepDurations, 'preview:spawning-server'),
+      waitingForPort: aggregateStepDurationMs(record.stepDurations, 'preview:waiting-for-port'),
+      httpProbing: aggregateStepDurationMs(record.stepDurations, 'preview:http-probing'),
+      ready: aggregateStepDurationMs(record.stepDurations, 'preview:ready'),
+      failed: aggregateStepDurationMs(record.stepDurations, 'preview:failed'),
+      timeout: aggregateStepDurationMs(record.stepDurations, 'preview:timeout'),
+    };
+    const previewEndedAtIso = record.readyAtIso ?? record.failedAtIso ?? record.timeoutAtIso ?? null;
+    const previewStartupTotalMs = (() => {
+      if (!record.startedAtIso) return null;
+      const startedAt = Date.parse(record.startedAtIso);
+      if (!Number.isFinite(startedAt)) return null;
+      const endedAt = previewEndedAtIso ? Date.parse(previewEndedAtIso) : Date.now();
+      if (!Number.isFinite(endedAt)) return null;
+      return Math.max(0, endedAt - startedAt);
+    })();
+    const timeoutSource = record.timeoutAtIso ? 'preview-manager:boot-watchdog' : null;
+    const timeoutLimit = record.timeoutAtIso ? PREVIEW_BOOT_TIMEOUT_MS : null;
+    const elapsedTime = (() => {
+      if (!record.startedAtIso) return null;
+      const startedAt = Date.parse(record.startedAtIso);
+      if (!Number.isFinite(startedAt)) return null;
+      const nowOrEnd = record.timeoutAtIso ? Date.parse(record.timeoutAtIso) : Date.now();
+      if (!Number.isFinite(nowOrEnd)) return null;
+      return Math.max(0, nowOrEnd - startedAt);
+    })();
+    const runtimeCmd = record.runtime?.cmd ?? null;
+    const runtimeArgs = record.runtime?.args ?? [];
+    const startCommand = runtimeCmd
+      ? `${runtimeCmd}${runtimeArgs.length > 0 ? ` ${runtimeArgs.join(' ')}` : ''}`
+      : null;
+    const runtimeCwd = record.runtime?.cwd ?? localRecord?.stagingDir ?? null;
+    const cacheHit = /install cache hit/i.test(localRecord?.lastSuccessfulStep ?? record.lastMeaningfulStep ?? '');
+    const installSkipped = cacheHit;
+    const installExitCode = parseExitCode(record.error ?? localRecord?.error ?? null, 'install');
+    const buildExitCode = parseExitCode(record.error ?? localRecord?.error ?? null, 'build');
+    const cacheDecision = cacheHit ? 'hit' : (installSkipped ? 'skip' : 'miss');
+    const lastPreviewLogLine =
+      lastNonEmptyLine(record.runtimeLog?.stderrTail ?? null)
+      ?? lastNonEmptyLine(record.runtimeLog?.stdoutTail ?? null)
+      ?? lastNonEmptyLine(localRecord?.stderrLog ?? null)
+      ?? lastNonEmptyLine(localRecord?.stdoutLog ?? null)
+      ?? lastNonEmptyLine(record.log ?? null)
+      ?? null;
+    const processState = record.processLifecycle?.classification ?? null;
     const url = record.state === 'ready' && record.hostPort != null
       ? `/preview/${record.projectId}/`
       : null;
@@ -606,6 +694,30 @@ export class PreviewManager {
       previewStepStartedAt: record.stepStartedAt ?? null,
       previewStepCompletedAt: record.stepCompletedAt ?? null,
       previewStepDurations: record.stepDurations,
+      previewStageDurations: stageDurations,
+      installDurationMs: stageDurations.installing,
+      buildDurationMs: stageDurations.building,
+      serverStartDurationMs: stageDurations.spawningServer,
+      healthProbeDurationMs: stageDurations.httpProbing,
+      contentHealthDurationMs: stageDurations.httpProbing,
+      exportDurationMs: null,
+      previewStartupTotalMs,
+      previewFailurePhase: record.state === 'failed' ? (record.step ?? null) : null,
+      previewFailureReason: record.state === 'failed' ? (record.error ?? null) : null,
+      cacheDecision,
+      cacheHit,
+      dependencyHash: null,
+      installSkipped,
+      installExitCode,
+      buildExitCode,
+      startCommand,
+      runtimeCwd,
+      timeoutSource,
+      timeoutLimit,
+      currentPreviewPhase: record.step ?? null,
+      elapsedTime,
+      lastPreviewLogLine,
+      processState,
       previewFallbackErrors: record.fallbackErrors
         ? {
             docker: record.fallbackErrors.docker ?? null,
@@ -1859,6 +1971,15 @@ export class PreviewManager {
       // it from the timeline.
       timeoutCause: record.timeoutCause ?? null,
       timeoutLifecycle: record.timeoutLifecycle ?? null,
+      timeoutSource: 'preview-manager:boot-watchdog',
+      timeoutLimit: PREVIEW_BOOT_TIMEOUT_MS,
+      currentPreviewPhase: record.step ?? null,
+      elapsedTime: (() => {
+        const startedAt = Date.parse(record.startedAtIso ?? '');
+        const timeoutAt = Date.parse(record.timeoutAtIso ?? '');
+        if (!Number.isFinite(startedAt) || !Number.isFinite(timeoutAt)) return null;
+        return Math.max(0, timeoutAt - startedAt);
+      })(),
       child: {
         pid,
         alive: processAlive,
@@ -1886,6 +2007,12 @@ export class PreviewManager {
       envSafe: record.runtime?.envSafe ?? null,
       stdoutTail: record.runtimeLog?.stdoutTail ?? lr?.stdoutLog.slice(-3_000) ?? null,
       stderrTail: record.runtimeLog?.stderrTail ?? lr?.stderrLog.slice(-3_000) ?? null,
+      lastPreviewLogLine:
+        lastNonEmptyLine(record.runtimeLog?.stderrTail ?? null)
+        ?? lastNonEmptyLine(record.runtimeLog?.stdoutTail ?? null)
+        ?? lastNonEmptyLine(record.log ?? null)
+        ?? null,
+      processState: record.processLifecycle?.classification ?? null,
       // Legacy field â€” kept for backwards compatibility with any
       // tooling that already greps for it. Now redundant with
       // `probeDiagnosis` / `probeSummary`.
@@ -2222,6 +2349,23 @@ export class PreviewManager {
   private toStatus(rec: PreviewRecord): PreviewStatus {
     const state = this.toPublicPreviewStatus(rec.state, rec);
     const health = this.toPublicPreviewHealth(rec, state);
+    const localRecord = this.opts.localRunner?.get(rec.projectId) ?? null;
+    const stageDurations = {
+      queued: aggregateStepDurationMs(rec.stepDurations, 'preview:queued'),
+      stagingFiles: aggregateStepDurationMs(rec.stepDurations, 'preview:staging-files'),
+      installing: aggregateStepDurationMs(rec.stepDurations, 'preview:installing'),
+      building: aggregateStepDurationMs(rec.stepDurations, 'preview:building'),
+      spawningServer: aggregateStepDurationMs(rec.stepDurations, 'preview:spawning-server'),
+      waitingForPort: aggregateStepDurationMs(rec.stepDurations, 'preview:waiting-for-port'),
+      httpProbing: aggregateStepDurationMs(rec.stepDurations, 'preview:http-probing'),
+      ready: aggregateStepDurationMs(rec.stepDurations, 'preview:ready'),
+      failed: aggregateStepDurationMs(rec.stepDurations, 'preview:failed'),
+      timeout: aggregateStepDurationMs(rec.stepDurations, 'preview:timeout'),
+    };
+    const startCommand = rec.runtime?.cmd
+      ? `${rec.runtime.cmd}${(rec.runtime.args ?? []).length > 0 ? ` ${(rec.runtime.args ?? []).join(' ')}` : ''}`
+      : null;
+    const cacheHit = /install cache hit/i.test(localRecord?.lastSuccessfulStep ?? rec.lastMeaningfulStep ?? '');
     return {
       projectId: rec.projectId,
       state,
@@ -2247,6 +2391,36 @@ export class PreviewManager {
       stepStartedAt: rec.stepStartedAt,
       stepCompletedAt: rec.stepCompletedAt ?? null,
       stepDurations: rec.stepDurations,
+      previewStageDurations: stageDurations,
+      installDurationMs: stageDurations.installing,
+      buildDurationMs: stageDurations.building,
+      serverStartDurationMs: stageDurations.spawningServer,
+      healthProbeDurationMs: stageDurations.httpProbing,
+      contentHealthDurationMs: stageDurations.httpProbing,
+      exportDurationMs: null,
+      previewStartupTotalMs: rec.startedAtIso
+        ? Math.max(0, (Date.parse(rec.readyAtIso ?? rec.failedAtIso ?? rec.timeoutAtIso ?? new Date().toISOString()) - Date.parse(rec.startedAtIso)))
+        : null,
+      previewFailurePhase: rec.state === 'failed' ? (rec.step ?? null) : null,
+      previewFailureReason: rec.state === 'failed' ? (rec.error ?? null) : null,
+      cacheDecision: cacheHit ? 'hit' : 'miss',
+      cacheHit,
+      dependencyHash: null,
+      installSkipped: cacheHit,
+      installExitCode: parseExitCode(rec.error ?? localRecord?.error ?? null, 'install'),
+      buildExitCode: parseExitCode(rec.error ?? localRecord?.error ?? null, 'build'),
+      startCommand,
+      runtimeCwd: rec.runtime?.cwd ?? localRecord?.stagingDir ?? null,
+      timeoutSource: rec.timeoutAtIso ? 'preview-manager:boot-watchdog' : null,
+      timeoutLimit: rec.timeoutAtIso ? PREVIEW_BOOT_TIMEOUT_MS : null,
+      currentPreviewPhase: rec.step ?? null,
+      elapsedTime: rec.startedAtIso ? Math.max(0, Date.now() - Date.parse(rec.startedAtIso)) : null,
+      lastPreviewLogLine:
+        lastNonEmptyLine(rec.runtimeLog?.stderrTail ?? null)
+        ?? lastNonEmptyLine(rec.runtimeLog?.stdoutTail ?? null)
+        ?? lastNonEmptyLine(rec.log ?? null)
+        ?? null,
+      processState: rec.processLifecycle?.classification ?? null,
       fallbackErrors: rec.fallbackErrors,
       overlayDetection: rec.overlayDetection,
       dependencyFixes: rec.dependencyFixes,
@@ -3420,6 +3594,8 @@ export class PreviewManager {
       runtime: record.runtime?.type ?? record.mode ?? 'unknown',
       stack: record.stack?.kind ?? null,
       reason: ctx.reason,
+      previewFailurePhase: record.step ?? null,
+      previewFailureReason: record.error ?? ctx.reason,
       exitCode: ctx.exitCode ?? null,
       signal: ctx.signal ?? null,
       oomKilled: ctx.oomKilled ?? false,
@@ -3437,6 +3613,20 @@ export class PreviewManager {
       stderrTail: ctx.stderrTail ?? null,
       errorStack: ctx.stack ?? null,
       currentStep: record.step ?? null,
+      currentPreviewPhase: record.step ?? null,
+      elapsedTime: (() => {
+        const startedAt = Date.parse(record.startedAtIso ?? '');
+        const endedAt = Date.now();
+        if (!Number.isFinite(startedAt)) return null;
+        return Math.max(0, endedAt - startedAt);
+      })(),
+      lastPreviewLogLine:
+        lastNonEmptyLine(ctx.stderrTail ?? null)
+        ?? lastNonEmptyLine(ctx.stdoutTail ?? null)
+        ?? lastNonEmptyLine(record.runtimeLog?.stderrTail ?? null)
+        ?? lastNonEmptyLine(record.runtimeLog?.stdoutTail ?? null)
+        ?? null,
+      processState: record.processLifecycle?.classification ?? null,
       stepStartedAt: record.stepStartedAt ?? null,
       stepDurations: record.stepDurations ?? [],
       previewStatusTransitions: (record.history ?? []).map((h) => ({ step: h.step, at: h.at })),
@@ -3583,6 +3773,8 @@ export class PreviewManager {
       // â”€â”€ timeout classification (only populated on timeout path) â”€â”€
       timeoutCause: record.timeoutCause ?? null,
       timeoutLifecycle: record.timeoutLifecycle ?? null,
+      timeoutSource: record.timeoutAtIso ? 'preview-manager:boot-watchdog' : null,
+      timeoutLimit: record.timeoutAtIso ? PREVIEW_BOOT_TIMEOUT_MS : null,
       // â”€â”€ exact spawned process â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       command: record.runtime?.cmd ?? null,
       commandArgs: record.runtime?.args ?? null,
@@ -3605,13 +3797,24 @@ export class PreviewManager {
       pid: childPid ?? record.runtimeLog?.pid ?? null,
       // â”€â”€ lifecycle classification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       currentStep: record.step ?? null,
+      currentPreviewPhase: record.step ?? null,
       lastSuccessfulStep: lr?.lastSuccessfulStep ?? record.lastMeaningfulStep ?? null,
+      elapsedTime: (() => {
+        const startedAt = Date.parse(record.startedAtIso ?? '');
+        const endedAt = Date.now();
+        if (!Number.isFinite(startedAt)) return null;
+        return Math.max(0, endedAt - startedAt);
+      })(),
       installCompleted,
       installMode: lr?.installMode ?? null,
+      installSkipped: /install cache hit/i.test(lr?.lastSuccessfulStep ?? record.lastMeaningfulStep ?? ''),
+      installExitCode: parseExitCode(reason, 'install'),
+      buildExitCode: parseExitCode(reason, 'build'),
       serverSpawned,
       portEverOpened,
       httpEverResponded,
       childAlive: lr ? !lr.exited : null,
+      processState: record.processLifecycle?.classification ?? null,
       processStartedAt: lr?.processStartedAt ?? null,
       processExitedAt: lr?.processExitedAt ?? null,
       exitCode: lr?.exitCode ?? null,
@@ -3621,6 +3824,12 @@ export class PreviewManager {
       // half goes to each stream tail to keep the dump browsable).
       stdoutTail: lr?.stdoutLog ? lr.stdoutLog.slice(-16_000) : null,
       stderrTail: lr?.stderrLog ? lr.stderrLog.slice(-16_000) : null,
+      lastPreviewLogLine:
+        lastNonEmptyLine(lr?.stderrLog ?? null)
+        ?? lastNonEmptyLine(lr?.stdoutLog ?? null)
+        ?? lastNonEmptyLine(record.runtimeLog?.stderrTail ?? null)
+        ?? lastNonEmptyLine(record.runtimeLog?.stdoutTail ?? null)
+        ?? null,
       // â”€â”€ probe history rollup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       probeAttemptsTotal: lr?.probeAttempts.length ?? 0,
       probeAttemptsTail: (lr?.probeAttempts ?? []).slice(-16),

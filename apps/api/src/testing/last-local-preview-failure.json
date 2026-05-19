@@ -1,32 +1,34 @@
 {
-  "timestamp": "2026-05-18T18:00:09.948Z",
-  "projectId": "ULiybqWDDveR",
-  "previewId": "8ecd62e012a5",
+  "timestamp": "2026-05-19T17:10:21.107Z",
+  "projectId": "Zs1T2p-hdCEZ",
+  "previewId": "7148f95a98d6",
   "runtime": "local",
-  "reason": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 11 |\u001b[39m   \u001b[36mreturn\u001b[39m (\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 12 |\u001b[39m     \u001b[33m<\u001b[39m\u001b[33mButton\u001b[39m asChild className\u001b[33m=\u001b[39m{className}\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m             \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 13 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33ma\u001b[39m href\u001b[33m=\u001b[39m{href} tabIndex\u001b[33m=\u001b[39m{\u001b[35m0\u001b[39m} className\u001b[33m=\u001b[39m\u001b[32m\"focus-visible:ring focus-visible:ring-ring\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 14 |\u001b[39m         {label}\u001b[0m | \u001b[0m \u001b[90m 15 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33ma\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/pricing/PrimaryCTA.tsx:12:13; errorMessage=Type error: Type '{ children: Element; asChild: true; className: string | undefined; }' is not assignable to type 'IntrinsicAttributes & (ButtonProps & RefAttributes<HTMLButtonElement | HTMLAnchorElement>)'.; recommendedRepairPath=Repair generated source and imports in ./src/components/pricing/PrimaryCTA.tsx:12:13, then rerun build validation before preview start.",
+  "reason": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 39 |\u001b[39m     \u001b[36mreturn\u001b[39m (\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 40 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33mComp\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 41 |\u001b[39m         ref\u001b[33m=\u001b[39m{ref \u001b[36mas\u001b[39m any}\u001b[0m | \u001b[0m \u001b[90m 42 |\u001b[39m         className\u001b[33m=\u001b[39m{cn(buttonVariants({ variant\u001b[33m,\u001b[39m size })\u001b[33m,\u001b[39m className)}\u001b[0m | \u001b[0m \u001b[90m 43 |\u001b[39m         {\u001b[33m...\u001b[39mprops}\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/ui/Button.tsx:40:8; errorMessage=Type error: Type '{ disabled?: boolean | undefined; form?: string | undefined; formAction?: string | ((formData: FormData) => void | Promise<void>) | undefined; formEncType?: string | undefined; ... 283 more ...; className: string; }' is not assignable to type 'Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof InternalLinkProps>'.; recommendedRepairPath=Repair generated source and imports in ./src/components/ui/Button.tsx:40:8, then rerun build validation before preview start.",
   "timeoutCause": null,
   "timeoutLifecycle": null,
+  "timeoutSource": null,
+  "timeoutLimit": null,
   "command": "npm.cmd",
   "commandArgs": [
     "run",
     "build"
   ],
-  "cwd": "..\\..\\data\\projects\\ULiybqWDDveR\\output\\.preview-runtime",
-  "runtimePath": "..\\..\\data\\projects\\ULiybqWDDveR\\output\\.preview-runtime",
-  "packageJsonPath": "..\\..\\data\\projects\\ULiybqWDDveR\\output\\.preview-runtime\\package.json",
+  "cwd": "..\\..\\data\\projects\\Zs1T2p-hdCEZ\\output\\.preview-runtime",
+  "runtimePath": "..\\..\\data\\projects\\Zs1T2p-hdCEZ\\output\\.preview-runtime",
+  "packageJsonPath": "..\\..\\data\\projects\\Zs1T2p-hdCEZ\\output\\.preview-runtime\\package.json",
   "packageManager": "npm",
   "installCommand": "npm install --no-audit --no-fund",
   "installCommandFallback": null,
   "startCommand": "npm run build",
   "reproduceCommand": [
-    "cd \"..\\..\\data\\projects\\ULiybqWDDveR\\output\\.preview-runtime\"",
+    "cd \"..\\..\\data\\projects\\Zs1T2p-hdCEZ\\output\\.preview-runtime\"",
     "# Install (the runner used: unknown)",
     "npm install --no-audit --no-fund",
     "# Start dev server on the same port the runner used:",
-    "$env:PORT=\"57554\"; npm run build"
+    "$env:PORT=\"16974\"; npm run build"
   ],
   "host": "127.0.0.1",
-  "port": 57554,
+  "port": 16974,
   "envSafe": {
     "PORT": "3001",
     "HOST": "127.0.0.1",
@@ -34,78 +36,85 @@
   },
   "pid": null,
   "currentStep": "preview:building",
+  "currentPreviewPhase": "preview:building",
   "lastSuccessfulStep": "install cache hit",
+  "elapsedTime": 62952,
   "installCompleted": true,
   "installMode": null,
+  "installSkipped": true,
+  "installExitCode": null,
+  "buildExitCode": 1,
   "serverSpawned": false,
   "portEverOpened": false,
   "httpEverResponded": false,
   "childAlive": true,
+  "processState": null,
   "processStartedAt": null,
   "processExitedAt": null,
   "exitCode": null,
   "exitSignal": null,
   "stdoutTail": "\n> pricing-app@1.0.0 build\n> next build\n\n   ▲ Next.js 15.0.4\n   - Environments: .env.local\n\n   Creating an optimized production build ...\n ✓ Compiled successfully\n   Linting and checking validity of types ...\n",
-  "stderrTail": " ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\nFailed to compile.\n\n./src/components/pricing/PrimaryCTA.tsx:12:13\nType error: Type '{ children: Element; asChild: true; className: string | undefined; }' is not assignable to type 'IntrinsicAttributes & (ButtonProps & RefAttributes<HTMLButtonElement | HTMLAnchorElement>)'.\n  Property 'asChild' does not exist on type 'IntrinsicAttributes & (ButtonProps & RefAttributes<HTMLButtonElement | HTMLAnchorElement>)'.\n\n\u001b[0m \u001b[90m 10 |\u001b[39m \u001b[36mexport\u001b[39m \u001b[36mfunction\u001b[39m \u001b[33mPrimaryCTA\u001b[39m({ label\u001b[33m,\u001b[39m href\u001b[33m,\u001b[39m className }\u001b[33m:\u001b[39m \u001b[33mPrimaryCTAProps\u001b[39m) {\u001b[0m\n\u001b[0m \u001b[90m 11 |\u001b[39m   \u001b[36mreturn\u001b[39m (\u001b[0m\n\u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 12 |\u001b[39m     \u001b[33m<\u001b[39m\u001b[33mButton\u001b[39m asChild className\u001b[33m=\u001b[39m{className}\u001b[33m>\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m    |\u001b[39m             \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 13 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33ma\u001b[39m href\u001b[33m=\u001b[39m{href} tabIndex\u001b[33m=\u001b[39m{\u001b[35m0\u001b[39m} className\u001b[33m=\u001b[39m\u001b[32m\"focus-visible:ring focus-visible:ring-ring\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 14 |\u001b[39m         {label}\u001b[0m\n\u001b[0m \u001b[90m 15 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33ma\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n",
+  "stderrTail": " ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\nFailed to compile.\n\n./src/components/ui/Button.tsx:40:8\nType error: Type '{ disabled?: boolean | undefined; form?: string | undefined; formAction?: string | ((formData: FormData) => void | Promise<void>) | undefined; formEncType?: string | undefined; ... 283 more ...; className: string; }' is not assignable to type 'Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof InternalLinkProps>'.\n  Types of property 'onToggle' are incompatible.\n    Type 'ToggleEventHandler<HTMLButtonElement> | undefined' is not assignable to type 'ToggleEventHandler<HTMLAnchorElement> | undefined'.\n      Type 'ToggleEventHandler<HTMLButtonElement>' is not assignable to type 'ToggleEventHandler<HTMLAnchorElement>'.\n        Type 'HTMLButtonElement' is missing the following properties from type 'HTMLAnchorElement': charset, coords, download, hreflang, and 19 more.\n\n\u001b[0m \u001b[90m 38 |\u001b[39m     \u001b[36mconst\u001b[39m \u001b[33mComp\u001b[39m \u001b[33m=\u001b[39m asChild \u001b[33m?\u001b[39m \u001b[33mLink\u001b[39m \u001b[33m:\u001b[39m \u001b[32m'button'\u001b[39m\u001b[33m;\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 39 |\u001b[39m     \u001b[36mreturn\u001b[39m (\u001b[0m\n\u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 40 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33mComp\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m    |\u001b[39m        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 41 |\u001b[39m         ref\u001b[33m=\u001b[39m{ref \u001b[36mas\u001b[39m any}\u001b[0m\n\u001b[0m \u001b[90m 42 |\u001b[39m         className\u001b[33m=\u001b[39m{cn(buttonVariants({ variant\u001b[33m,\u001b[39m size })\u001b[33m,\u001b[39m className)}\u001b[0m\n\u001b[0m \u001b[90m 43 |\u001b[39m         {\u001b[33m...\u001b[39mprops}\u001b[0m\n",
+  "lastPreviewLogLine": "\u001b[0m \u001b[90m 43 |\u001b[39m         {\u001b[33m...\u001b[39mprops}\u001b[0m",
   "probeAttemptsTotal": 0,
   "probeAttemptsTail": [],
   "installFallback": null,
   "stepDurations": [
     {
       "step": "preview:queued",
-      "startedAt": "2026-05-18T17:59:13.527Z",
-      "completedAt": "2026-05-18T17:59:13.527Z",
-      "durationMs": 0
+      "startedAt": "2026-05-19T17:09:18.156Z",
+      "completedAt": "2026-05-19T17:09:18.157Z",
+      "durationMs": 1
     },
     {
       "step": "preview:staging-files",
-      "startedAt": "2026-05-18T17:59:13.527Z",
-      "completedAt": "2026-05-18T17:59:13.548Z",
+      "startedAt": "2026-05-19T17:09:18.157Z",
+      "completedAt": "2026-05-19T17:09:18.178Z",
       "durationMs": 21
     },
     {
       "step": "preview:installing",
-      "startedAt": "2026-05-18T17:59:13.548Z",
-      "completedAt": "2026-05-18T17:59:53.501Z",
-      "durationMs": 39953
+      "startedAt": "2026-05-19T17:09:18.178Z",
+      "completedAt": "2026-05-19T17:10:05.391Z",
+      "durationMs": 47213
     },
     {
       "step": "preview:building",
-      "startedAt": "2026-05-18T17:59:53.501Z",
-      "completedAt": "2026-05-18T18:00:03.044Z",
-      "durationMs": 9543
+      "startedAt": "2026-05-19T17:10:05.391Z",
+      "completedAt": "2026-05-19T17:10:14.326Z",
+      "durationMs": 8935
     },
     {
       "step": "preview:installing",
-      "startedAt": "2026-05-18T18:00:03.044Z",
-      "completedAt": "2026-05-18T18:00:03.080Z",
-      "durationMs": 36
+      "startedAt": "2026-05-19T17:10:14.326Z",
+      "completedAt": "2026-05-19T17:10:14.361Z",
+      "durationMs": 35
     }
   ],
   "previewStatusTransitions": [
     {
       "step": "starting:local-runner",
-      "at": "2026-05-18T17:59:13.527Z"
+      "at": "2026-05-19T17:09:18.156Z"
     }
   ],
   "localStartAttempts": [
     {
       "attempt": 1,
       "ok": false,
-      "error": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 11 |\u001b[39m   \u001b[36mreturn\u001b[39m (\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 12 |\u001b[39m     \u001b[33m<\u001b[39m\u001b[33mButton\u001b[39m asChild className\u001b[33m=\u001b[39m{className}\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m             \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 13 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33ma\u001b[39m href\u001b[33m=\u001b[39m{href} tabIndex\u001b[33m=\u001b[39m{\u001b[35m0\u001b[39m} className\u001b[33m=\u001b[39m\u001b[32m\"focus-visible:ring focus-visible:ring-ring\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 14 |\u001b[39m         {label}\u001b[0m | \u001b[0m \u001b[90m 15 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33ma\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/pricing/PrimaryCTA.tsx:12:13; errorMessage=Type error: Type '{ children: Element; asChild: true; className: string | undefined; }' is not assignable to type 'IntrinsicAttributes & (ButtonProps & RefAttributes<HTMLButtonElement | HTMLAnchorElement>)'.; recommendedRepairPath=Repair generated source and imports in ./src/components/pricing/PrimaryCTA.tsx:12:13, then rerun build validation before preview start.",
+      "error": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 39 |\u001b[39m     \u001b[36mreturn\u001b[39m (\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 40 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33mComp\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 41 |\u001b[39m         ref\u001b[33m=\u001b[39m{ref \u001b[36mas\u001b[39m any}\u001b[0m | \u001b[0m \u001b[90m 42 |\u001b[39m         className\u001b[33m=\u001b[39m{cn(buttonVariants({ variant\u001b[33m,\u001b[39m size })\u001b[33m,\u001b[39m className)}\u001b[0m | \u001b[0m \u001b[90m 43 |\u001b[39m         {\u001b[33m...\u001b[39mprops}\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/ui/Button.tsx:40:8; errorMessage=Type error: Type '{ disabled?: boolean | undefined; form?: string | undefined; formAction?: string | ((formData: FormData) => void | Promise<void>) | undefined; formEncType?: string | undefined; ... 283 more ...; className: string; }' is not assignable to type 'Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof InternalLinkProps>'.; recommendedRepairPath=Repair generated source and imports in ./src/components/ui/Button.tsx:40:8, then rerun build validation before preview start.",
       "portOpened": false,
-      "durationMs": 47489,
-      "startedAtIso": "2026-05-18T17:59:13.548Z",
-      "endedAtIso": "2026-05-18T18:00:01.037Z"
+      "durationMs": 54144,
+      "startedAtIso": "2026-05-19T17:09:18.178Z",
+      "endedAtIso": "2026-05-19T17:10:12.322Z"
     },
     {
       "attempt": 2,
       "ok": false,
-      "error": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 11 |\u001b[39m   \u001b[36mreturn\u001b[39m (\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 12 |\u001b[39m     \u001b[33m<\u001b[39m\u001b[33mButton\u001b[39m asChild className\u001b[33m=\u001b[39m{className}\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m             \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 13 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33ma\u001b[39m href\u001b[33m=\u001b[39m{href} tabIndex\u001b[33m=\u001b[39m{\u001b[35m0\u001b[39m} className\u001b[33m=\u001b[39m\u001b[32m\"focus-visible:ring focus-visible:ring-ring\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 14 |\u001b[39m         {label}\u001b[0m | \u001b[0m \u001b[90m 15 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33ma\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/pricing/PrimaryCTA.tsx:12:13; errorMessage=Type error: Type '{ children: Element; asChild: true; className: string | undefined; }' is not assignable to type 'IntrinsicAttributes & (ButtonProps & RefAttributes<HTMLButtonElement | HTMLAnchorElement>)'.; recommendedRepairPath=Repair generated source and imports in ./src/components/pricing/PrimaryCTA.tsx:12:13, then rerun build validation before preview start.",
+      "error": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 39 |\u001b[39m     \u001b[36mreturn\u001b[39m (\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 40 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33mComp\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 41 |\u001b[39m         ref\u001b[33m=\u001b[39m{ref \u001b[36mas\u001b[39m any}\u001b[0m | \u001b[0m \u001b[90m 42 |\u001b[39m         className\u001b[33m=\u001b[39m{cn(buttonVariants({ variant\u001b[33m,\u001b[39m size })\u001b[33m,\u001b[39m className)}\u001b[0m | \u001b[0m \u001b[90m 43 |\u001b[39m         {\u001b[33m...\u001b[39mprops}\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/ui/Button.tsx:40:8; errorMessage=Type error: Type '{ disabled?: boolean | undefined; form?: string | undefined; formAction?: string | ((formData: FormData) => void | Promise<void>) | undefined; formEncType?: string | undefined; ... 283 more ...; className: string; }' is not assignable to type 'Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof InternalLinkProps>'.; recommendedRepairPath=Repair generated source and imports in ./src/components/ui/Button.tsx:40:8, then rerun build validation before preview start.",
       "portOpened": false,
-      "durationMs": 6903,
-      "startedAtIso": "2026-05-18T18:00:03.044Z",
-      "endedAtIso": "2026-05-18T18:00:09.947Z"
+      "durationMs": 6781,
+      "startedAtIso": "2026-05-19T17:10:14.326Z",
+      "endedAtIso": "2026-05-19T17:10:21.107Z"
     }
   ],
   "localRetrySucceeded": false

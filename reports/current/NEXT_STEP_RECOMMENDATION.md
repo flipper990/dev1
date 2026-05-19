@@ -1,5 +1,11 @@
-# NEXT_STEP_RECOMMENDATION
+﻿# NEXT_STEP_RECOMMENDATION
 
-1. Keep this 2-cycle capped repeatability run as a release gate for milestone lock branches.
-2. Add automated extraction of tier labels in mission-e2e summary (currently results use `tier=custom` for custom prompt sets).
-3. Keep monitoring preview installation/build phases since preview startup remains the dominant runtime cost.
+Date: 2026-05-19
+
+## Recommendation
+Keep this observability patch as the clean baseline and do not optimize cache yet.
+
+Next, run a focused stabilization pass on generated TypeScript compatibility for preview build failures (without changing tier routing/generation architecture) and rerun the same 3 prompts to evaluate reliability deltas against this baseline.
+
+## Why
+Current observability is now sufficient to answer exact failure phase/reason and timeout/process context. Remaining failures are now attributable to generated app compile issues, not diagnostic blind spots.

@@ -1,27 +1,26 @@
 {
-  "startedAt": "2026-05-18T21:14:25.294Z",
-  "completedAt": "2026-05-18T21:20:40.295Z",
-  "apiUrl": "http://127.0.0.1:3303",
+  "startedAt": "2026-05-19T16:36:50.453Z",
+  "completedAt": "2026-05-19T17:10:22.182Z",
+  "apiUrl": "http://127.0.0.1:3003",
   "prompts": [
     "Build a simple landing page with hero section, features, and CTA.",
     "Build a simple SaaS dashboard with sidebar, KPI cards, and recent activity.",
-    "Build a simple pricing page with three plans and feature comparison.",
-    "Build a CRUD app with list/add/edit/delete and search filters.",
-    "Build an admin dashboard with forms, validation, filters, and complex state.",
-    "Build a fullstack SaaS app with user accounts, projects, dashboard, API routes, and persistent CRUD data model."
+    "Build a simple pricing page with three plans and feature comparison."
   ],
   "repeatCycles": 1,
   "minSuccessMissions": 1,
   "summary": {
-    "total": 6,
-    "succeeded": 6,
-    "failed": 0,
-    "successRate": 1,
-    "averageCompletionMs": 62377,
+    "total": 3,
+    "succeeded": 2,
+    "failed": 1,
+    "successRate": 0.6666666666666666,
+    "averageCompletionMs": 808156,
     "retryFrequency": 0,
-    "previewStartupSuccess": 1,
-    "exportSuccessRate": 1,
-    "failureCategories": {},
+    "previewStartupSuccess": 0.6666666666666666,
+    "exportSuccessRate": 0.6666666666666666,
+    "failureCategories": {
+      "generated_typescript_error": 1
+    },
     "reliabilityByTier": [
       {
         "tier": "tier1",
@@ -48,7 +47,7 @@
   },
   "preflightBefore": {
     "ok": true,
-    "checkedAt": "2026-05-18T21:14:25.311Z",
+    "checkedAt": "2026-05-19T16:36:50.469Z",
     "requiredProviders": [
       "azure"
     ],
@@ -62,18 +61,18 @@
           "provider": "openai",
           "healthy": false,
           "reason": "provider-healthcheck-failed",
-          "checkedAt": "2026-05-18T21:14:25.311Z",
-          "latencyMs": 114
+          "checkedAt": "2026-05-19T16:36:50.585Z",
+          "latencyMs": 116
         },
         "azure": {
           "provider": "azure",
           "healthy": true,
           "reason": "ok",
-          "checkedAt": "2026-05-18T21:14:25.425Z",
+          "checkedAt": "2026-05-19T16:36:50.701Z",
           "latencyMs": 0
         }
       },
-      "checkedAt": "2026-05-18T21:14:25.311Z"
+      "checkedAt": "2026-05-19T16:36:50.585Z"
     },
     "services": {
       "storage": {
@@ -89,7 +88,7 @@
   },
   "preflightAfter": {
     "ok": true,
-    "checkedAt": "2026-05-18T21:20:39.689Z",
+    "checkedAt": "2026-05-19T17:10:21.262Z",
     "requiredProviders": [
       "azure"
     ],
@@ -103,18 +102,18 @@
           "provider": "openai",
           "healthy": false,
           "reason": "provider-healthcheck-failed",
-          "checkedAt": "2026-05-18T21:20:39.694Z",
-          "latencyMs": 475
+          "checkedAt": "2026-05-19T17:10:21.366Z",
+          "latencyMs": 495
         },
         "azure": {
           "provider": "azure",
           "healthy": true,
           "reason": "ok",
-          "checkedAt": "2026-05-18T21:20:40.169Z",
+          "checkedAt": "2026-05-19T17:10:21.861Z",
           "latencyMs": 0
         }
       },
-      "checkedAt": "2026-05-18T21:20:39.694Z"
+      "checkedAt": "2026-05-19T17:10:21.366Z"
     },
     "services": {
       "storage": {
@@ -129,19 +128,45 @@
     "reason": null
   },
   "runtimeTelemetry": {
-    "observedAt": "2026-05-18T21:20:40.294Z",
+    "observedAt": "2026-05-19T17:10:22.183Z",
     "missions": {
-      "accepted": 6,
-      "terminal": 6,
-      "completed": 6,
-      "failed": 0,
-      "successRate": 1,
-      "avgCompletionMs": 104138
+      "accepted": 3,
+      "terminal": 184,
+      "completed": 87,
+      "failed": 97,
+      "successRate": 0.47282608695652173,
+      "avgCompletionMs": 372867
     },
     "reliability": {
-      "failuresByCategory": {},
-      "failuresByPhase": {},
-      "artifactCorruptionRate": 0
+      "failuresByCategory": {
+        "unknown": 44,
+        "orchestration_failure": 36,
+        "artifact_corruption": 3,
+        "empty_generation": 4,
+        "dependency_failure": 10
+      },
+      "failuresByPhase": {
+        "unknown": 14,
+        "qa-gate": 30,
+        "terminal-consistency": 10,
+        "finalize": 1,
+        "final-integrity-gate": 2,
+        "final-assembly": 9,
+        "watchdog": 3,
+        "slice-1/3": 3,
+        "slice-1/4": 2,
+        "slice-1/7": 1,
+        "slice-1/6": 1,
+        "slice-1/5": 3,
+        "slice-1/2": 2,
+        "slice-1/1": 10,
+        "slice-4/4": 1,
+        "validate-request": 2,
+        "slice-2/2": 1,
+        "slice-2/5": 1,
+        "slice-1/20": 1
+      },
+      "artifactCorruptionRate": 0.016304347826086956
     },
     "providers": {
       "preflightBlockedLaunches": 0,
@@ -153,14 +178,14 @@
           "provider": "openai",
           "healthy": false,
           "reason": "provider-healthcheck-failed",
-          "checkedAt": "2026-05-18T21:20:40.180Z",
-          "latencyMs": 113
+          "checkedAt": "2026-05-19T17:10:22.068Z",
+          "latencyMs": 115
         },
         "azure": {
           "provider": "azure",
           "healthy": true,
           "reason": "ok",
-          "checkedAt": "2026-05-18T21:20:40.293Z",
+          "checkedAt": "2026-05-19T17:10:22.183Z",
           "latencyMs": 0
         }
       },
@@ -170,13 +195,13 @@
       "averageRetriesPerSession": 0
     },
     "preview": {
-      "attempted": 3,
-      "ready": 3,
-      "startupSuccessRate": 1
+      "attempted": 51,
+      "ready": 20,
+      "startupSuccessRate": 0.39215686274509803
     },
     "export": {
-      "attempts": 6,
-      "successes": 6,
+      "attempts": 2,
+      "successes": 2,
       "failures": 0,
       "successRate": 1
     }
@@ -186,19 +211,21 @@
       "index": 0,
       "tier": "custom",
       "prompt": "Build a simple landing page with hero section, features, and CTA.",
-      "projectId": "_FEWGskOKw_w",
-      "sessionId": "wyD9aX29-P7h2e5p",
+      "projectId": "INJUOIzhuKOq",
+      "sessionId": "1-OgU761YL4ebKyF",
       "status": "pass",
-      "durationMs": 59012,
-      "filesCount": 15,
+      "durationMs": 343088,
+      "filesCount": 47,
       "previewState": "ready",
-      "previewUrl": "/preview/_FEWGskOKw_w/",
+      "previewUrl": "/preview/INJUOIzhuKOq/",
       "exportOk": true,
       "exportState": "ok",
+      "exportDurationMs": 22,
       "retriesObserved": 0,
       "phasesSeen": [
         "init",
-        "queued",
+        "planning",
+        "backend_generation",
         "artifact_packaging"
       ],
       "failureCategory": null,
@@ -208,28 +235,64 @@
       "failedStep": null,
       "retryCount": 0,
       "lastValidCheckpoint": null,
-      "filesGeneratedBeforeFailure": 15,
+      "filesGeneratedBeforeFailure": 47,
       "recoveryAttempted": false,
       "recommendedNextAction": null,
-      "zeroFileClassification": null
+      "zeroFileClassification": null,
+      "previewStageDurations": {
+        "queued": 1,
+        "stagingFiles": 22,
+        "installing": 47315,
+        "building": 11493,
+        "spawningServer": 9,
+        "waitingForPort": 2,
+        "httpProbing": 3213,
+        "ready": null,
+        "failed": null,
+        "timeout": null
+      },
+      "installDurationMs": 47315,
+      "buildDurationMs": 11493,
+      "serverStartDurationMs": 9,
+      "healthProbeDurationMs": 3213,
+      "contentHealthDurationMs": 3213,
+      "previewStartupTotalMs": 62055,
+      "previewFailurePhase": null,
+      "previewFailureReason": null,
+      "cacheDecision": "miss",
+      "cacheHit": false,
+      "dependencyHash": null,
+      "installSkipped": false,
+      "installExitCode": null,
+      "buildExitCode": null,
+      "startCommand": "npm.cmd run dev",
+      "runtimeCwd": "..\\..\\data\\projects\\INJUOIzhuKOq\\output\\.preview-runtime",
+      "timeoutSource": null,
+      "timeoutLimit": null,
+      "currentPreviewPhase": "preview:ready",
+      "elapsedTime": 62072,
+      "lastPreviewLogLine": "<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies",
+      "processState": null
     },
     {
       "index": 1,
       "tier": "custom",
       "prompt": "Build a simple SaaS dashboard with sidebar, KPI cards, and recent activity.",
-      "projectId": "jGJkajkz1fMO",
-      "sessionId": "R6Pe7-cZNwM8lwbU",
+      "projectId": "emZkUOyEgoPH",
+      "sessionId": "3AugjiiJL-3CKbE2",
       "status": "pass",
-      "durationMs": 71282,
-      "filesCount": 15,
+      "durationMs": 1273224,
+      "filesCount": 64,
       "previewState": "ready",
-      "previewUrl": "/preview/jGJkajkz1fMO/",
+      "previewUrl": "/preview/emZkUOyEgoPH/",
       "exportOk": true,
       "exportState": "ok",
+      "exportDurationMs": 20,
       "retriesObserved": 0,
       "phasesSeen": [
         "init",
         "planning",
+        "backend_generation",
         "artifact_packaging"
       ],
       "failureCategory": null,
@@ -239,134 +302,109 @@
       "failedStep": null,
       "retryCount": 0,
       "lastValidCheckpoint": null,
-      "filesGeneratedBeforeFailure": 15,
+      "filesGeneratedBeforeFailure": 64,
       "recoveryAttempted": false,
       "recommendedNextAction": null,
-      "zeroFileClassification": null
+      "zeroFileClassification": null,
+      "previewStageDurations": {
+        "queued": 0,
+        "stagingFiles": 27,
+        "installing": 56735,
+        "building": 11920,
+        "spawningServer": 3,
+        "waitingForPort": 3,
+        "httpProbing": 3163,
+        "ready": null,
+        "failed": null,
+        "timeout": null
+      },
+      "installDurationMs": 56735,
+      "buildDurationMs": 11920,
+      "serverStartDurationMs": 3,
+      "healthProbeDurationMs": 3163,
+      "contentHealthDurationMs": 3163,
+      "previewStartupTotalMs": 71852,
+      "previewFailurePhase": null,
+      "previewFailureReason": null,
+      "cacheDecision": "miss",
+      "cacheHit": false,
+      "dependencyHash": null,
+      "installSkipped": false,
+      "installExitCode": null,
+      "buildExitCode": null,
+      "startCommand": "npm.cmd run dev",
+      "runtimeCwd": "..\\..\\data\\projects\\emZkUOyEgoPH\\output\\.preview-runtime",
+      "timeoutSource": null,
+      "timeoutLimit": null,
+      "currentPreviewPhase": "preview:ready",
+      "elapsedTime": 71912,
+      "lastPreviewLogLine": "<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies",
+      "processState": null
     },
     {
       "index": 2,
       "tier": "custom",
       "prompt": "Build a simple pricing page with three plans and feature comparison.",
-      "projectId": "vH7_6WwTzorW",
-      "sessionId": "388fXYphIyvhZ-3p",
-      "status": "pass",
-      "durationMs": 59936,
-      "filesCount": 14,
-      "previewState": "ready",
-      "previewUrl": "/preview/vH7_6WwTzorW/",
-      "exportOk": true,
-      "exportState": "ok",
+      "projectId": "Zs1T2p-hdCEZ",
+      "sessionId": "8K6OBPQs7KJS5gxC",
+      "status": "fail",
+      "reason": "generated_typescript_error/finalize: Local preview failed: build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 39 |\u001b[39m     \u001b[36mreturn\u001b[39m (\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 40 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33mComp\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 41 |\u001b[39m         ref\u001b[33m=\u001b[39m{ref \u001b[36mas\u001b[39m any}\u001b[0m | \u001b[0m \u001b[90m 42 |\u001b[39m         className\u001b[33m=\u001b[39m{cn(buttonVariants({ variant\u001b[33m,\u001b[39m size })\u001b[33m,\u001b[39m className)}\u001b[0m | \u001b[0m \u001b[90m 43 |\u001b[39m         {\u001b[33m...\u001b[39mprops}\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/ui/Button.tsx:40:8; errorMessage=Type error: Type '{ disabled?: boolean | undefined; form?: string | undefined; formAction?: string | ((formData: FormData) => void | Promise<void>) | undefined; formEncType?: string | undefined; ... 283 more ...; className: string; }' is not assignable to type 'Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof InternalLinkProps>'.; recommendedRepairPath=Repair generated source and imports in ./src/components/ui/Button.tsx:40:8, then rerun build validation before preview start.\nlast successful step: install cache hit\nstderr tail:\ntegy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\nFailed to compile.\n\n./src/components/ui/Button.tsx:40:8\nType error: Type '{ disabled?: boolean | undefined; form?: string | undefined; formAction?: string | ((formData: FormData) => void | Promise<void>) | undefined; formEncType?: string | undefined; ... 283 more ...; className: string; }' is not assignable to type 'Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof InternalLinkProps>'.\n  Types of property 'onToggle' are incompatible.\n    Type 'ToggleEventHandler<HTMLButtonElement> | undefined' is not assignable to type 'ToggleEventHandler<HTMLAnchorElement> | undefined'.\n      Type 'ToggleEventHandler<HTMLButtonElement>' is not assignable to type 'ToggleEventHandler<HTMLAnchorElement>'.\n        Type 'HTMLButtonElement' is missing the following properties from type 'HTMLAnchorElement': charset, coords, download, hreflang, and 19 more.\n\n\u001b[0m \u001b[90m 38 |\u001b[39m     \u001b[36mconst\u001b[39m \u001b[33mComp\u001b[39m \u001b[33m=\u001b[39m asChild \u001b[33m?\u001b[39m \u001b[33mLink\u001b[39m \u001b[33m:\u001b[39m \u001b[32m'button'\u001b[39m\u001b[33m;\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 39 |\u001b[39m     \u001b[36mreturn\u001b[39m (\u001b[0m\n\u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 40 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33mComp\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m    |\u001b[39m        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 41 |\u001b[39m         ref\u001b[33m=\u001b[39m{ref \u001b[36mas\u001b[39m any}\u001b[0m\n\u001b[0m \u001b[90m 42 |\u001b[39m         className\u001b[33m=\u001b[39m{cn(buttonVariants({ variant\u001b[33m,\u001b[39m size })\u001b[33m,\u001b[39m className)}\u001b[0m\n\u001b[0m \u001b[90m 43 |\u001b[39m         {\u001b[33m...\u001b[39mprops}\u001b[0m",
+      "durationMs": 394244,
+      "filesCount": 49,
+      "previewState": null,
+      "previewUrl": null,
+      "exportOk": false,
+      "exportState": "not_attempted",
+      "exportDurationMs": null,
       "retriesObserved": 0,
       "phasesSeen": [
-        "init",
-        "planning",
         "artifact_packaging"
       ],
-      "failureCategory": null,
-      "failurePhase": null,
-      "failureReason": null,
-      "failedAgent": null,
-      "failedStep": null,
+      "failureCategory": "generated_typescript_error",
+      "failurePhase": "finalize",
+      "failureReason": "Local preview failed: build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 39 |\u001b[39m     \u001b[36mreturn\u001b[39m (\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 40 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33mComp\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 41 |\u001b[39m         ref\u001b[33m=\u001b[39m{ref \u001b[36mas\u001b[39m any}\u001b[0m | \u001b[0m \u001b[90m 42 |\u001b[39m         className\u001b[33m=\u001b[39m{cn(buttonVariants({ variant\u001b[33m,\u001b[39m size })\u001b[33m,\u001b[39m className)}\u001b[0m | \u001b[0m \u001b[90m 43 |\u001b[39m         {\u001b[33m...\u001b[39mprops}\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/ui/Button.tsx:40:8; errorMessage=Type error: Type '{ disabled?: boolean | undefined; form?: string | undefined; formAction?: string | ((formData: FormData) => void | Promise<void>) | undefined; formEncType?: string | undefined; ... 283 more ...; className: string; }' is not assignable to type 'Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof InternalLinkProps>'.; recommendedRepairPath=Repair generated source and imports in ./src/components/ui/Button.tsx:40:8, then rerun build validation before preview start.\nlast successful step: install cache hit\nstderr tail:\ntegy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\nFailed to compile.\n\n./src/components/ui/Button.tsx:40:8\nType error: Type '{ disabled?: boolean | undefined; form?: string | undefined; formAction?: string | ((formData: FormData) => void | Promise<void>) | undefined; formEncType?: string | undefined; ... 283 more ...; className: string; }' is not assignable to type 'Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof InternalLinkProps>'.\n  Types of property 'onToggle' are incompatible.\n    Type 'ToggleEventHandler<HTMLButtonElement> | undefined' is not assignable to type 'ToggleEventHandler<HTMLAnchorElement> | undefined'.\n      Type 'ToggleEventHandler<HTMLButtonElement>' is not assignable to type 'ToggleEventHandler<HTMLAnchorElement>'.\n        Type 'HTMLButtonElement' is missing the following properties from type 'HTMLAnchorElement': charset, coords, download, hreflang, and 19 more.\n\n\u001b[0m \u001b[90m 38 |\u001b[39m     \u001b[36mconst\u001b[39m \u001b[33mComp\u001b[39m \u001b[33m=\u001b[39m asChild \u001b[33m?\u001b[39m \u001b[33mLink\u001b[39m \u001b[33m:\u001b[39m \u001b[32m'button'\u001b[39m\u001b[33m;\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 39 |\u001b[39m     \u001b[36mreturn\u001b[39m (\u001b[0m\n\u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 40 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33mComp\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m    |\u001b[39m        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 41 |\u001b[39m         ref\u001b[33m=\u001b[39m{ref \u001b[36mas\u001b[39m any}\u001b[0m\n\u001b[0m \u001b[90m 42 |\u001b[39m         className\u001b[33m=\u001b[39m{cn(buttonVariants({ variant\u001b[33m,\u001b[39m size })\u001b[33m,\u001b[39m className)}\u001b[0m\n\u001b[0m \u001b[90m 43 |\u001b[39m         {\u001b[33m...\u001b[39mprops}\u001b[0m",
+      "failedAgent": "pipeline",
+      "failedStep": "finalize:completed",
       "retryCount": 0,
-      "lastValidCheckpoint": null,
-      "filesGeneratedBeforeFailure": 14,
+      "lastValidCheckpoint": "e08mxc5qwN",
+      "filesGeneratedBeforeFailure": 49,
       "recoveryAttempted": false,
-      "recommendedNextAction": null,
-      "zeroFileClassification": null
-    },
-    {
-      "index": 3,
-      "tier": "custom",
-      "prompt": "Build a CRUD app with list/add/edit/delete and search filters.",
-      "projectId": "kUFD9FSrbrlf",
-      "sessionId": "P2jla-C8047P62_7",
-      "status": "pass",
-      "durationMs": 69776,
-      "filesCount": 12,
-      "previewState": "ready",
-      "previewUrl": "/preview/kUFD9FSrbrlf/",
-      "exportOk": true,
-      "exportState": "ok",
-      "retriesObserved": 0,
-      "phasesSeen": [
-        "init",
-        "planning",
-        "artifact_packaging"
-      ],
-      "failureCategory": null,
-      "failurePhase": null,
-      "failureReason": null,
-      "failedAgent": null,
-      "failedStep": null,
-      "retryCount": 0,
-      "lastValidCheckpoint": null,
-      "filesGeneratedBeforeFailure": 12,
-      "recoveryAttempted": false,
-      "recommendedNextAction": null,
-      "zeroFileClassification": null
-    },
-    {
-      "index": 4,
-      "tier": "custom",
-      "prompt": "Build an admin dashboard with forms, validation, filters, and complex state.",
-      "projectId": "3cmOnawhMTim",
-      "sessionId": "c0aG5wYw0lNGWPZ_",
-      "status": "pass",
-      "durationMs": 67291,
-      "filesCount": 12,
-      "previewState": "ready",
-      "previewUrl": "/preview/3cmOnawhMTim/",
-      "exportOk": true,
-      "exportState": "ok",
-      "retriesObserved": 0,
-      "phasesSeen": [
-        "init",
-        "planning",
-        "artifact_packaging"
-      ],
-      "failureCategory": null,
-      "failurePhase": null,
-      "failureReason": null,
-      "failedAgent": null,
-      "failedStep": null,
-      "retryCount": 0,
-      "lastValidCheckpoint": null,
-      "filesGeneratedBeforeFailure": 12,
-      "recoveryAttempted": false,
-      "recommendedNextAction": null,
-      "zeroFileClassification": null
-    },
-    {
-      "index": 5,
-      "tier": "custom",
-      "prompt": "Build a fullstack SaaS app with user accounts, projects, dashboard, API routes, and persistent CRUD data model.",
-      "projectId": "ZlIgGTgtu1Uc",
-      "sessionId": "aIFhYPXiusTp5S7W",
-      "status": "pass",
-      "durationMs": 46963,
-      "filesCount": 19,
-      "previewState": "ready",
-      "previewUrl": "/preview/ZlIgGTgtu1Uc/",
-      "exportOk": true,
-      "exportState": "ok",
-      "retriesObserved": 0,
-      "phasesSeen": [
-        "init",
-        "planning",
-        "artifact_packaging"
-      ],
-      "failureCategory": null,
-      "failurePhase": null,
-      "failureReason": null,
-      "failedAgent": null,
-      "failedStep": null,
-      "retryCount": 0,
-      "lastValidCheckpoint": null,
-      "filesGeneratedBeforeFailure": 19,
-      "recoveryAttempted": false,
-      "recommendedNextAction": null,
-      "zeroFileClassification": null
+      "recommendedNextAction": "Fix generated TypeScript compile errors before rerunning preview/export validation.",
+      "zeroFileClassification": null,
+      "previewStageDurations": {
+        "queued": 1,
+        "stagingFiles": 21,
+        "installing": 47248,
+        "building": 15684,
+        "spawningServer": null,
+        "waitingForPort": null,
+        "httpProbing": null,
+        "ready": null,
+        "failed": null,
+        "timeout": null
+      },
+      "installDurationMs": 47248,
+      "buildDurationMs": 15684,
+      "serverStartDurationMs": null,
+      "healthProbeDurationMs": null,
+      "contentHealthDurationMs": null,
+      "previewStartupTotalMs": 62954,
+      "previewFailurePhase": "preview:failed",
+      "previewFailureReason": "Local preview failed: build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 39 |\u001b[39m     \u001b[36mreturn\u001b[39m (\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 40 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33mComp\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 41 |\u001b[39m         ref\u001b[33m=\u001b[39m{ref \u001b[36mas\u001b[39m any}\u001b[0m | \u001b[0m \u001b[90m 42 |\u001b[39m         className\u001b[33m=\u001b[39m{cn(buttonVariants({ variant\u001b[33m,\u001b[39m size })\u001b[33m,\u001b[39m className)}\u001b[0m | \u001b[0m \u001b[90m 43 |\u001b[39m         {\u001b[33m...\u001b[39mprops}\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/ui/Button.tsx:40:8; errorMessage=Type error: Type '{ disabled?: boolean | undefined; form?: string | undefined; formAction?: string | ((formData: FormData) => void | Promise<void>) | undefined; formEncType?: string | undefined; ... 283 more ...; className: string; }' is not assignable to type 'Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof InternalLinkProps>'.; recommendedRepairPath=Repair generated source and imports in ./src/components/ui/Button.tsx:40:8, then rerun build validation before preview start.\nlast successful step: install cache hit\nstderr tail:\ntegy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\nFailed to compile.\n\n./src/components/ui/Button.tsx:40:8\nType error: Type '{ disabled?: boolean | undefined; form?: string | undefined; formAction?: string | ((formData: FormData) => void | Promise<void>) | undefined; formEncType?: string | undefined; ... 283 more ...; className: string; }' is not assignable to type 'Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof InternalLinkProps>'.\n  Types of property 'onToggle' are incompatible.\n    Type 'ToggleEventHandler<HTMLButtonElement> | undefined' is not assignable to type 'ToggleEventHandler<HTMLAnchorElement> | undefined'.\n      Type 'ToggleEventHandler<HTMLButtonElement>' is not assignable to type 'ToggleEventHandler<HTMLAnchorElement>'.\n        Type 'HTMLButtonElement' is missing the following properties from type 'HTMLAnchorElement': charset, coords, download, hreflang, and 19 more.\n\n\u001b[0m \u001b[90m 38 |\u001b[39m     \u001b[36mconst\u001b[39m \u001b[33mComp\u001b[39m \u001b[33m=\u001b[39m asChild \u001b[33m?\u001b[39m \u001b[33mLink\u001b[39m \u001b[33m:\u001b[39m \u001b[32m'button'\u001b[39m\u001b[33m;\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 39 |\u001b[39m     \u001b[36mreturn\u001b[39m (\u001b[0m\n\u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 40 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33mComp\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m    |\u001b[39m        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 41 |\u001b[39m         ref\u001b[33m=\u001b[39m{ref \u001b[36mas\u001b[39m any}\u001b[0m\n\u001b[0m \u001b[90m 42 |\u001b[39m         className\u001b[33m=\u001b[39m{cn(buttonVariants({ variant\u001b[33m,\u001b[39m size })\u001b[33m,\u001b[39m className)}\u001b[0m\n\u001b[0m \u001b[90m 43 |\u001b[39m         {\u001b[33m...\u001b[39mprops}\u001b[0m",
+      "cacheDecision": "miss",
+      "cacheHit": false,
+      "dependencyHash": null,
+      "installSkipped": false,
+      "installExitCode": null,
+      "buildExitCode": 1,
+      "startCommand": "npm.cmd run build",
+      "runtimeCwd": "..\\..\\data\\projects\\Zs1T2p-hdCEZ\\output\\.preview-runtime",
+      "timeoutSource": null,
+      "timeoutLimit": null,
+      "currentPreviewPhase": "preview:failed",
+      "elapsedTime": 62971,
+      "lastPreviewLogLine": "\u001b[0m \u001b[90m 43 |\u001b[39m         {\u001b[33m...\u001b[39mprops}\u001b[0m",
+      "processState": "alive-hanging"
     }
   ]
 }

@@ -649,6 +649,46 @@ export interface ProjectRecord {
       completedAt: string;
       durationMs: number;
     }>;
+    /** Aggregated duration map keyed by preview boot phase. */
+    previewStageDurations?: {
+      queued?: number | null;
+      stagingFiles?: number | null;
+      installing?: number | null;
+      building?: number | null;
+      spawningServer?: number | null;
+      waitingForPort?: number | null;
+      httpProbing?: number | null;
+      ready?: number | null;
+      failed?: number | null;
+      timeout?: number | null;
+    } | null;
+    /** Canonical preview timing rollups (ms). */
+    installDurationMs?: number | null;
+    buildDurationMs?: number | null;
+    serverStartDurationMs?: number | null;
+    healthProbeDurationMs?: number | null;
+    contentHealthDurationMs?: number | null;
+    exportDurationMs?: number | null;
+    previewStartupTotalMs?: number | null;
+    /** Structured preview failure diagnostics. */
+    previewFailurePhase?: string | null;
+    previewFailureReason?: string | null;
+    /** Cache/install observability (no behavior changes). */
+    cacheDecision?: 'hit' | 'miss' | 'skip' | null;
+    cacheHit?: boolean | null;
+    dependencyHash?: string | null;
+    installSkipped?: boolean | null;
+    installExitCode?: number | null;
+    buildExitCode?: number | null;
+    startCommand?: string | null;
+    runtimeCwd?: string | null;
+    /** Timeout/failure visibility fields for triage UIs and reports. */
+    timeoutSource?: string | null;
+    timeoutLimit?: number | null;
+    currentPreviewPhase?: string | null;
+    elapsedTime?: number | null;
+    lastPreviewLogLine?: string | null;
+    processState?: string | null;
     /** Both errors when a docker→local fallback chain ended in failure.
      *  Cleared on successful preview or on first attempt failure (only
      *  set after the fallback path has also been exhausted). */

@@ -72,6 +72,17 @@ test('local preview build failure with Type error stays generated_typescript_err
   assert.equal(out.code, 'GENERATED_TYPESCRIPT');
 });
 
+test('button anchor prop mismatch during preview build stays generated_typescript_error', () => {
+  const out = classifyGenerationFailure({
+    failedPhase: 'finalize',
+    failedStep: 'finalize:completed',
+    errorMessage:
+      "Local preview failed: build failed: npm run build exited code=1 - ./src/components/ui/Button.tsx:40:8 | Type error: Type '{ ... }' is not assignable to type 'Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof InternalLinkProps>'.",
+  });
+  assert.equal(out.category, 'generated_typescript_error');
+  assert.equal(out.code, 'GENERATED_TYPESCRIPT');
+});
+
 test('preview internal crash maps to preview_runner_internal_error', () => {
   const out = classifyGenerationFailure({
     failedPhase: 'preview',

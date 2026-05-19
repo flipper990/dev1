@@ -1,11 +1,6 @@
-﻿# NEXT_STEP_RECOMMENDATION
+# Next Step Recommendation
 
-Date: 2026-05-19
-
-## Recommendation
-Keep this observability patch as the clean baseline and do not optimize cache yet.
-
-Next, run a focused stabilization pass on generated TypeScript compatibility for preview build failures (without changing tier routing/generation architecture) and rerun the same 3 prompts to evaluate reliability deltas against this baseline.
-
-## Why
-Current observability is now sufficient to answer exact failure phase/reason and timeout/process context. Remaining failures are now attributable to generated app compile issues, not diagnostic blind spots.
+1. Keep this TypeScript contract fix as-is (no rollback): it removed the original `generated_typescript_error` baseline blocker.
+2. Open a separate, scoped follow-up for `dependency_failure` at `strict-react-next-bundle-pins` during slice merge (`slice-4/7`), without changing preview observability.
+3. Add one focused regression test in package-manifest/merge path that reproduces the exact invalid package.json shape seen in `projectId=QRAmPAcgGUzv`.
+4. After dependency fix, rerun the same 3 prompts once to confirm 3/3 without expanding prompt count.

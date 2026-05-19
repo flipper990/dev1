@@ -948,6 +948,7 @@ export function sanitizeUIFoundation(fileMap: Map<string, ProjectFile>): void {
   // interface without className support, causing deterministic TS failures.
   repairBrokenButtonContract(fileMap);
   repairBrokenAlertContract(fileMap);
+  repairBrokenDashboardActivityItemContract(fileMap);
 
   // ── 1. tailwind.config.{ts,js} ────────────────────────────────────
   // Broken if: missing `content:` array (Tailwind v3 hard requirement) OR
@@ -1181,6 +1182,65 @@ export function sanitizeUIFoundation(fileMap: Map<string, ProjectFile>): void {
   }
 }
 
+function repairBrokenDashboardActivityItemContract(fileMap: Map<string, ProjectFile>): void {
+  const feedPath = 'src/components/dashboard/ActivityFeed.tsx';
+  const itemPath = 'src/components/dashboard/ActivityItem.tsx';
+  const feed = fileMap.get(feedPath);
+  const item = fileMap.get(itemPath);
+  if (!feed || !item) return;
+
+  const feedText = feed.content ?? '';
+  const itemText = item.content ?? '';
+  const feedUsesActivityProp =
+    /<\s*ActivityItem\b[^>]*\bactivity\s*=/.test(feedText)
+    || /\bActivityItem\s*\(\s*\{\s*activity\b/.test(feedText);
+  if (!feedUsesActivityProp) return;
+
+  const itemSupportsActivityProp =
+    /\binterface\s+ActivityItemProps[\s\S]*\bactivity\s*\??\s*:/.test(itemText)
+    || /\btype\s+ActivityItemProps[\s\S]*\bactivity\s*\??\s*:/.test(itemText)
+    || /\bfunction\s+ActivityItem\s*\(\s*\{\s*activity\b/.test(itemText)
+    || /\bconst\s+ActivityItem\s*=\s*\(\s*\{\s*activity\b/.test(itemText);
+  if (itemSupportsActivityProp) return;
+
+  fileMap.set(itemPath, {
+    ...item,
+    content: [
+      "import * as React from 'react';",
+      '',
+      'type ActivityRecord = {',
+      '  id?: string | number;',
+      '  title?: string;',
+      '  label?: string;',
+      '  description?: string;',
+      '  timestamp?: string;',
+      '  time?: string;',
+      '  [key: string]: unknown;',
+      '};',
+      '',
+      'export interface ActivityItemProps extends React.HTMLAttributes<HTMLDivElement> {',
+      '  activity?: ActivityRecord;',
+      '  item?: ActivityRecord;',
+      '}',
+      '',
+      'export function ActivityItem({ activity, item, className, ...props }: ActivityItemProps) {',
+      '  const entry = activity ?? item ?? {};',
+      "  const primary = typeof entry.title === 'string' ? entry.title : typeof entry.label === 'string' ? entry.label : 'Activity';",
+      "  const secondary = typeof entry.description === 'string' ? entry.description : typeof entry.time === 'string' ? entry.time : typeof entry.timestamp === 'string' ? entry.timestamp : '';",
+      "  const classes = ['flex flex-col gap-1', className].filter(Boolean).join(' ');",
+      '  return (',
+      '    <div className={classes} {...props}>',
+      '      <p className="text-sm font-medium">{primary}</p>',
+      '      {secondary ? <p className="text-xs text-muted-foreground">{secondary}</p> : null}',
+      '    </div>',
+      '  );',
+      '}',
+      '',
+    ].join('\n'),
+    language: item.language ?? 'typescriptreact',
+  });
+}
+
 function repairBrokenButtonContract(fileMap: Map<string, ProjectFile>): void {
   const buttonPath = 'src/components/ui/Button.tsx';
   const button = fileMap.get(buttonPath);
@@ -1188,11 +1248,28 @@ function repairBrokenButtonContract(fileMap: Map<string, ProjectFile>): void {
 
   const text = button.content ?? '';
   const hasAsSupport = /\bas\s*\??\s*:/.test(text) || /\basChild\b/.test(text);
+  const hasCanonicalAnchorDiscriminant =
+    /\btype\s+ButtonAsAnchorProps\b/.test(text)
+    && /\bas:\s*'a'/.test(text)
+    && /\btype\s+ButtonAsButtonProps\b/.test(text)
+    && /\bexport\s+type\s+ButtonProps\s*=\s*ButtonAsButtonProps\s*\|\s*ButtonAsAnchorProps\b/.test(text);
   const hasVariantSupport =
     /\bVariantProps<\s*typeof\s+buttonVariants\s*>/.test(text)
     || /\bvariant\s*\??\s*:/.test(text);
   const hasSizeSupport = /\bsize\s*\??\s*:/.test(text);
-  if (hasAsSupport && hasVariantSupport && hasSizeSupport) return;
+  const hasUnsafeAsChildPattern =
+    /\basChild\b/.test(text)
+    || /\bconst\s+Comp\s*=\s*asChild\s*\?/.test(text)
+    || /\bComp\s*=\s*asChild\s*\?/.test(text);
+  if (
+    hasAsSupport
+    && hasCanonicalAnchorDiscriminant
+    && hasVariantSupport
+    && hasSizeSupport
+    && !hasUnsafeAsChildPattern
+  ) {
+    return;
+  }
 
   fileMap.set(buttonPath, {
     ...button,
@@ -1278,8 +1355,16 @@ function repairBrokenAlertContract(fileMap: Map<string, ProjectFile>): void {
     /\bclassName\s*\??\s*:/.test(text)
     || /extends\s+React\.HTMLAttributes\s*<\s*HTMLDivElement\s*>/.test(text)
     || /React\.HTMLAttributes\s*<\s*HTMLDivElement\s*>/.test(text);
+  const hasVariantSupport =
+    /\bVariantProps<\s*typeof\s+alertVariants\s*>/.test(text)
+    || /\bvariant\s*\??\s*:/.test(text);
+  const usesAlertVariants = /\balertVariants\s*\(\s*\{\s*variant/.test(text);
+  const hasCanonicalAlertContract =
+    /\bconst\s+alertVariants\s*=\s*cva\(/.test(text)
+    && /export\s+interface\s+AlertProps\s+extends\s+React\.HTMLAttributes<\s*HTMLDivElement\s*>,\s*VariantProps<\s*typeof\s+alertVariants\s*>/.test(text)
+    && /export\s+function\s+Alert\s*\(\{\s*className,\s*variant,\s*\.\.\.props\s*\}\s*:\s*AlertProps\)/.test(text);
 
-  if (hasClassNameSupport) return;
+  if (hasClassNameSupport && hasVariantSupport && usesAlertVariants && hasCanonicalAlertContract) return;
 
   fileMap.set(alertPath, {
     ...alert,

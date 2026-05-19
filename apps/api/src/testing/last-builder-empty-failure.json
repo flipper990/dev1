@@ -1,13 +1,13 @@
 {
-  "timestamp": "2026-05-19T17:07:52.759Z",
+  "timestamp": "2026-05-19T19:41:29.971Z",
   "validation": {
     "rule": "output.files must be a non-empty array",
     "message": "Validation: builder produced no files",
     "location": "apps/api/src/agents/builder-agent.ts → BuilderAgent.validateOutput"
   },
-  "projectId": "Zs1T2p-hdCEZ",
-  "sessionId": "tu10afGeZ0ixctMo",
-  "taskId": "tu10afGeZ0ixctMo-builder-1779210354709-ijr9",
+  "projectId": "6zMqH3LZCaeA",
+  "sessionId": "G72xnL_yV8kWvaag",
+  "taskId": "G72xnL_yV8kWvaag-builder-1779219593035-e3ub",
   "agentRole": "builder",
   "attempt": 3,
   "phase": null,
@@ -16,7 +16,7 @@
   "slice": {
     "id": "pricing",
     "name": null,
-    "purpose": "Display pricing plans and feature comparison for prospective customers."
+    "purpose": "Display three pricing plans and a feature comparison table."
   },
   "sliceIndex": 0,
   "totalSlices": 1,
@@ -25,44 +25,35 @@
   "iteration": 2,
   "model": "gpt-4.1",
   "provider": "azure",
-  "promptSizeEstimateBytes": 32493,
-  "rawResponseLength": 17888,
-  "parsedFileCount": 17,
-  "filteredFileCount": 14,
+  "promptSizeEstimateBytes": 28918,
+  "rawResponseLength": 16063,
+  "parsedFileCount": 18,
+  "filteredFileCount": 17,
   "acceptedPaths": [
-    "src/components/ui/AppShell.tsx",
-    "src/components/ui/PageHeader.tsx",
-    "src/components/ui/Separator.tsx",
     "src/components/ui/EmptyState.tsx",
-    "src/components/ui/Card.tsx",
-    "src/components/ui/Button.tsx",
-    "src/components/ui/Badge.tsx",
-    "src/components/ui/Table.tsx",
-    "src/lib/cn.ts",
-    "src/components/layout/AppShell.tsx",
+    "src/components/ui/Skeleton.tsx",
+    "src/components/ui/Separator.tsx",
+    "src/components/ui/AppShell.tsx",
     "src/components/layout/Sidebar.tsx",
     "src/components/layout/Topbar.tsx",
-    "src/lib/design-tokens.ts",
+    "src/components/ui/Button.tsx",
+    "src/components/ui/Card.tsx",
+    "src/components/ui/Badge.tsx",
+    "src/components/ui/PageHeader.tsx",
+    "src/components/ui/Input.tsx",
+    "src/lib/cn.ts",
     "tailwind.config.ts",
-    "src/components/pricing/__tests__/PricingPlanCard.test.tsx",
-    "src/components/pricing/__tests__/FeatureComparisonTable.test.tsx",
+    "src/lib/design-tokens.ts",
+    "src/components/ui/Dialog.tsx",
+    "src/components/ui/Spinner.tsx",
+    "src/__tests__/pricing-page-accessibility.test.tsx",
     "IMPLEMENTATION_CHECKLIST.md"
   ],
   "discarded": [
     {
       "path": "src/components/ui/Card.tsx",
-      "reason": "content-incomplete:unbalanced JSX tags (10 open, 5 close)",
-      "bytes": 1298
-    },
-    {
-      "path": "src/components/ui/Button.tsx",
-      "reason": "content-incomplete:unbalanced JSX tags (3 open, 0 close)",
-      "bytes": 1381
-    },
-    {
-      "path": "src/components/ui/Badge.tsx",
-      "reason": "content-incomplete:unbalanced JSX tags (3 open, 0 close)",
-      "bytes": 950
+      "reason": "content-incomplete:unbalanced JSX tags (7 open, 0 close)",
+      "bytes": 1263
     }
   ],
   "jsonTruncated": false,
@@ -75,12 +66,12 @@
   "manifest": [
     {
       "path": "IMPLEMENTATION_CHECKLIST.md",
-      "bytes": 731,
+      "bytes": 527,
       "lines": 21,
       "kind": "other"
     }
   ],
-  "previousFileCount": 5,
+  "previousFileCount": 4,
   "currentStack": {
     "backend": "none",
     "frontend": "next",
@@ -100,6 +91,6 @@
   "isFallbackAttempt": false,
   "fallbackTargetPaths": null,
   "primaryAttempt": null,
-  "rawResponseHead": "```json\n{\n  \"files\": [\n    {\n      \"path\": \"src/components/ui/AppShell.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\nimport { Sidebar } from '@/components/layout/Sidebar';\\nimport { Topbar } from '@/components/layout/Topbar';\\n\\nexport interface AppShellProps {\\n  children: React.ReactNode;\\n}\\n\\nexport const AppShell: React.FC<AppShellProps> = ({ children }) => (\\n  <div className=\\\"min-h-screen flex flex-col bg-background\\\">\\n    <Topbar />\\n    <div className=\\\"flex flex-1\\\">\\n      <Sidebar />\\n      <main className=\\\"flex-1 overflow-y-auto\\\">\\n        <div className=\\\"mx-auto max-w-7xl p-6\\\">{children}</div>\\n      </main>\\n    </div>\\n  </div>\\n);\\n\\nAppShell.displayName = 'AppShell';\\nexport default AppShell;\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/PageHeader.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\nimport { cn } from '@/lib/cn';\\n\\nexport interface PageHeaderProps {\\n  title: string;\\n  description?: string;\\n  className?: string;\\n  actions?: React.ReactNode;\\n}\\n\\nexport const PageHeader: React.FC<PageHeaderProps> = ({ title, description, className, actions }) => (\\n  <header className={cn('mb-6', className)}>\\n    <div className=\\\"flex flex-col md:flex-row md:items-center md:justify-between gap-4\\\">\\n      <div>\\n        <h1 className=\\\"text-2xl font-semibold text-foreground leading-none\\\">{title}</h1>\\n        {description && <p className=\\\"mt-2 text-muted-foreground text-base\\\">{description}</p>}\\n      </div>\\n      {actions && <div>{actions}</div>}\\n    </div>\\n  </header>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/Separator.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\nimport { cn } from '@/lib/cn';\\n\\nexport interface SeparatorProps {\\n  className?: string;\\n  orientation?: 'horizontal' | 'vertical';\\n}\\n\\nexport const Separator: React.FC<SeparatorProps> = ({ className, orientation = 'horizontal' }) => (\\n  <div\\n    role=\\\"separator\\\"\\n    aria-orientation={orientation}\\n    className={cn(\\n      orientation === 'vertical'\\n        ? 'w-px h-full bg-border'\\n        : 'h-px w-full bg-border',\\n      className\\n    )}\\n  />\\n);\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/EmptyState.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\nimport { cn } from '@/lib/cn';\\n\\nexport interface EmptyStateProps {\\n  title: string;\\n  description?: string;\\n  action?: React.ReactNode;\\n  className?: string;\\n}\\n\\nexport const EmptyState: React.FC<EmptyStateProps> = ({ title, description, action, className }) => (\\n  <div className={cn('flex flex-col items-center justify-center bg-muted rounded-lg p-8', className)}>\\n    <svg\\n      className=\\\"w-12 h-12 text-muted-foreground mb-4\\\"\\n      fill=\\\"none\\\"\\n      stroke=\\\"currentColor\\\"\\n      strokeWidth=\\\"1.5\\\"\\n      viewBox=\\\"0 0 24 24\\\"\\n      aria-hidden=\\\"true\\\"\\n    >\\n      <circle cx=\\\"12\\\" cy=\\\"12\\\" r=\\\"10\\\" strokeDasharray=\\\"4 2\\\" />\\n      <path d=\\\"M8 12h8M12 8v8\\\" />\\n    </svg>\\n    <h3 className=\\\"text-lg font-medium text-foreground mb-2\\\">{title}</h3>\\n    {description && <p className=\\\"text-sm text-muted-foreground mb-4 text-center\\\">{description}</p>}\\n    {action}\\n  </div>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/Card.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\nimport { cn } from '@/lib/cn';\\n\\nexport interface CardProps {\\n  className?: string;\\n  children: React.ReactNode;\\n}\\nexport const Card: React.FC<CardProps> = ({ className, children }) => (\\n  <div className={cn('bg-card border border-border rounded-lg shadow-sm', className)}>{children}</div>\\n);\\n\\nexport interface CardHeaderProps {\\n  className?: string;\\n  children: React.ReactNode;\\n}\\nexport const CardHeader: React.FC<CardHeaderProps> = ({ className, children }) => (\\n  <div className={cn('p-6 pb-0', className)}>{children}</div>\\n);\\n\\nexport interface CardTitleProps {\\n  className?: string;\\n  children: React.ReactNode;\\n}\\nexport const C",
-  "rawResponseTail": "t('renders recommended badge if recommended', () => {\\n    render(<PricingPlanCard plan={{ ...basePlan, recommended: true }} recommended />);\\n    expect(screen.getByText('Recommended')).toBeInTheDocument();\\n  });\\n\\n  it('calls onCtaClick when CTA button is clicked', () => {\\n    const onCtaClick = jest.fn();\\n    render(<PricingPlanCard plan={basePlan} onCtaClick={onCtaClick} />);\\n    fireEvent.click(screen.getByRole('button'));\\n    expect(onCtaClick).toHaveBeenCalled();\\n  });\\n\\n  it('is accessible by keyboard', () => {\\n    render(<PricingPlanCard plan={basePlan} />);\\n    const card = screen.getByLabelText(/plan/);\\n    card.focus();\\n    expect(card).toHaveFocus();\\n  });\\n});\\n\"\n    },\n    {\n      \"path\": \"src/components/pricing/__tests__/FeatureComparisonTable.test.tsx\",\n      \"language\": \"typescript\",\n      \"content\": \"import React from 'react';\\nimport { render, screen } from '@testing-library/react';\\nimport { FeatureComparisonTable } from '../FeatureComparisonTable';\\n\\ndescribe('FeatureComparisonTable', () => {\\n  const plans = [\\n    { id: 'starter', name: 'Starter', price: '$9/mo', features: ['users', 'storage', 'support'], ctaLabel: 'Get Started', recommended: false },\\n    { id: 'pro', name: 'Pro', price: '$29/mo', features: ['users', 'storage', 'support', 'analytics', 'custom-domain'], ctaLabel: 'Choose Pro', recommended: true },\\n    { id: 'business', name: 'Business', price: '$99/mo', features: ['users', 'storage', 'support', 'analytics', 'custom-domain', 'priority-support'], ctaLabel: 'Contact Sales', recommended: false },\\n  ];\\n  const features = [\\n    { key: 'users', label: 'Up to 5 users' },\\n    { key: 'storage', label: '10GB storage' },\\n    { key: 'support', label: 'Email support' },\\n    { key: 'analytics', label: 'Advanced analytics' },\\n    { key: 'custom-domain', label: 'Custom domain' },\\n    { key: 'priority-support', label: 'Priority support' },\\n  ];\\n\\n  it('renders table headers for each plan', () => {\\n    render(<FeatureComparisonTable plans={plans} features={features} />);\\n    plans.forEach((plan) => {\\n      expect(screen.getByText(plan.name)).toBeInTheDocument();\\n    });\\n  });\\n\\n  it('renders feature labels', () => {\\n    render(<FeatureComparisonTable plans={plans} features={features} />);\\n    features.forEach((feature) => {\\n      expect(screen.getByText(feature.label)).toBeInTheDocument();\\n    });\\n  });\\n\\n  it('shows check icon for included features', () => {\\n    render(<FeatureComparisonTable plans={plans} features={features} />);\\n    // Should find at least one included icon\\n    expect(screen.getAllByLabelText('Included').length).toBeGreaterThan(0);\\n  });\\n\\n  it('shows cross icon for not included features', () => {\\n    render(<FeatureComparisonTable plans={plans} features={features} />);\\n    // Should find at least one not included icon\\n    expect(screen.getAllByLabelText('Not included').length).toBeGreaterThan(0);\\n  });\\n\\n  it('is accessible via table role', () => {\\n    render(<FeatureComparisonTable plans={plans} features={features} />);\\n    expect(screen.getByRole('table')).toBeInTheDocument();\\n  });\\n});\\n\"\n    },\n    {\n      \"path\": \"IMPLEMENTATION_CHECKLIST.md\",\n      \"language\": \"markdown\",\n      \"content\": \"## Pages\\n[x] /pricing\\n\\n## Components\\n[x] PricingHero\\n[x] PricingPlanCard\\n[x] FeatureComparisonTable\\n[x] RecommendedBadge\\n[x] AppShell\\n[x] PageHeader\\n[x] Separator\\n[x] EmptyState\\n[x] Card\\n[x] Button\\n[x] Badge\\n[x] Table\\n[x] Sidebar\\n[x] Topbar\\n[x] cn util\\n[x] design-tokens\\n\\n## API contracts\\n(none)\\n\\n## User flows\\n[x] visitor-compares-plans\\n  - land on the pricing page\\n  - review plan cards and recommended highlight\\n  - scan feature comparison table\\n  - click CTA button on a plan card\\n\\n## Feature slices\\n[x] pricing\\n\"\n    }\n  ],\n  \"summary\": \"Added missing UI primitives (AppShell, PageHeader, Separator, EmptyState, Card, Button, Badge, Table, cn util), layout components, design tokens, Tailwind config, and unit tests for PricingPlanCard and FeatureComparisonTable. All QA feedback issues are now resolved.\"\n}\n```"
+  "rawResponseHead": "```json\n{\n  \"files\": [\n    {\n      \"path\": \"src/components/ui/EmptyState.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\nimport { cn } from '@/lib/cn';\\n\\nexport interface EmptyStateProps {\\n  title: string;\\n  description?: string;\\n  action?: React.ReactNode;\\n  className?: string;\\n}\\n\\nexport const EmptyState: React.FC<EmptyStateProps> = ({ title, description, action, className }) => (\\n  <div className={cn('flex flex-col items-center justify-center rounded-lg bg-muted p-8 text-center', className)}>\\n    <div className=\\\"text-xl font-semibold text-foreground mb-2\\\">{title}</div>\\n    {description && <div className=\\\"text-sm text-muted-foreground mb-4\\\">{description}</div>}\\n    {action}\\n  </div>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/Skeleton.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\nimport { cn } from '@/lib/cn';\\n\\nexport interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {}\\n\\nexport const Skeleton = React.forwardRef<HTMLDivElement, SkeletonProps>(\\n  ({ className, ...props }, ref) => (\\n    <div\\n      ref={ref}\\n      className={cn('animate-pulse rounded-md bg-muted', className)}\\n      {...props}\\n    />\\n  )\\n);\\nSkeleton.displayName = 'Skeleton';\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/Separator.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\nimport { cn } from '@/lib/cn';\\n\\nexport interface SeparatorProps extends React.HTMLAttributes<HTMLHRElement> {\\n  orientation?: 'horizontal' | 'vertical';\\n}\\n\\nexport const Separator = React.forwardRef<HTMLHRElement, SeparatorProps>(\\n  ({ className, orientation = 'horizontal', ...props }, ref) => (\\n    <hr\\n      ref={ref}\\n      className={cn(\\n        'bg-border border-none',\\n        orientation === 'horizontal' ? 'h-px w-full my-6' : 'w-px h-full mx-6',\\n        className\\n      )}\\n      aria-orientation={orientation}\\n      {...props}\\n    />\\n  )\\n);\\nSeparator.displayName = 'Separator';\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/AppShell.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\nimport { Sidebar } from '@/components/layout/Sidebar';\\nimport { Topbar } from '@/components/layout/Topbar';\\n\\nexport interface AppShellProps {\\n  children: React.ReactNode;\\n}\\n\\nexport const AppShell: React.FC<AppShellProps> = ({ children }) => (\\n  <div className=\\\"flex min-h-screen bg-background\\\">\\n    <Sidebar />\\n    <div className=\\\"flex-1 flex flex-col min-w-0\\\">\\n      <Topbar />\\n      <main className=\\\"flex-1 overflow-y-auto\\\">\\n        <div className=\\\"mx-auto max-w-7xl p-6\\\">{children}</div>\\n      </main>\\n    </div>\\n  </div>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/components/layout/Sidebar.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\nimport Link from 'next/link';\\n\\nexport const Sidebar: React.FC = () => (\\n  <nav className=\\\"hidden md:flex flex-col w-64 shrink-0 bg-card border-r border-border min-h-screen p-6\\\">\\n    <div className=\\\"mb-8 text-2xl font-semibold text-foreground\\\">Pricing Page</div>\\n    <ul className=\\\"space-y-4\\\">\\n      <li>\\n        <Link href=\\\"/pricing\\\" className=\\\"text-base text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-md px-2 py-1\\\">\\n          Pricing\\n        </Link>\\n      </li>\\n    </ul>\\n  </nav>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/components/layout/Topbar.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\n\\nexport const Topbar: React.FC = () => (\\n  <header className=\\\"sticky top-0 z-10 h-14 bg-background border-b border-border flex items-center px-6\\\">\\n    <span className=\\\"text-lg font-medium text-foreground\\\">Simple Pricing Page</span>\\n  </header>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/Button.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import * as React from 'react';\\nimport { cn } from '@/lib/cn';\\n\\nexport interface ButtonPro",
+  "rawResponseTail": " 'Arial', 'sans-serif'],\\n    mono: ['Fira Mono', 'SFMono-Regular', 'Menlo', 'monospace'],\\n  },\\n  boxShadow: {\\n    sm: '0 1px 2px 0 rgba(16, 24, 40, 0.05)',\\n    md: '0 4px 8px 0 rgba(16, 24, 40, 0.08)',\\n    lg: '0 12px 24px 0 rgba(16, 24, 40, 0.12)',\\n  },\\n};\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/Dialog.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import * as React from 'react';\\n\\nexport interface DialogProps {\\n  open: boolean;\\n  onOpenChange: (open: boolean) => void;\\n  children: React.ReactNode;\\n}\\n\\nexport const Dialog: React.FC<DialogProps> = ({ open, onOpenChange, children }) => {\\n  if (!open) return null;\\n  return (\\n    <div className=\\\"fixed inset-0 z-50 flex items-center justify-center bg-black/50\\\">\\n      <div className=\\\"bg-card rounded-lg shadow-lg p-8 max-w-lg w-full\\\">\\n        {children}\\n        <button\\n          className=\\\"absolute top-4 right-4 text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary\\\"\\n          aria-label=\\\"Close\\\"\\n          onClick={() => onOpenChange(false)}\\n        >\\n          ×\\n        </button>\\n      </div>\\n    </div>\\n  );\\n};\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/Spinner.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\n\\nexport const Spinner: React.FC<{ className?: string }> = ({ className }) => (\\n  <svg\\n    className={className ? className + ' animate-spin' : 'animate-spin'}\\n    width=\\\"24\\\"\\n    height=\\\"24\\\"\\n    viewBox=\\\"0 0 24 24\\\"\\n    fill=\\\"none\\\"\\n    xmlns=\\\"http://www.w3.org/2000/svg\\\"\\n    aria-label=\\\"Loading\\\"\\n  >\\n    <circle\\n      className=\\\"opacity-25\\\"\\n      cx=\\\"12\\\"\\n      cy=\\\"12\\\"\\n      r=\\\"10\\\"\\n      stroke=\\\"currentColor\\\"\\n      strokeWidth=\\\"4\\\"\\n    />\\n    <path\\n      className=\\\"opacity-75\\\"\\n      fill=\\\"currentColor\\\"\\n      d=\\\"M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z\\\"\\n    />\\n  </svg>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/__tests__/pricing-page-accessibility.test.tsx\",\n      \"language\": \"typescript\",\n      \"content\": \"import { render, screen } from '@testing-library/react';\\nimport PricingPage from '@/app/pricing/page';\\nimport userEvent from '@testing-library/user-event';\\n\\ndescribe('PricingPage accessibility', () => {\\n  it('renders three pricing plans', () => {\\n    render(<PricingPage />);\\n    expect(screen.getByText('Basic')).toBeInTheDocument();\\n    expect(screen.getByText('Pro')).toBeInTheDocument();\\n    expect(screen.getByText('Enterprise')).toBeInTheDocument();\\n  });\\n\\n  it('CTAs are focusable and keyboard-accessible', async () => {\\n    render(<PricingPage />);\\n    const buttons = screen.getAllByRole('button', { name: /choose/i });\\n    expect(buttons.length).toBe(3);\\n    await userEvent.tab(); // focus first CTA\\n    expect(buttons[0]).toHaveFocus();\\n  });\\n\\n  it('feature table is accessible', () => {\\n    render(<PricingPage />);\\n    expect(screen.getByRole('table', { name: /feature comparison/i })).toBeInTheDocument();\\n    expect(screen.getByText('Feature A')).toBeInTheDocument();\\n  });\\n});\\n\"\n    },\n    {\n      \"path\": \"IMPLEMENTATION_CHECKLIST.md\",\n      \"language\": \"markdown\",\n      \"content\": \"## Pages\\n[x] /pricing — PricingPage\\n\\n## Components\\n[x] PricingPlanCard\\n[x] FeatureComparisonTable\\n[x] HeroSection\\n[x] PrimaryCTA (Button)\\n[x] EmptyState\\n[x] Skeleton\\n[x] Separator\\n[x] AppShell\\n[x] Sidebar\\n[x] Topbar\\n[x] Card\\n[x] Badge\\n[x] PageHeader\\n[x] Input\\n[x] Dialog\\n[x] Spinner\\n\\n## API contracts\\n[n/a] (no API contracts for this slice)\\n\\n## User flows\\n[x] visitor-chooses-plan\\n  - View hero section and pricing cards\\n  - Tab through and compare features using keyboard\\n  - Click or activate a plan's CTA\\n\\n## Feature slices\\n[x] pricing — Display three pricing plans and a feature comparison table.\\n\"\n    }\n  ],\n  \"summary\": \"All missing design system primitives, the AppShell layout, and the cn utility are now implemented. Automated accessibility tests for the pricing page are included. The implementation checklist is updated to reflect full coverage for the 'pricing' slice.\"\n}\n```"
 }

@@ -1,28 +1,24 @@
-﻿# TARGETED_TEST_RESULTS
+# Targeted Test Results
 
-Date: 2026-05-19
+## Commands run
+1. `npx tsx --test apps/api/src/pipeline/ui-foundation.test.ts`
+2. `npx tsx --test apps/api/src/pipeline/deterministic-generation-contract.test.ts apps/api/src/pipeline/tier-slice-validator.test.ts apps/api/src/preview/preview-file-validator.test.ts apps/api/src/pipeline/generation-failure-classifier.test.ts apps/api/src/pipeline/prompt-tier-classifier.test.ts apps/api/src/pipeline/orchestration-router.test.ts apps/api/src/testing/preview-manager.observability-persistence.test.ts apps/api/src/testing/preview-scheduler.observability-artifacts.test.ts`
+3. `npm run test:contracts:fast --workspace=@devteam/api`
+4. `npm run test:package:unit --workspace=@devteam/api`
+5. `npm run typecheck --workspace=@devteam/api`
+6. `npm run build --workspace=@devteam/api`
 
-## Commands and outcomes
-1. `npm --workspace=@devteam/api exec -- tsx --test src/preview/local-runner.env.test.ts src/preview/local-runner.failure-snapshot.test.ts`
-- PASS (7/7)
+## Result
+- All targeted tests passed.
+- Validator/import-export/foundation/classifier/observability coverage remained green.
+- Fast contracts passed.
+- Package tests passed.
+- API typecheck/build passed.
 
-2. `npm --workspace=@devteam/api exec -- tsx --test src/preview/preview-manager.fail-classification.test.ts src/preview/preview-manager.observability-persistence.test.ts`
-- PASS (2/2)
-
-3. `npm --workspace=@devteam/api exec -- tsx --test src/pipeline/generation-failure-classifier.test.ts src/testing/mission-failure-diagnostics.test.ts src/pipeline/failure-diagnostics.test.ts src/pipeline/preview-scheduler.observability-artifacts.test.ts`
-- PASS (29/29)
-
-4. `npm run test:contracts:fast --workspace=@devteam/api`
-- PASS
-
-5. `npm run test:package:unit --workspace=@devteam/api`
-- PASS (6/6)
-
-6. `npm run typecheck --workspace=@devteam/api`
-- PASS
-
-7. `npm run build --workspace=@devteam/api`
-- PASS
-
-## Notes
-A typecheck issue in a newly added test was fixed (`capturedPatch` typing) and typecheck/build then passed.
+## New targeted tests added
+- `apps/api/src/pipeline/ui-foundation.test.ts`
+  - `sanitizeUIFoundation repairs dashboard ActivityItem contract when feed passes activity prop`
+- `apps/api/src/pipeline/ui-foundation.test.ts`
+  - Updated canonical Alert unchanged fixture to match strict canonical contract requirements.
+- (already added in this run chain) `apps/api/src/pipeline/generation-failure-classifier.test.ts`
+  - `button anchor prop mismatch during preview build stays generated_typescript_error`

@@ -1,58 +1,460 @@
 {
-  "writtenAt": "2026-05-18T20:40:52.468Z",
-  "projectId": "BDBid6rkkRPr",
-  "sessionId": "64UDX0AjIF_JlOH6",
+  "writtenAt": "2026-05-19T19:37:52.783Z",
+  "projectId": "QRAmPAcgGUzv",
+  "sessionId": "1CyvYEwItI2kFvY3",
   "status": "failed",
-  "phase": "tier3-contract-first",
-  "step": "final_build",
-  "llmCallCount": 0,
-  "totalTokens": 0,
-  "totalCostUsd": 0,
-  "filesWritten": 0,
-  "slicesPlanned": 0,
-  "lastSuccessfulPhase": "reserved",
+  "phase": "slice-4/7",
+  "step": "step:qa:done",
+  "llmCallCount": 25,
+  "totalTokens": 459156,
+  "totalCostUsd": 1.2729840000000001,
+  "filesWritten": 16,
+  "slicesPlanned": 7,
+  "lastSuccessfulPhase": "slice-3/7",
   "lastSuccessfulStep": "reserved",
-  "error": "[artifact-integrity] tier3-contract-first -> final_build: MISSING_APP_ENTRY: No application entry page was generated.",
+  "error": "[artifact-integrity] slice-4/7 -> 4/7 'users#2':slice-merge: INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)",
   "errorName": "Error",
-  "errorStack": "Error: [artifact-integrity] tier3-contract-first -> final_build: MISSING_APP_ENTRY: No application entry page was generated.\n    at ProjectGenerator.assertArtifactIntegrityOrThrow (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:596:11)\n    at ProjectGenerator.runTier3ContractPipeline (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:4541:10)\n    at async ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2238:18)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2088:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:746:22)",
-  "failedPhase": "tier3-contract-first",
-  "failedStep": "classified",
-  "failedAt": "2026-05-18T20:40:52.460Z",
+  "errorStack": "Error: [artifact-integrity] slice-4/7 -> 4/7 'users#2':slice-merge: INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)\n    at ProjectGenerator.assertArtifactIntegrityOrThrow (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:596:11)\n    at ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:3006:14)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2088:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:746:22)",
+  "failedPhase": "slice-4/7",
+  "failedStep": "4/7 'users#2':builder-rebuild-3",
+  "failedAt": "2026-05-19T19:37:52.741Z",
   "durationMs": 0,
-  "diagnosticContextStartedAt": "2026-05-18T20:40:52.369Z",
+  "diagnosticContextStartedAt": "2026-05-19T19:24:59.406Z",
   "postPersistStepStatuses": [],
-  "usageLog": [],
-  "warnings": [],
+  "usageLog": [
+    {
+      "at": "2026-05-19T19:25:45.851Z",
+      "phase": "spec",
+      "agent": "spec",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 7043,
+      "completionTokens": 7032,
+      "totalTokens": 14075,
+      "costUsd": 0.070342,
+      "latencyMs": 46440
+    },
+    {
+      "at": "2026-05-19T19:26:07.322Z",
+      "phase": "slice-1/7",
+      "agent": "builder",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 16492,
+      "completionTokens": 4865,
+      "totalTokens": 21357,
+      "costUsd": 0.071904,
+      "latencyMs": 21439
+    },
+    {
+      "at": "2026-05-19T19:26:12.489Z",
+      "phase": "slice-1/7",
+      "agent": "qa",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 17876,
+      "completionTokens": 517,
+      "totalTokens": 18393,
+      "costUsd": 0.039888,
+      "latencyMs": 5166
+    },
+    {
+      "at": "2026-05-19T19:28:21.855Z",
+      "phase": "slice-1/7",
+      "agent": "builder",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 6397,
+      "completionTokens": 2255,
+      "totalTokens": 8652,
+      "costUsd": 0.030834,
+      "latencyMs": 129341
+    },
+    {
+      "at": "2026-05-19T19:28:43.590Z",
+      "phase": "slice-1/7",
+      "agent": "qa",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 17355,
+      "completionTokens": 3513,
+      "totalTokens": 20868,
+      "costUsd": 0.062814,
+      "latencyMs": 21734
+    },
+    {
+      "at": "2026-05-19T19:29:43.589Z",
+      "phase": "slice-1/7",
+      "agent": "builder",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 6397,
+      "completionTokens": 2293,
+      "totalTokens": 8690,
+      "costUsd": 0.031138,
+      "latencyMs": 59995
+    },
+    {
+      "at": "2026-05-19T19:30:03.488Z",
+      "phase": "slice-1/7",
+      "agent": "qa",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 16053,
+      "completionTokens": 2469,
+      "totalTokens": 18522,
+      "costUsd": 0.051858,
+      "latencyMs": 19898
+    },
+    {
+      "at": "2026-05-19T19:30:20.923Z",
+      "phase": "slice-2/7",
+      "agent": "builder",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 17729,
+      "completionTokens": 2701,
+      "totalTokens": 20430,
+      "costUsd": 0.057066,
+      "latencyMs": 17365
+    },
+    {
+      "at": "2026-05-19T19:30:39.451Z",
+      "phase": "slice-2/7",
+      "agent": "qa",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 17167,
+      "completionTokens": 2184,
+      "totalTokens": 19351,
+      "costUsd": 0.051806,
+      "latencyMs": 18527
+    },
+    {
+      "at": "2026-05-19T19:32:30.601Z",
+      "phase": "slice-2/7",
+      "agent": "builder",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 6389,
+      "completionTokens": 2080,
+      "totalTokens": 8469,
+      "costUsd": 0.029418,
+      "latencyMs": 111115
+    },
+    {
+      "at": "2026-05-19T19:32:55.692Z",
+      "phase": "slice-2/7",
+      "agent": "qa",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 17207,
+      "completionTokens": 3319,
+      "totalTokens": 20526,
+      "costUsd": 0.060966,
+      "latencyMs": 25091
+    },
+    {
+      "at": "2026-05-19T19:34:49.795Z",
+      "phase": "slice-2/7",
+      "agent": "builder",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 6389,
+      "completionTokens": 2090,
+      "totalTokens": 8479,
+      "costUsd": 0.029498,
+      "latencyMs": 114096
+    },
+    {
+      "at": "2026-05-19T19:35:07.686Z",
+      "phase": "slice-2/7",
+      "agent": "qa",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 15734,
+      "completionTokens": 2155,
+      "totalTokens": 17889,
+      "costUsd": 0.048708,
+      "latencyMs": 17889
+    },
+    {
+      "at": "2026-05-19T19:35:35.195Z",
+      "phase": "slice-3/7",
+      "agent": "builder",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 17841,
+      "completionTokens": 3967,
+      "totalTokens": 21808,
+      "costUsd": 0.067418,
+      "latencyMs": 27434
+    },
+    {
+      "at": "2026-05-19T19:35:42.387Z",
+      "phase": "slice-3/7",
+      "agent": "qa",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 18223,
+      "completionTokens": 730,
+      "totalTokens": 18953,
+      "costUsd": 0.042286,
+      "latencyMs": 7191
+    },
+    {
+      "at": "2026-05-19T19:36:20.662Z",
+      "phase": "slice-3/7",
+      "agent": "builder",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 22521,
+      "completionTokens": 5636,
+      "totalTokens": 28157,
+      "costUsd": 0.09013,
+      "latencyMs": 38235
+    },
+    {
+      "at": "2026-05-19T19:36:26.742Z",
+      "phase": "slice-3/7",
+      "agent": "qa",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 21828,
+      "completionTokens": 573,
+      "totalTokens": 22401,
+      "costUsd": 0.04824,
+      "latencyMs": 6079
+    },
+    {
+      "at": "2026-05-19T19:36:34.271Z",
+      "phase": "slice-3/7",
+      "agent": "builder",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 20865,
+      "completionTokens": 640,
+      "totalTokens": 21505,
+      "costUsd": 0.04685,
+      "latencyMs": 7525
+    },
+    {
+      "at": "2026-05-19T19:36:42.409Z",
+      "phase": "slice-3/7",
+      "agent": "qa",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 17500,
+      "completionTokens": 947,
+      "totalTokens": 18447,
+      "costUsd": 0.042576,
+      "latencyMs": 8138
+    },
+    {
+      "at": "2026-05-19T19:36:58.629Z",
+      "phase": "slice-4/7",
+      "agent": "builder",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 17923,
+      "completionTokens": 2501,
+      "totalTokens": 20424,
+      "costUsd": 0.055854,
+      "latencyMs": 16137
+    },
+    {
+      "at": "2026-05-19T19:37:15.313Z",
+      "phase": "slice-4/7",
+      "agent": "qa",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 16926,
+      "completionTokens": 2314,
+      "totalTokens": 19240,
+      "costUsd": 0.052364,
+      "latencyMs": 16684
+    },
+    {
+      "at": "2026-05-19T19:37:26.692Z",
+      "phase": "slice-4/7",
+      "agent": "builder",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 23383,
+      "completionTokens": 1467,
+      "totalTokens": 24850,
+      "costUsd": 0.058502,
+      "latencyMs": 11207
+    },
+    {
+      "at": "2026-05-19T19:37:30.261Z",
+      "phase": "slice-4/7",
+      "agent": "qa",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 17798,
+      "completionTokens": 213,
+      "totalTokens": 18011,
+      "costUsd": 0.0373,
+      "latencyMs": 3569
+    },
+    {
+      "at": "2026-05-19T19:37:48.891Z",
+      "phase": "slice-4/7",
+      "agent": "builder",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 19424,
+      "completionTokens": 2445,
+      "totalTokens": 21869,
+      "costUsd": 0.058408,
+      "latencyMs": 18628
+    },
+    {
+      "at": "2026-05-19T19:37:52.737Z",
+      "phase": "slice-4/7",
+      "agent": "qa",
+      "model": "gpt-4.1",
+      "provider": "azure",
+      "promptTokens": 17584,
+      "completionTokens": 206,
+      "totalTokens": 17790,
+      "costUsd": 0.036816,
+      "latencyMs": 3845
+    }
+  ],
+  "warnings": [
+    {
+      "code": "QA_FALLBACK_SIMPLIFIED",
+      "message": "Slice 1/7 'auth#1': 4 file(s) replaced with simplified stubs after 3 QA iter(s) failed to converge",
+      "details": {
+        "sliceLabel": "1/7 'auth#1'",
+        "iterations": 3,
+        "finalIssueCount": 22,
+        "replacedFiles": [
+          "src/app/layout.tsx",
+          "src/app/logout/page.tsx",
+          "src/components/LoginForm.tsx",
+          "src/app/api/auth.login/route.ts"
+        ]
+      }
+    },
+    {
+      "code": "QUICK_CHECK_AUTO_REPAIR",
+      "message": "Slice 1/7 'auth#1': quick-check auto-fixed 11 issue(s) before next slice [added scripts: dev, build, start, preview, typecheck]",
+      "details": {
+        "sliceLabel": "1/7 'auth#1'",
+        "issues": [
+          "dropped tier1 backend runtime artifact: src/app/api/auth.login/route.ts",
+          "package.json: Dropped non-referenced dependency \"@prisma/client\" from package.json.",
+          "package.json: Dropped non-referenced dependency \"bcrypt\" from package.json.",
+          "package.json: Dropped non-referenced dependency \"express\" from package.json.",
+          "package.json: Dropped non-referenced dependency \"jsonwebtoken\" from package.json.",
+          "package.json: Dropped non-referenced dependency \"zod\" from package.json.",
+          "package.json: Dropped non-referenced dependency \"@types/bcrypt\" from package.json.",
+          "package.json: Dropped non-referenced dependency \"@types/express\" from package.json.",
+          "package.json: Dropped non-referenced dependency \"@types/jsonwebtoken\" from package.json.",
+          "package.json: Dropped non-referenced dependency \"prisma\" from package.json.",
+          "package.json: dropped 9 non-deterministic dependency declaration(s)."
+        ],
+        "synthesizedPackageJson": false,
+        "addedScripts": [
+          "dev",
+          "build",
+          "start",
+          "preview",
+          "typecheck"
+        ],
+        "touchedPackageJson": "package.json"
+      }
+    },
+    {
+      "code": "QA_FALLBACK_SIMPLIFIED",
+      "message": "Slice 2/7 'auth#2': 3 file(s) replaced with simplified stubs after 3 QA iter(s) failed to converge",
+      "details": {
+        "sliceLabel": "2/7 'auth#2'",
+        "iterations": 3,
+        "finalIssueCount": 26,
+        "replacedFiles": [
+          "src/app/layout.tsx",
+          "src/components/RegisterForm.tsx",
+          "src/app/api/auth.register/route.ts"
+        ]
+      }
+    },
+    {
+      "code": "QUICK_CHECK_AUTO_REPAIR",
+      "message": "Slice 2/7 'auth#2': quick-check auto-fixed 12 issue(s) before next slice [added scripts: dev, build, start, preview, typecheck]",
+      "details": {
+        "sliceLabel": "2/7 'auth#2'",
+        "issues": [
+          "dropped tier1 backend runtime artifact: src/app/api/auth.login/route.ts",
+          "dropped tier1 backend runtime artifact: src/app/api/auth.register/route.ts",
+          "package.json: Dropped non-referenced dependency \"@prisma/client\" from package.json.",
+          "package.json: Dropped non-referenced dependency \"bcryptjs\" from package.json.",
+          "package.json: Dropped non-referenced dependency \"express\" from package.json.",
+          "package.json: Dropped non-referenced dependency \"jsonwebtoken\" from package.json.",
+          "package.json: Dropped non-referenced dependency \"zod\" from package.json.",
+          "package.json: Dropped non-referenced dependency \"@types/bcryptjs\" from package.json.",
+          "package.json: Dropped non-referenced dependency \"@types/express\" from package.json.",
+          "package.json: Dropped non-referenced dependency \"@types/jsonwebtoken\" from package.json.",
+          "package.json: Dropped non-referenced dependency \"prisma\" from package.json.",
+          "package.json: dropped 9 non-deterministic dependency declaration(s)."
+        ],
+        "synthesizedPackageJson": false,
+        "addedScripts": [
+          "dev",
+          "build",
+          "start",
+          "preview",
+          "typecheck"
+        ],
+        "touchedPackageJson": "package.json"
+      }
+    },
+    {
+      "code": "QA_FALLBACK_SIMPLIFIED",
+      "message": "Slice 3/7 'users#1': 1 file(s) replaced with simplified stubs after 3 QA iter(s) failed to converge",
+      "details": {
+        "sliceLabel": "3/7 'users#1'",
+        "iterations": 3,
+        "finalIssueCount": 15,
+        "replacedFiles": [
+          "src/components/ui/Avatar.tsx"
+        ]
+      }
+    }
+  ],
   "failure": {
-    "failedPhase": "tier3-contract-first",
+    "failedPhase": "slice-4/7",
     "errorName": "Error",
-    "errorMessage": "[artifact-integrity] tier3-contract-first -> final_build: MISSING_APP_ENTRY: No application entry page was generated.",
-    "stack": "Error: [artifact-integrity] tier3-contract-first -> final_build: MISSING_APP_ENTRY: No application entry page was generated.\n    at ProjectGenerator.assertArtifactIntegrityOrThrow (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:596:11)\n    at ProjectGenerator.runTier3ContractPipeline (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:4541:10)\n    at async ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2238:18)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2088:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:746:22)",
-    "errorStack": "Error: [artifact-integrity] tier3-contract-first -> final_build: MISSING_APP_ENTRY: No application entry page was generated.\n    at ProjectGenerator.assertArtifactIntegrityOrThrow (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:596:11)\n    at ProjectGenerator.runTier3ContractPipeline (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:4541:10)\n    at async ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2238:18)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2088:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:746:22)",
-    "failedAt": "2026-05-18T20:40:52.460Z",
-    "lastSuccessfulPhase": "reserved",
-    "llmCallCount": 0,
-    "failedStep": "classified",
+    "errorMessage": "[artifact-integrity] slice-4/7 -> 4/7 'users#2':slice-merge: INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)",
+    "stack": "Error: [artifact-integrity] slice-4/7 -> 4/7 'users#2':slice-merge: INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)\n    at ProjectGenerator.assertArtifactIntegrityOrThrow (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:596:11)\n    at ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:3006:14)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2088:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:746:22)",
+    "errorStack": "Error: [artifact-integrity] slice-4/7 -> 4/7 'users#2':slice-merge: INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)\n    at ProjectGenerator.assertArtifactIntegrityOrThrow (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:596:11)\n    at ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:3006:14)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2088:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:746:22)",
+    "failedAt": "2026-05-19T19:37:52.741Z",
+    "lastSuccessfulPhase": "slice-3/7",
+    "llmCallCount": 25,
+    "failedStep": "4/7 'users#2':builder-rebuild-3",
     "lastSuccessfulStep": "reserved",
     "classification": {
-      "category": "artifact_corruption",
-      "code": "ARTIFACT_INTEGRITY",
-      "reason": "Generated artifacts were malformed, empty, or structurally invalid."
+      "category": "dependency_failure",
+      "code": "DEPENDENCY_RESOLUTION",
+      "reason": "Dependency graph or package manifest validation failed."
     },
-    "failureCategory": "artifact_corruption",
-    "failurePhase": "tier3-contract-first",
-    "failureReason": "[artifact-integrity] tier3-contract-first -> final_build: MISSING_APP_ENTRY: No application entry page was generated.",
-    "failedAgent": "pipeline",
+    "failureCategory": "dependency_failure",
+    "failurePhase": "slice-4/7",
+    "failureReason": "[artifact-integrity] slice-4/7 -> 4/7 'users#2':slice-merge: INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)",
+    "failedAgent": "builder",
     "retryCount": 0,
-    "lastValidCheckpoint": null,
-    "filesGeneratedBeforeFailure": 0,
+    "lastValidCheckpoint": "y3cbEuhQa7",
+    "filesGeneratedBeforeFailure": 16,
     "recoveryAttempted": false,
-    "recommendedNextAction": "Review deterministic contract violations and fix rejected imports/paths before retrying generation.",
-    "zeroFileClassification": "contract_rejected_all_files"
+    "recommendedNextAction": "Fix dependency graph/package manifest issues and rerun mission.",
+    "zeroFileClassification": null
   },
   "failureClassification": {
-    "category": "artifact_corruption",
-    "code": "ARTIFACT_INTEGRITY",
-    "reason": "Generated artifacts were malformed, empty, or structurally invalid."
+    "category": "dependency_failure",
+    "code": "DEPENDENCY_RESOLUTION",
+    "reason": "Dependency graph or package manifest validation failed."
   }
 }

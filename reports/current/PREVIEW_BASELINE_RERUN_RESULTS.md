@@ -1,44 +1,32 @@
-﻿# PREVIEW_BASELINE_RERUN_RESULTS
+# Preview Baseline Rerun Results
 
-Date: 2026-05-19
+## Run constraints followed
+- Ran exactly these 3 prompts only:
+  1. `Build a simple landing page with hero section, features, and CTA.`
+  2. `Build a simple SaaS dashboard with sidebar, KPI cards, and recent activity.`
+  3. `Build a simple pricing page with three plans and feature comparison.`
 
-## Rerun configuration
-- Prompt count: exactly 3
-- Repeat cycles: 1
-- Command: `npm run test:missions:e2e:raw --workspace=@devteam/api`
-- Prompts:
-  1. Build a simple landing page with hero section, features, and CTA.
-  2. Build a simple SaaS dashboard with sidebar, KPI cards, and recent activity.
-  3. Build a simple pricing page with three plans and feature comparison.
-
-## Outcome
+## Latest rerun summary
+- Source: `apps/api/src/testing/successful-mission-results.json`
+- `startedAt`: 2026-05-19T19:19:08.986Z
+- `completedAt`: 2026-05-19T19:43:23.477Z
 - Total: 3
-- Succeeded: 2
+- Passed: 2
 - Failed: 1
 - Success rate: 66.67%
-- Failure category: `generated_typescript_error` (1)
 
-## Per prompt
-1. Landing page
-- PASS
-- Preview ready, export ok
-- Observability fields present in canary result (durations/cache/startCommand/runtimeCwd/phase/log/process state)
+## Per prompt outcome
+- Landing page: **PASS** (`projectId=pCSFQCln7w5A`)
+- SaaS dashboard: **FAIL** (`projectId=QRAmPAcgGUzv`)
+- Pricing page: **PASS** (`projectId=6zMqH3LZCaeA`)
 
-2. SaaS dashboard
-- PASS
-- Preview ready, export ok
-- Observability fields present in canary result
+## Current remaining failure (post-fix)
+- Category: `dependency_failure`
+- Phase: `slice-4/7`
+- Reason:
+  - `[artifact-integrity] ... INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)`
+- This is **not** the prior generated TypeScript preview build error.
 
-3. Pricing page
-- FAIL
-- Failure during preview build from generated TypeScript incompatibility in `src/components/ui/Button.tsx`
-- Observability captured:
-  - `previewFailurePhase`: `preview:failed`
-  - `previewFailureReason`: populated with build diagnostics
-  - `buildExitCode`: `1`
-  - `currentPreviewPhase`: `preview:failed`
-  - `processState`: `alive-hanging`
-  - duration fields populated where applicable
-
-## Artifact
-- `apps/api/src/testing/successful-mission-results.json` updated with new observability fields per result.
+## Key conclusion
+- Original generated TypeScript failure class was removed from this 3-prompt baseline path.
+- Residual failure now belongs to dependency/package manifest validation and should be handled in a separate dependency reliability pass.

@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-05-19T17:10:21.107Z",
-  "projectId": "Zs1T2p-hdCEZ",
-  "previewId": "7148f95a98d6",
+  "timestamp": "2026-05-19T19:11:59.885Z",
+  "projectId": "OdTk_U0DvJrN",
+  "previewId": "336a6a46f3a2",
   "runtime": "local",
-  "reason": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 39 |\u001b[39m     \u001b[36mreturn\u001b[39m (\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 40 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33mComp\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 41 |\u001b[39m         ref\u001b[33m=\u001b[39m{ref \u001b[36mas\u001b[39m any}\u001b[0m | \u001b[0m \u001b[90m 42 |\u001b[39m         className\u001b[33m=\u001b[39m{cn(buttonVariants({ variant\u001b[33m,\u001b[39m size })\u001b[33m,\u001b[39m className)}\u001b[0m | \u001b[0m \u001b[90m 43 |\u001b[39m         {\u001b[33m...\u001b[39mprops}\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/ui/Button.tsx:40:8; errorMessage=Type error: Type '{ disabled?: boolean | undefined; form?: string | undefined; formAction?: string | ((formData: FormData) => void | Promise<void>) | undefined; formEncType?: string | undefined; ... 283 more ...; className: string; }' is not assignable to type 'Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof InternalLinkProps>'.; recommendedRepairPath=Repair generated source and imports in ./src/components/ui/Button.tsx:40:8, then rerun build validation before preview start.",
+  "reason": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m | \u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/dashboard/ActivityFeed.tsx:49:31; errorMessage=Type error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.; recommendedRepairPath=Repair generated source and imports in ./src/components/dashboard/ActivityFeed.tsx:49:31, then rerun build validation before preview start.",
   "timeoutCause": null,
   "timeoutLifecycle": null,
   "timeoutSource": null,
@@ -13,22 +13,22 @@
     "run",
     "build"
   ],
-  "cwd": "..\\..\\data\\projects\\Zs1T2p-hdCEZ\\output\\.preview-runtime",
-  "runtimePath": "..\\..\\data\\projects\\Zs1T2p-hdCEZ\\output\\.preview-runtime",
-  "packageJsonPath": "..\\..\\data\\projects\\Zs1T2p-hdCEZ\\output\\.preview-runtime\\package.json",
+  "cwd": "..\\..\\data\\projects\\OdTk_U0DvJrN\\output\\.preview-runtime",
+  "runtimePath": "..\\..\\data\\projects\\OdTk_U0DvJrN\\output\\.preview-runtime",
+  "packageJsonPath": "..\\..\\data\\projects\\OdTk_U0DvJrN\\output\\.preview-runtime\\package.json",
   "packageManager": "npm",
   "installCommand": "npm install --no-audit --no-fund",
   "installCommandFallback": null,
   "startCommand": "npm run build",
   "reproduceCommand": [
-    "cd \"..\\..\\data\\projects\\Zs1T2p-hdCEZ\\output\\.preview-runtime\"",
+    "cd \"..\\..\\data\\projects\\OdTk_U0DvJrN\\output\\.preview-runtime\"",
     "# Install (the runner used: unknown)",
     "npm install --no-audit --no-fund",
     "# Start dev server on the same port the runner used:",
-    "$env:PORT=\"16974\"; npm run build"
+    "$env:PORT=\"18540\"; npm run build"
   ],
   "host": "127.0.0.1",
-  "port": 16974,
+  "port": 18540,
   "envSafe": {
     "PORT": "3001",
     "HOST": "127.0.0.1",
@@ -38,7 +38,7 @@
   "currentStep": "preview:building",
   "currentPreviewPhase": "preview:building",
   "lastSuccessfulStep": "install cache hit",
-  "elapsedTime": 62952,
+  "elapsedTime": 61210,
   "installCompleted": true,
   "installMode": null,
   "installSkipped": true,
@@ -53,68 +53,68 @@
   "processExitedAt": null,
   "exitCode": null,
   "exitSignal": null,
-  "stdoutTail": "\n> pricing-app@1.0.0 build\n> next build\n\n   ▲ Next.js 15.0.4\n   - Environments: .env.local\n\n   Creating an optimized production build ...\n ✓ Compiled successfully\n   Linting and checking validity of types ...\n",
-  "stderrTail": " ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\nFailed to compile.\n\n./src/components/ui/Button.tsx:40:8\nType error: Type '{ disabled?: boolean | undefined; form?: string | undefined; formAction?: string | ((formData: FormData) => void | Promise<void>) | undefined; formEncType?: string | undefined; ... 283 more ...; className: string; }' is not assignable to type 'Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof InternalLinkProps>'.\n  Types of property 'onToggle' are incompatible.\n    Type 'ToggleEventHandler<HTMLButtonElement> | undefined' is not assignable to type 'ToggleEventHandler<HTMLAnchorElement> | undefined'.\n      Type 'ToggleEventHandler<HTMLButtonElement>' is not assignable to type 'ToggleEventHandler<HTMLAnchorElement>'.\n        Type 'HTMLButtonElement' is missing the following properties from type 'HTMLAnchorElement': charset, coords, download, hreflang, and 19 more.\n\n\u001b[0m \u001b[90m 38 |\u001b[39m     \u001b[36mconst\u001b[39m \u001b[33mComp\u001b[39m \u001b[33m=\u001b[39m asChild \u001b[33m?\u001b[39m \u001b[33mLink\u001b[39m \u001b[33m:\u001b[39m \u001b[32m'button'\u001b[39m\u001b[33m;\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 39 |\u001b[39m     \u001b[36mreturn\u001b[39m (\u001b[0m\n\u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 40 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33mComp\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m    |\u001b[39m        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 41 |\u001b[39m         ref\u001b[33m=\u001b[39m{ref \u001b[36mas\u001b[39m any}\u001b[0m\n\u001b[0m \u001b[90m 42 |\u001b[39m         className\u001b[33m=\u001b[39m{cn(buttonVariants({ variant\u001b[33m,\u001b[39m size })\u001b[33m,\u001b[39m className)}\u001b[0m\n\u001b[0m \u001b[90m 43 |\u001b[39m         {\u001b[33m...\u001b[39mprops}\u001b[0m\n",
-  "lastPreviewLogLine": "\u001b[0m \u001b[90m 43 |\u001b[39m         {\u001b[33m...\u001b[39mprops}\u001b[0m",
+  "stdoutTail": "\n> devteam-auth-app@1.0.0 build\n> next build\n\n   ▲ Next.js 15.0.4\n   - Environments: .env.local\n\n   Creating an optimized production build ...\n ✓ Compiled successfully\n   Linting and checking validity of types ...\n",
+  "stderrTail": " ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\nFailed to compile.\n\n./src/components/dashboard/ActivityFeed.tsx:49:31\nType error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.\n  Property 'activity' does not exist on type 'IntrinsicAttributes & ActivityItemProps'.\n\n\u001b[0m \u001b[90m 47 |\u001b[39m             {items\u001b[33m.\u001b[39mmap((activity) \u001b[33m=>\u001b[39m (\u001b[0m\n\u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n\u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m\n\u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n",
+  "lastPreviewLogLine": "\u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m",
   "probeAttemptsTotal": 0,
   "probeAttemptsTail": [],
   "installFallback": null,
   "stepDurations": [
     {
       "step": "preview:queued",
-      "startedAt": "2026-05-19T17:09:18.156Z",
-      "completedAt": "2026-05-19T17:09:18.157Z",
+      "startedAt": "2026-05-19T19:10:58.675Z",
+      "completedAt": "2026-05-19T19:10:58.676Z",
       "durationMs": 1
     },
     {
       "step": "preview:staging-files",
-      "startedAt": "2026-05-19T17:09:18.157Z",
-      "completedAt": "2026-05-19T17:09:18.178Z",
-      "durationMs": 21
+      "startedAt": "2026-05-19T19:10:58.676Z",
+      "completedAt": "2026-05-19T19:10:58.701Z",
+      "durationMs": 25
     },
     {
       "step": "preview:installing",
-      "startedAt": "2026-05-19T17:09:18.178Z",
-      "completedAt": "2026-05-19T17:10:05.391Z",
-      "durationMs": 47213
+      "startedAt": "2026-05-19T19:10:58.701Z",
+      "completedAt": "2026-05-19T19:11:43.366Z",
+      "durationMs": 44665
     },
     {
       "step": "preview:building",
-      "startedAt": "2026-05-19T17:10:05.391Z",
-      "completedAt": "2026-05-19T17:10:14.326Z",
-      "durationMs": 8935
+      "startedAt": "2026-05-19T19:11:43.366Z",
+      "completedAt": "2026-05-19T19:11:52.978Z",
+      "durationMs": 9612
     },
     {
       "step": "preview:installing",
-      "startedAt": "2026-05-19T17:10:14.326Z",
-      "completedAt": "2026-05-19T17:10:14.361Z",
-      "durationMs": 35
+      "startedAt": "2026-05-19T19:11:52.978Z",
+      "completedAt": "2026-05-19T19:11:53.023Z",
+      "durationMs": 45
     }
   ],
   "previewStatusTransitions": [
     {
       "step": "starting:local-runner",
-      "at": "2026-05-19T17:09:18.156Z"
+      "at": "2026-05-19T19:10:58.675Z"
     }
   ],
   "localStartAttempts": [
     {
       "attempt": 1,
       "ok": false,
-      "error": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 39 |\u001b[39m     \u001b[36mreturn\u001b[39m (\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 40 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33mComp\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 41 |\u001b[39m         ref\u001b[33m=\u001b[39m{ref \u001b[36mas\u001b[39m any}\u001b[0m | \u001b[0m \u001b[90m 42 |\u001b[39m         className\u001b[33m=\u001b[39m{cn(buttonVariants({ variant\u001b[33m,\u001b[39m size })\u001b[33m,\u001b[39m className)}\u001b[0m | \u001b[0m \u001b[90m 43 |\u001b[39m         {\u001b[33m...\u001b[39mprops}\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/ui/Button.tsx:40:8; errorMessage=Type error: Type '{ disabled?: boolean | undefined; form?: string | undefined; formAction?: string | ((formData: FormData) => void | Promise<void>) | undefined; formEncType?: string | undefined; ... 283 more ...; className: string; }' is not assignable to type 'Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof InternalLinkProps>'.; recommendedRepairPath=Repair generated source and imports in ./src/components/ui/Button.tsx:40:8, then rerun build validation before preview start.",
+      "error": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m | \u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/dashboard/ActivityFeed.tsx:49:31; errorMessage=Type error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.; recommendedRepairPath=Repair generated source and imports in ./src/components/dashboard/ActivityFeed.tsx:49:31, then rerun build validation before preview start.",
       "portOpened": false,
-      "durationMs": 54144,
-      "startedAtIso": "2026-05-19T17:09:18.178Z",
-      "endedAtIso": "2026-05-19T17:10:12.322Z"
+      "durationMs": 52267,
+      "startedAtIso": "2026-05-19T19:10:58.701Z",
+      "endedAtIso": "2026-05-19T19:11:50.968Z"
     },
     {
       "attempt": 2,
       "ok": false,
-      "error": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 39 |\u001b[39m     \u001b[36mreturn\u001b[39m (\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 40 |\u001b[39m       \u001b[33m<\u001b[39m\u001b[33mComp\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m        \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 41 |\u001b[39m         ref\u001b[33m=\u001b[39m{ref \u001b[36mas\u001b[39m any}\u001b[0m | \u001b[0m \u001b[90m 42 |\u001b[39m         className\u001b[33m=\u001b[39m{cn(buttonVariants({ variant\u001b[33m,\u001b[39m size })\u001b[33m,\u001b[39m className)}\u001b[0m | \u001b[0m \u001b[90m 43 |\u001b[39m         {\u001b[33m...\u001b[39mprops}\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/ui/Button.tsx:40:8; errorMessage=Type error: Type '{ disabled?: boolean | undefined; form?: string | undefined; formAction?: string | ((formData: FormData) => void | Promise<void>) | undefined; formEncType?: string | undefined; ... 283 more ...; className: string; }' is not assignable to type 'Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof InternalLinkProps>'.; recommendedRepairPath=Repair generated source and imports in ./src/components/ui/Button.tsx:40:8, then rerun build validation before preview start.",
+      "error": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m | \u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/dashboard/ActivityFeed.tsx:49:31; errorMessage=Type error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.; recommendedRepairPath=Repair generated source and imports in ./src/components/dashboard/ActivityFeed.tsx:49:31, then rerun build validation before preview start.",
       "portOpened": false,
-      "durationMs": 6781,
-      "startedAtIso": "2026-05-19T17:10:14.326Z",
-      "endedAtIso": "2026-05-19T17:10:21.107Z"
+      "durationMs": 6906,
+      "startedAtIso": "2026-05-19T19:11:52.978Z",
+      "endedAtIso": "2026-05-19T19:11:59.884Z"
     }
   ],
   "localRetrySucceeded": false

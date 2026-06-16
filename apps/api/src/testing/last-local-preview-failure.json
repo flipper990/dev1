@@ -1,34 +1,42 @@
 {
-  "timestamp": "2026-05-19T19:11:59.885Z",
-  "projectId": "OdTk_U0DvJrN",
-  "previewId": "336a6a46f3a2",
-  "runtime": "local",
-  "reason": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m | \u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/dashboard/ActivityFeed.tsx:49:31; errorMessage=Type error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.; recommendedRepairPath=Repair generated source and imports in ./src/components/dashboard/ActivityFeed.tsx:49:31, then rerun build validation before preview start.",
-  "timeoutCause": null,
-  "timeoutLifecycle": null,
-  "timeoutSource": null,
-  "timeoutLimit": null,
+  "timestamp": "2026-06-03T20:06:58.298Z",
+  "projectId": "HkUQKM-if1g4",
+  "previewId": "d505e0e258ff",
+  "runtime": "local-fallback",
+  "reason": "build failed: npm run build exited code=1 -  | Import trace for requested module: | ./src/app/globals.css |  |  | > Build failed because of webpack errors | build-diagnostics: phase=preview:building; failedFile=unknown; errorMessage=Error: Cannot find module './lib/design-tokens'; recommendedRepairPath=Repair generated TypeScript/build errors and rerun build validation before preview start.",
+  "timeoutCause": "install-hung",
+  "timeoutLifecycle": {
+    "installStarted": true,
+    "installCompleted": false,
+    "buildStarted": false,
+    "buildCompleted": false,
+    "serverSpawned": false,
+    "portOpened": false,
+    "firstProbeAttempted": false
+  },
+  "timeoutSource": "preview-manager:boot-watchdog",
+  "timeoutLimit": 150000,
   "command": "npm.cmd",
   "commandArgs": [
     "run",
     "build"
   ],
-  "cwd": "..\\..\\data\\projects\\OdTk_U0DvJrN\\output\\.preview-runtime",
-  "runtimePath": "..\\..\\data\\projects\\OdTk_U0DvJrN\\output\\.preview-runtime",
-  "packageJsonPath": "..\\..\\data\\projects\\OdTk_U0DvJrN\\output\\.preview-runtime\\package.json",
+  "cwd": "..\\..\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime",
+  "runtimePath": "..\\..\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime",
+  "packageJsonPath": "..\\..\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\package.json",
   "packageManager": "npm",
   "installCommand": "npm install --no-audit --no-fund",
   "installCommandFallback": null,
   "startCommand": "npm run build",
   "reproduceCommand": [
-    "cd \"..\\..\\data\\projects\\OdTk_U0DvJrN\\output\\.preview-runtime\"",
+    "cd \"..\\..\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\"",
     "# Install (the runner used: unknown)",
     "npm install --no-audit --no-fund",
     "# Start dev server on the same port the runner used:",
-    "$env:PORT=\"18540\"; npm run build"
+    "$env:PORT=\"13942\"; npm run build"
   ],
   "host": "127.0.0.1",
-  "port": 18540,
+  "port": 13942,
   "envSafe": {
     "PORT": "3001",
     "HOST": "127.0.0.1",
@@ -38,7 +46,7 @@
   "currentStep": "preview:building",
   "currentPreviewPhase": "preview:building",
   "lastSuccessfulStep": "install cache hit",
-  "elapsedTime": 61210,
+  "elapsedTime": 53072,
   "installCompleted": true,
   "installMode": null,
   "installSkipped": true,
@@ -48,73 +56,83 @@
   "portEverOpened": false,
   "httpEverResponded": false,
   "childAlive": true,
-  "processState": null,
+  "processState": "alive-hanging",
   "processStartedAt": null,
   "processExitedAt": null,
   "exitCode": null,
   "exitSignal": null,
-  "stdoutTail": "\n> devteam-auth-app@1.0.0 build\n> next build\n\n   ▲ Next.js 15.0.4\n   - Environments: .env.local\n\n   Creating an optimized production build ...\n ✓ Compiled successfully\n   Linting and checking validity of types ...\n",
-  "stderrTail": " ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\nFailed to compile.\n\n./src/components/dashboard/ActivityFeed.tsx:49:31\nType error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.\n  Property 'activity' does not exist on type 'IntrinsicAttributes & ActivityItemProps'.\n\n\u001b[0m \u001b[90m 47 |\u001b[39m             {items\u001b[33m.\u001b[39mmap((activity) \u001b[33m=>\u001b[39m (\u001b[0m\n\u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n\u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m\n\u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n",
-  "lastPreviewLogLine": "\u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m",
+  "stdoutTail": "\n> landing-page-app@1.0.0 build\n> next build\n\n   ▲ Next.js 15.0.4\n\n   Creating an optimized production build ...\n",
+  "stderrTail": " ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\nFailed to compile.\n\n./src/app/globals.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[13].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[13].oneOf[10].use[3]!./src/app/globals.css\nError: Cannot find module './lib/design-tokens'\nRequire stack:\n- C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\tailwind.config.ts\n    at Module.<anonymous> (node:internal/modules/cjs/loader:1456:15)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\server\\require-hook.js:55:36\n    at require.resolve (node:internal/modules/helpers:163:19)\n    at _resolve (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\jiti\\dist\\jiti.js:1:246378)\n    at jiti (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\jiti\\dist\\jiti.js:1:249092)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\tailwind.config.ts:3:21\n    at evalModule (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\jiti\\dist\\jiti.js:1:251913)\n    at jiti (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\jiti\\dist\\jiti.js:1:249841)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\tailwindcss\\lib\\lib\\load-config.js:51:30\n    at loadConfig (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\tailwindcss\\lib\\lib\\load-config.js:58:6)\n\nImport trace for requested module:\n./src/app/globals.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[13].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[13].oneOf[10].use[3]!./src/app/globals.css\n./src/app/globals.css\n\n./src/app/globals.css\nError: Cannot find module './lib/design-tokens'\nRequire stack:\n- C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\tailwind.config.ts\n    at Module.<anonymous> (node:internal/modules/cjs/loader:1456:15)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\server\\require-hook.js:55:36\n    at require.resolve (node:internal/modules/helpers:163:19)\n    at _resolve (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\jiti\\dist\\jiti.js:1:246378)\n    at jiti (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\jiti\\dist\\jiti.js:1:249092)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\tailwind.config.ts:3:21\n    at evalModule (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\jiti\\dist\\jiti.js:1:251913)\n    at jiti (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\jiti\\dist\\jiti.js:1:249841)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\tailwindcss\\lib\\lib\\load-config.js:51:30\n    at loadConfig (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\tailwindcss\\lib\\lib\\load-config.js:58:6)\n    at tryRunOrWebpackError (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:314951)\n    at __webpack_require_module__ (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:131425)\n    at __nested_webpack_require_161179__ (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:130863)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:131714\n    at symbolIterator (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\neo-async\\async.js:1:14444)\n    at done (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\neo-async\\async.js:1:14824)\n    at Hook.eval [as callAsync] (eval at create (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:13:9218), <anonymous>:15:1)\n    at Hook.CALL_ASYNC_DELEGATE [as _callAsync] (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:13:6372)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:130584\n    at symbolIterator (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\neo-async\\async.js:1:14402)\n-- inner error --\nError: Cannot find module './lib/design-tokens'\nRequire stack:\n- C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\tailwind.config.ts\n    at Module.<anonymous> (node:internal/modules/cjs/loader:1456:15)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\server\\require-hook.js:55:36\n    at require.resolve (node:internal/modules/helpers:163:19)\n    at _resolve (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\jiti\\dist\\jiti.js:1:246378)\n    at jiti (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\jiti\\dist\\jiti.js:1:249092)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\tailwind.config.ts:3:21\n    at evalModule (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\jiti\\dist\\jiti.js:1:251913)\n    at jiti (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\jiti\\dist\\jiti.js:1:249841)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\tailwindcss\\lib\\lib\\load-config.js:51:30\n    at loadConfig (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\tailwindcss\\lib\\lib\\load-config.js:58:6)\n    at Object.<anonymous> (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\build\\webpack\\loaders\\css-loader\\src\\index.js??ruleSet[1].rules[13].oneOf[10].use[2]!C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\build\\webpack\\loaders\\postcss-loader\\src\\index.js??ruleSet[1].rules[13].oneOf[10].use[3]!C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\src\\app\\globals.css:1:7)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:955544\n    at Hook.eval [as call] (eval at create (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:13:8996), <anonymous>:7:1)\n    at Hook.CALL_DELEGATE [as _call] (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:13:6266)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:131458\n    at tryRunOrWebpackError (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:314905)\n    at __webpack_require_module__ (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:131425)\n    at __nested_webpack_require_161179__ (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:130863)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:131714\n    at symbolIterator (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\neo-async\\async.js:1:14444)\n\nGenerated code for C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\build\\webpack\\loaders\\css-loader\\src\\index.js??ruleSet[1].rules[13].oneOf[10].use[2]!C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\build\\webpack\\loaders\\postcss-loader\\src\\index.js??ruleSet[1].rules[13].oneOf[10].use[3]!C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\src\\app\\globals.css\n\nImport trace for requested module:\n./src/app/globals.css\n\n\n> Build failed because of webpack errors\n",
+  "lastPreviewLogLine": "> Build failed because of webpack errors",
   "probeAttemptsTotal": 0,
   "probeAttemptsTail": [],
   "installFallback": null,
   "stepDurations": [
     {
       "step": "preview:queued",
-      "startedAt": "2026-05-19T19:10:58.675Z",
-      "completedAt": "2026-05-19T19:10:58.676Z",
+      "startedAt": "2026-06-03T20:06:05.226Z",
+      "completedAt": "2026-06-03T20:06:05.227Z",
       "durationMs": 1
     },
     {
       "step": "preview:staging-files",
-      "startedAt": "2026-05-19T19:10:58.676Z",
-      "completedAt": "2026-05-19T19:10:58.701Z",
-      "durationMs": 25
+      "startedAt": "2026-06-03T20:06:05.227Z",
+      "completedAt": "2026-06-03T20:06:05.249Z",
+      "durationMs": 22
     },
     {
       "step": "preview:installing",
-      "startedAt": "2026-05-19T19:10:58.701Z",
-      "completedAt": "2026-05-19T19:11:43.366Z",
-      "durationMs": 44665
+      "startedAt": "2026-06-03T20:06:05.249Z",
+      "completedAt": "2026-06-03T20:06:24.299Z",
+      "durationMs": 19050
+    },
+    {
+      "step": "preview:timeout",
+      "startedAt": "2026-06-03T20:06:24.299Z",
+      "completedAt": "2026-06-03T20:06:46.852Z",
+      "durationMs": 22553
     },
     {
       "step": "preview:building",
-      "startedAt": "2026-05-19T19:11:43.366Z",
-      "completedAt": "2026-05-19T19:11:52.978Z",
-      "durationMs": 9612
+      "startedAt": "2026-06-03T20:06:46.852Z",
+      "completedAt": "2026-06-03T20:06:54.413Z",
+      "durationMs": 7561
     },
     {
       "step": "preview:installing",
-      "startedAt": "2026-05-19T19:11:52.978Z",
-      "completedAt": "2026-05-19T19:11:53.023Z",
-      "durationMs": 45
+      "startedAt": "2026-06-03T20:06:54.413Z",
+      "completedAt": "2026-06-03T20:06:54.438Z",
+      "durationMs": 25
     }
   ],
   "previewStatusTransitions": [
     {
-      "step": "starting:local-runner",
-      "at": "2026-05-19T19:10:58.675Z"
+      "step": "starting:local-fallback",
+      "at": "2026-06-03T20:06:05.226Z"
+    },
+    {
+      "step": "failed:Preview startup timed out after 150s [cause=install-hung] â€” install never finished (npm install started but did not complete before the budget). Step at timeout: preview:installing (last successful:",
+      "at": "2026-06-03T20:06:24.299Z"
     }
   ],
   "localStartAttempts": [
     {
       "attempt": 1,
       "ok": false,
-      "error": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m | \u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/dashboard/ActivityFeed.tsx:49:31; errorMessage=Type error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.; recommendedRepairPath=Repair generated source and imports in ./src/components/dashboard/ActivityFeed.tsx:49:31, then rerun build validation before preview start.",
+      "error": "build failed: npm run build exited code=1 -  | Import trace for requested module: | ./src/app/globals.css |  |  | > Build failed because of webpack errors | build-diagnostics: phase=preview:building; failedFile=unknown; errorMessage=Error: Cannot find module './lib/design-tokens'; recommendedRepairPath=Repair generated TypeScript/build errors and rerun build validation before preview start.",
       "portOpened": false,
-      "durationMs": 52267,
-      "startedAtIso": "2026-05-19T19:10:58.701Z",
-      "endedAtIso": "2026-05-19T19:11:50.968Z"
+      "durationMs": 47148,
+      "startedAtIso": "2026-06-03T20:06:05.249Z",
+      "endedAtIso": "2026-06-03T20:06:52.397Z"
     },
     {
       "attempt": 2,
       "ok": false,
-      "error": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m | \u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/dashboard/ActivityFeed.tsx:49:31; errorMessage=Type error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.; recommendedRepairPath=Repair generated source and imports in ./src/components/dashboard/ActivityFeed.tsx:49:31, then rerun build validation before preview start.",
+      "error": "build failed: npm run build exited code=1 -  | Import trace for requested module: | ./src/app/globals.css |  |  | > Build failed because of webpack errors | build-diagnostics: phase=preview:building; failedFile=unknown; errorMessage=Error: Cannot find module './lib/design-tokens'; recommendedRepairPath=Repair generated TypeScript/build errors and rerun build validation before preview start.",
       "portOpened": false,
-      "durationMs": 6906,
-      "startedAtIso": "2026-05-19T19:11:52.978Z",
-      "endedAtIso": "2026-05-19T19:11:59.884Z"
+      "durationMs": 3885,
+      "startedAtIso": "2026-06-03T20:06:54.413Z",
+      "endedAtIso": "2026-06-03T20:06:58.298Z"
     }
   ],
   "localRetrySucceeded": false

@@ -1,0 +1,21 @@
+ M apps/api/src/pipeline/fast-tier1-runner.test.ts
+ M apps/api/src/pipeline/generation-failure-classifier.test.ts
+ M apps/api/src/pipeline/project-generator.ts
+ M apps/api/src/pipeline/tier2-structured-runner.test.ts
+ M apps/api/src/pipeline/tier2-structured-runner.ts
+ M apps/api/src/pipeline/tier3-contract-runner.test.ts
+ M apps/api/src/testing/.api-restart-counter.json
+ M apps/api/src/testing/.last-api-pid.json
+ M apps/api/src/testing/last-builder-empty-failure.json
+ M apps/api/src/testing/last-failure.json
+ M apps/api/src/testing/last-finalization-failure.json
+ M apps/api/src/testing/successful-mission-results.json
+?? apps/api/src/pipeline/package-manifest-guard.test.ts
+?? apps/api/src/pipeline/package-manifest-guard.ts
+?? apps/api/src/testing/project-state-mutations-BuZ91nwzTtku.jsonl
+?? apps/api/src/testing/project-state-mutations-Gw9TSE3mHAEm.jsonl
+?? apps/api/src/testing/project-state-mutations-H8SrdBwMUa7y.jsonl
+?? reports/current/CURRENT_FEATURE_STATUS_MATRIX.md
+?? reports/current/LATEST_FAILURE_ANALYSIS.md
+?? reports/current/NEXT_SAFE_STEP.md
+?? reports/current/PROJECT_RESUME_STATE_REPORT.md

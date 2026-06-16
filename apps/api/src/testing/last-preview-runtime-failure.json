@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-05-19T19:11:59.887Z",
-  "projectId": "OdTk_U0DvJrN",
-  "previewId": "336a6a46f3a2",
-  "runtime": "local",
+  "timestamp": "2026-06-03T20:06:58.301Z",
+  "projectId": "HkUQKM-if1g4",
+  "previewId": "d505e0e258ff",
+  "runtime": "local-fallback",
   "stack": null,
-  "reason": "Local preview failed: build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m | \u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/dashboard/ActivityFeed.tsx:49:31; errorMessage=Type error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.; recommendedRepairPath=Repair generated source and imports in ./src/components/dashboard/ActivityFeed.tsx:49:31, then rerun build validation before preview start.",
+  "reason": "Local-fallback preview failed (after docker also failed): build failed: npm run build exited code=1 -  | Import trace for requested module: | ./src/app/globals.css |  |  | > Build failed because of webpack errors | build-diagnostics: phase=preview:building; failedFile=unknown; errorMessage=Error: Cannot find module './lib/design-tokens'; recommendedRepairPath=Repair generated TypeScript/build errors and rerun build validation before preview start.",
   "previewFailurePhase": "preview:failed",
-  "previewFailureReason": "Local preview failed: build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m | \u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/dashboard/ActivityFeed.tsx:49:31; errorMessage=Type error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.; recommendedRepairPath=Repair generated source and imports in ./src/components/dashboard/ActivityFeed.tsx:49:31, then rerun build validation before preview start.\nlast successful step: install cache hit\nstderr tail:\n⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\nFailed to compile.\n\n./src/components/dashboard/ActivityFeed.tsx:49:31\nType error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.\n  Property 'activity' does not exist on type 'IntrinsicAttributes & ActivityItemProps'.\n\n\u001b[0m \u001b[90m 47 |\u001b[39m             {items\u001b[33m.\u001b[39mmap((activity) \u001b[33m=>\u001b[39m (\u001b[0m\n\u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n\u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m\n\u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m",
+  "previewFailureReason": "âš  Both preview backends failed:\n\nâ”€â”€ Docker attempt â”€â”€\nDev server did not become healthy within 90000ms (last status: 500)\nexitCode=0\nlast successful step: docker container started\nstderr tail:\nr/src/index.js??ruleSet[1].rules[13].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[13].oneOf[10].use[3]!./src/app/globals.css\nError: Cannot find module './lib/design-tokens'\nRequire stack:\n- /app/tailwind.config.ts\nImport trace for requested module:\n./src/app/globals.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[13].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[13].oneOf[10].use[3]!./src/app/globals.css\n./src/app/globals.css\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: ENOENT: no such file or directory, rename '/app/.next/cache/webpack/client-development-fallback/0.pack.gz_' -> '/app/.next/cache/webpack/client-development-fallback/0.pack.gz'\n HEAD / 500 in 6ms\n GET / 500 in 5ms\n HEAD / 500 in 4ms\n HEAD / 500 in 5ms\n HEAD / 500 in 6ms\n GET / 500 in 6ms\n HEAD / 500 in 6ms\n HEAD / 500 in 6ms\n HEAD / 500 in 4ms\n GET / 500 in 6ms\n HEAD / 500 in 4ms\n HEAD / 500 in 5ms\n HEAD / 500 in 6ms\n GET / 500 in 5ms\n HEAD / 500 in 5ms\n HEAD / 500 in 4ms\n HEAD / 500 in 6ms\n GET / 500 in 5ms\n HEAD / 500 in 4ms\n HEAD / 500 in 5ms\n HEAD / 500 in 5ms\n GET / 500 in 6ms\n HEAD / 500 in 5ms\n HEAD / 500 in 5ms\n HEAD / 500 in 5ms\n GET / 500 in 6ms\n HEAD / 500 in 5ms\n HEAD / 500 in 5ms\n HEAD / 500 in 4ms\n GET / 500 in 7ms\n HEAD / 500 in 68ms\n HEAD / 500 in 5ms\n HEAD / 500 in 5ms\n\nâ”€â”€ Local fallback attempt â”€â”€\nLocal-fallback preview failed (after docker also failed): build failed: npm run build exited code=1 -  | Import trace for requested module: | ./src/app/globals.css |  |  | > Build failed because of webpack errors | build-diagnostics: phase=preview:building; failedFile=unknown; errorMessage=Error: Cannot find module './lib/design-tokens'; recommendedRepairPath=Repair generated TypeScript/build errors and rerun build validation before preview start.\nlast successful step: install cache hit\nstderr tail:\nle5.js:28:131458\n    at tryRunOrWebpackError (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:314905)\n    at __webpack_require_module__ (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:131425)\n    at __nested_webpack_require_161179__ (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:130863)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:131714\n    at symbolIterator (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\neo-async\\async.js:1:14444)\n\nGenerated code for C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\build\\webpack\\loaders\\css-loader\\src\\index.js??ruleSet[1].rules[13].oneOf[10].use[2]!C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\build\\webpack\\loaders\\postcss-loader\\src\\index.js??ruleSet[1].rules[13].oneOf[10].use[3]!C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\src\\app\\globals.css\n\nImport trace for requested module:\n./src/app/globals.css\n\n\n> Build failed because of webpack errors",
   "exitCode": null,
   "signal": null,
   "oomKilled": false,
@@ -16,8 +16,8 @@
     "run",
     "build"
   ],
-  "cwd": "..\\..\\data\\projects\\OdTk_U0DvJrN\\output\\.preview-runtime",
-  "port": 18540,
+  "cwd": "..\\..\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime",
+  "port": 13942,
   "envSafe": {
     "PORT": "3001",
     "HOST": "127.0.0.1",
@@ -27,113 +27,124 @@
   "containerName": null,
   "containerId": null,
   "lastSuccessfulStep": "install cache hit",
-  "stdoutTail": "\n> devteam-auth-app@1.0.0 build\n> next build\n\n   ▲ Next.js 15.0.4\n   - Environments: .env.local\n\n   Creating an optimized production build ...\n ✓ Compiled successfully\n   Linting and checking validity of types ...\n",
-  "stderrTail": " ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\nFailed to compile.\n\n./src/components/dashboard/ActivityFeed.tsx:49:31\nType error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.\n  Property 'activity' does not exist on type 'IntrinsicAttributes & ActivityItemProps'.\n\n\u001b[0m \u001b[90m 47 |\u001b[39m             {items\u001b[33m.\u001b[39mmap((activity) \u001b[33m=>\u001b[39m (\u001b[0m\n\u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n\u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m\n\u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n",
-  "errorStack": "Error: build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m | \u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/dashboard/ActivityFeed.tsx:49:31; errorMessage=Type error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.; recommendedRepairPath=Repair generated source and imports in ./src/components/dashboard/ActivityFeed.tsx:49:31, then rerun build validation before preview start.\n    at ChildProcess.<anonymous> (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\local-runner.ts:1302:11)\n    at Object.onceWrapper (node:events:623:26)\n    at ChildProcess.emit (node:events:520:35)\n    at ChildProcess._handle.onexit (node:internal/child_process:294:12)",
+  "stdoutTail": "\n> landing-page-app@1.0.0 build\n> next build\n\n   ▲ Next.js 15.0.4\n\n   Creating an optimized production build ...\n",
+  "stderrTail": "(eval at create (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:13:8996), <anonymous>:7:1)\n    at Hook.CALL_DELEGATE [as _call] (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:13:6266)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:131458\n    at tryRunOrWebpackError (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:314905)\n    at __webpack_require_module__ (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:131425)\n    at __nested_webpack_require_161179__ (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:130863)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:131714\n    at symbolIterator (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\neo-async\\async.js:1:14444)\n\nGenerated code for C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\build\\webpack\\loaders\\css-loader\\src\\index.js??ruleSet[1].rules[13].oneOf[10].use[2]!C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\build\\webpack\\loaders\\postcss-loader\\src\\index.js??ruleSet[1].rules[13].oneOf[10].use[3]!C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\src\\app\\globals.css\n\nImport trace for requested module:\n./src/app/globals.css\n\n\n> Build failed because of webpack errors\n",
+  "errorStack": "Error: build failed: npm run build exited code=1 -  | Import trace for requested module: | ./src/app/globals.css |  |  | > Build failed because of webpack errors | build-diagnostics: phase=preview:building; failedFile=unknown; errorMessage=Error: Cannot find module './lib/design-tokens'; recommendedRepairPath=Repair generated TypeScript/build errors and rerun build validation before preview start.\n    at ChildProcess.<anonymous> (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\preview\\local-runner.ts:1302:11)\n    at Object.onceWrapper (node:events:623:26)\n    at ChildProcess.emit (node:events:520:35)\n    at ChildProcess._handle.onexit (node:internal/child_process:294:12)",
   "currentStep": "preview:failed",
   "currentPreviewPhase": "preview:failed",
-  "elapsedTime": 61212,
-  "lastPreviewLogLine": "\u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m",
+  "elapsedTime": 53075,
+  "lastPreviewLogLine": "> Build failed because of webpack errors",
   "processState": "alive-hanging",
-  "stepStartedAt": "2026-05-19T19:11:59.887Z",
+  "stepStartedAt": "2026-06-03T20:06:58.301Z",
   "stepDurations": [
     {
       "step": "preview:queued",
-      "startedAt": "2026-05-19T19:10:58.675Z",
-      "completedAt": "2026-05-19T19:10:58.676Z",
+      "startedAt": "2026-06-03T20:06:05.226Z",
+      "completedAt": "2026-06-03T20:06:05.227Z",
       "durationMs": 1
     },
     {
       "step": "preview:staging-files",
-      "startedAt": "2026-05-19T19:10:58.676Z",
-      "completedAt": "2026-05-19T19:10:58.701Z",
+      "startedAt": "2026-06-03T20:06:05.227Z",
+      "completedAt": "2026-06-03T20:06:05.249Z",
+      "durationMs": 22
+    },
+    {
+      "step": "preview:installing",
+      "startedAt": "2026-06-03T20:06:05.249Z",
+      "completedAt": "2026-06-03T20:06:24.299Z",
+      "durationMs": 19050
+    },
+    {
+      "step": "preview:timeout",
+      "startedAt": "2026-06-03T20:06:24.299Z",
+      "completedAt": "2026-06-03T20:06:46.852Z",
+      "durationMs": 22553
+    },
+    {
+      "step": "preview:building",
+      "startedAt": "2026-06-03T20:06:46.852Z",
+      "completedAt": "2026-06-03T20:06:54.413Z",
+      "durationMs": 7561
+    },
+    {
+      "step": "preview:installing",
+      "startedAt": "2026-06-03T20:06:54.413Z",
+      "completedAt": "2026-06-03T20:06:54.438Z",
       "durationMs": 25
     },
     {
-      "step": "preview:installing",
-      "startedAt": "2026-05-19T19:10:58.701Z",
-      "completedAt": "2026-05-19T19:11:43.366Z",
-      "durationMs": 44665
-    },
-    {
       "step": "preview:building",
-      "startedAt": "2026-05-19T19:11:43.366Z",
-      "completedAt": "2026-05-19T19:11:52.978Z",
-      "durationMs": 9612
-    },
-    {
-      "step": "preview:installing",
-      "startedAt": "2026-05-19T19:11:52.978Z",
-      "completedAt": "2026-05-19T19:11:53.023Z",
-      "durationMs": 45
-    },
-    {
-      "step": "preview:building",
-      "startedAt": "2026-05-19T19:11:53.023Z",
-      "completedAt": "2026-05-19T19:11:59.887Z",
-      "durationMs": 6864
+      "startedAt": "2026-06-03T20:06:54.438Z",
+      "completedAt": "2026-06-03T20:06:58.301Z",
+      "durationMs": 3863
     }
   ],
   "previewStatusTransitions": [
     {
-      "step": "starting:local-runner",
-      "at": "2026-05-19T19:10:58.675Z"
+      "step": "starting:local-fallback",
+      "at": "2026-06-03T20:06:05.226Z"
     },
     {
-      "step": "failed:Local preview failed: build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b",
-      "at": "2026-05-19T19:11:59.887Z"
+      "step": "failed:Preview startup timed out after 150s [cause=install-hung] â€” install never finished (npm install started but did not complete before the budget). Step at timeout: preview:installing (last successful:",
+      "at": "2026-06-03T20:06:24.299Z"
+    },
+    {
+      "step": "failed:âš  Both preview backends failed:\n\nâ”€â”€ Docker attempt â”€â”€\nDev server did not become healthy within 90000ms (last status: 500)\nexitCode=0\nlast successful step: docker container started\nstderr tai",
+      "at": "2026-06-03T20:06:58.300Z"
     }
   ],
   "timeline": [
     {
       "event": "runner-start",
-      "at": "2026-05-19T19:10:58.676Z",
+      "at": "2026-06-03T20:06:05.226Z",
       "previewStatus": "starting",
       "durationMs": null,
       "details": {
-        "mode": "local",
-        "fileCount": 62
+        "mode": "local-fallback",
+        "fileCount": 23,
+        "fallbackFromDocker": true
       }
     },
     {
       "event": "install-start",
-      "at": "2026-05-19T19:10:58.676Z",
+      "at": "2026-06-03T20:06:05.227Z",
       "previewStatus": "starting",
       "durationMs": null,
       "details": {
-        "mode": "local"
+        "mode": "local-fallback"
       }
     },
     {
       "event": "install-end",
-      "at": "2026-05-19T19:11:50.969Z",
-      "previewStatus": "starting",
-      "durationMs": 52293,
+      "at": "2026-06-03T20:06:52.398Z",
+      "previewStatus": "failed",
+      "durationMs": 47171,
       "details": {
         "ok": false,
-        "error": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m | \u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/dashboard/ActivityFeed.tsx:49:31; errorMessage=Type error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.; recommendedRepairPath=Repair generated source and imports in ./src/components/dashboard/ActivityFeed.tsx:49:31, then rerun build validation before preview start.",
+        "error": "build failed: npm run build exited code=1 -  | Import trace for requested module: | ./src/app/globals.css |  |  | > Build failed because of webpack errors | build-diagnostics: phase=preview:building; failedFile=unknown; errorMessage=Error: Cannot find module './lib/design-tokens'; recommendedRepairPath=Repair generated TypeScript/build errors and rerun build validation before preview start.",
         "attempt": 1,
         "willRetry": true
       }
     },
     {
       "event": "install-end",
-      "at": "2026-05-19T19:11:59.884Z",
-      "previewStatus": "starting",
-      "durationMs": 61208,
+      "at": "2026-06-03T20:06:58.298Z",
+      "previewStatus": "failed",
+      "durationMs": 53071,
       "details": {
         "ok": false,
-        "error": "build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m | \u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/dashboard/ActivityFeed.tsx:49:31; errorMessage=Type error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.; recommendedRepairPath=Repair generated source and imports in ./src/components/dashboard/ActivityFeed.tsx:49:31, then rerun build validation before preview start."
+        "error": "build failed: npm run build exited code=1 -  | Import trace for requested module: | ./src/app/globals.css |  |  | > Build failed because of webpack errors | build-diagnostics: phase=preview:building; failedFile=unknown; errorMessage=Error: Cannot find module './lib/design-tokens'; recommendedRepairPath=Repair generated TypeScript/build errors and rerun build validation before preview start."
       }
     },
     {
       "event": "failed",
-      "at": "2026-05-19T19:11:59.887Z",
+      "at": "2026-06-03T20:06:58.301Z",
       "previewStatus": "failed",
-      "durationMs": 61211,
+      "durationMs": 53075,
       "details": {
-        "message": "Local preview failed: build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m | \u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/dashboard/ActivityFeed.tsx:49:31; errorMessage=Type error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.; recommendedRepairPath=Repair generated source and imports in ./src/components/dashboard/ActivityFeed.tsx:49:31, then rerun build validation before preview start.\nlast successful step: install cache hit\nstderr tail:\n⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n ⚠ Found lockfile missing swc dependencies, run next locally to automatically patch\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies\nFailed to compile.\n\n./src/components/dashboard/ActivityFeed.tsx:49:31\nType error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.\n  Property 'activity' does not exist on type 'IntrinsicAttributes & ActivityItemProps'.\n\n\u001b[0m \u001b[90m 47 |\u001b[39m             {items\u001b[33m.\u001b[39mmap((activity) \u001b[33m=>\u001b[39m (\u001b[0m\n\u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n\u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m\n\u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m\n\u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m",
-        "reason": "Local preview failed: build failed: npm run build exited code=1 - \u001b[0m \u001b[90m 48 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33mli\u001b[39m key\u001b[33m=\u001b[39m{activity\u001b[33m.\u001b[39mid} className\u001b[33m=\u001b[39m\u001b[32m\"py-2\"\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 49 |\u001b[39m                 \u001b[33m<\u001b[39m\u001b[33mActivityItem\u001b[39m activity\u001b[33m=\u001b[39m{activity} \u001b[33m/\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m    |\u001b[39m                               \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 50 |\u001b[39m               \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mli\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | \u001b[0m \u001b[90m 51 |\u001b[39m             ))}\u001b[0m | \u001b[0m \u001b[90m 52 |\u001b[39m           \u001b[33m<\u001b[39m\u001b[33m/\u001b[39m\u001b[33mul\u001b[39m\u001b[33m>\u001b[39m\u001b[0m | build-diagnostics: phase=preview:building; failedFile=./src/components/dashboard/ActivityFeed.tsx:49:31; errorMessage=Type error: Type '{ activity: Activity; }' is not assignable to type 'IntrinsicAttributes & ActivityItemProps'.; recommendedRepairPath=Repair generated source and imports in ./src/components/dashboard/ActivityFeed.tsx:49:31, then rerun build validation before preview start.",
+        "message": "âš  Both preview backends failed:\n\nâ”€â”€ Docker attempt â”€â”€\nDev server did not become healthy within 90000ms (last status: 500)\nexitCode=0\nlast successful step: docker container started\nstderr tail:\nr/src/index.js??ruleSet[1].rules[13].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[13].oneOf[10].use[3]!./src/app/globals.css\nError: Cannot find module './lib/design-tokens'\nRequire stack:\n- /app/tailwind.config.ts\nImport trace for requested module:\n./src/app/globals.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[13].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[13].oneOf[10].use[3]!./src/app/globals.css\n./src/app/globals.css\n<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: ENOENT: no such file or directory, rename '/app/.next/cache/webpack/client-development-fallback/0.pack.gz_' -> '/app/.next/cache/webpack/client-development-fallback/0.pack.gz'\n HEAD / 500 in 6ms\n GET / 500 in 5ms\n HEAD / 500 in 4ms\n HEAD / 500 in 5ms\n HEAD / 500 in 6ms\n GET / 500 in 6ms\n HEAD / 500 in 6ms\n HEAD / 500 in 6ms\n HEAD / 500 in 4ms\n GET / 500 in 6ms\n HEAD / 500 in 4ms\n HEAD / 500 in 5ms\n HEAD / 500 in 6ms\n GET / 500 in 5ms\n HEAD / 500 in 5ms\n HEAD / 500 in 4ms\n HEAD / 500 in 6ms\n GET / 500 in 5ms\n HEAD / 500 in 4ms\n HEAD / 500 in 5ms\n HEAD / 500 in 5ms\n GET / 500 in 6ms\n HEAD / 500 in 5ms\n HEAD / 500 in 5ms\n HEAD / 500 in 5ms\n GET / 500 in 6ms\n HEAD / 500 in 5ms\n HEAD / 500 in 5ms\n HEAD / 500 in 4ms\n GET / 500 in 7ms\n HEAD / 500 in 68ms\n HEAD / 500 in 5ms\n HEAD / 500 in 5ms\n\nâ”€â”€ Local fallback attempt â”€â”€\nLocal-fallback preview failed (after docker also failed): build failed: npm run build exited code=1 -  | Import trace for requested module: | ./src/app/globals.css |  |  | > Build failed because of webpack errors | build-diagnostics: phase=preview:building; failedFile=unknown; errorMessage=Error: Cannot find module './lib/design-tokens'; recommendedRepairPath=Repair generated TypeScript/build errors and rerun build validation before preview start.\nlast successful step: install cache hit\nstderr tail:\nle5.js:28:131458\n    at tryRunOrWebpackError (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:314905)\n    at __webpack_require_module__ (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:131425)\n    at __nested_webpack_require_161179__ (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:130863)\n    at C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\webpack\\bundle5.js:28:131714\n    at symbolIterator (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\compiled\\neo-async\\async.js:1:14444)\n\nGenerated code for C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\build\\webpack\\loaders\\css-loader\\src\\index.js??ruleSet[1].rules[13].oneOf[10].use[2]!C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\node_modules\\next\\dist\\build\\webpack\\loaders\\postcss-loader\\src\\index.js??ruleSet[1].rules[13].oneOf[10].use[3]!C:\\Users\\AJ\\Documents\\GitHub\\dev1\\data\\projects\\HkUQKM-if1g4\\output\\.preview-runtime\\src\\app\\globals.css\n\nImport trace for requested module:\n./src/app/globals.css\n\n\n> Build failed because of webpack errors",
+        "reason": "Local-fallback preview failed (after docker also failed): build failed: npm run build exited code=1 -  | Import trace for requested module: | ./src/app/globals.css |  |  | > Build failed because of webpack errors | build-diagnostics: phase=preview:building; failedFile=unknown; errorMessage=Error: Cannot find module './lib/design-tokens'; recommendedRepairPath=Repair generated TypeScript/build errors and rerun build validation before preview start.",
         "exitCode": null,
         "signal": null,
         "oomKilled": false,

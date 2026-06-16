@@ -10,6 +10,7 @@ export type GenerationFailureCategory =
   | 'dependency_install_failure'
   | 'generated_app_build_failure'
   | 'generated_import_export_mismatch'
+  | 'generated_component_prop_mismatch'
   | 'generated_typescript_error'
   | 'preview_runner_internal_error'
   | 'project_persistence_failure'
@@ -90,6 +91,17 @@ export function classifyGenerationFailure(input: {
       category: 'generated_import_export_mismatch',
       code: 'GENERATED_IMPORT_EXPORT_MISMATCH',
       reason: 'Generated application imports symbols that are not exported by target modules.',
+    };
+  }
+  if (
+    /generated_component_prop_mismatch/.test(source)
+    || /renders <[a-z0-9_]+> without required prop/.test(source)
+    || /is missing in type '\{\}' but required in type '[^']+props'/.test(source)
+  ) {
+    return {
+      category: 'generated_component_prop_mismatch',
+      code: 'GENERATED_COMPONENT_PROP_MISMATCH',
+      reason: 'Generated application rendered components without required prop contract satisfaction.',
     };
   }
   if (/(type error:|typescript error|ts\d{4}\b|has no exported member|is not assignable to type|does not exist on type)/.test(source)) {

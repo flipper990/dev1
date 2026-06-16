@@ -1,0 +1,13 @@
+ apps/api/src/pipeline/fast-tier1-runner.test.ts    |  13 +
+ .../pipeline/generation-failure-classifier.test.ts |  10 +
+ apps/api/src/pipeline/project-generator.ts         |  36 +-
+ .../src/pipeline/tier2-structured-runner.test.ts   |  25 +
+ apps/api/src/pipeline/tier2-structured-runner.ts   |  40 +-
+ .../api/src/pipeline/tier3-contract-runner.test.ts |  14 +
+ apps/api/src/testing/.api-restart-counter.json     |   6 +-
+ apps/api/src/testing/.last-api-pid.json            |   8 +-
+ .../src/testing/last-builder-empty-failure.json    |  85 +-
+ apps/api/src/testing/last-failure.json             | 983 +++++++++++++++------
+ .../api/src/testing/last-finalization-failure.json | 191 ++--
+ .../src/testing/successful-mission-results.json    | 166 ++--
+ 12 files changed, 1022 insertions(+), 555 deletions(-)

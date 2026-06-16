@@ -84,6 +84,9 @@ export function recommendNextAction(input: {
   if (input.classification.category === 'generated_import_export_mismatch') {
     return 'Fix generated import/export contract mismatches (missing named/default exports) before rerunning preview/export validation.';
   }
+  if (input.classification.category === 'generated_component_prop_mismatch') {
+    return 'Fix generated component prop contract mismatches (required props missing at JSX usage) before rerunning preview/export validation.';
+  }
   if (input.classification.category === 'generated_app_build_failure') {
     return 'Inspect generated build logs and resolve compile/runtime build blockers before retry.';
   }

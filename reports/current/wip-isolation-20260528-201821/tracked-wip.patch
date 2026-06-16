@@ -1,0 +1,2215 @@
+diff --git a/apps/api/src/pipeline/fast-tier1-runner.test.ts b/apps/api/src/pipeline/fast-tier1-runner.test.ts
+index 0bbd7f3..c1c8144 100644
+--- a/apps/api/src/pipeline/fast-tier1-runner.test.ts
++++ b/apps/api/src/pipeline/fast-tier1-runner.test.ts
+@@ -2,6 +2,7 @@ import test from 'node:test';
+ import assert from 'node:assert/strict';
+ import { runFastTier1Generation, validateTier1SliceForTest, type FastTier1File, type Tier1SliceManifest } from './fast-tier1-runner.js';
+ import { runFinalIntegrityGate } from './final-integrity-gate.js';
++import { validatePackageJsonString } from '../../../../packages/agent-core/src/package-json-validator.js';
+ 
+ const logger = {
+   info: () => {},
+@@ -101,3 +102,15 @@ test('incremental validation drops forbidden paths with diagnostics', () => {
+   assert.equal(issues.some((i) => i.code === 'forbidden_path'), true);
+ });
+ 
++test('fast tier1 output keeps package manifest strict-pin compatible', async () => {
++  const result = await runFastTier1Generation({
++    projectId: 'p4',
++    prompt: 'Build a simple pricing page with three plans and feature comparison.',
++    logger: logger as any,
++  });
++  const pkg = result.files.find((f) => f.path.replace(/\\/g, '/') === 'package.json');
++  assert.ok(pkg);
++  const validation = validatePackageJsonString(pkg!.content);
++  assert.equal(validation.hasBlockingError, false);
++  assert.equal(validation.violations.some((v) => v.ruleId === 'strict-react-next-bundle-pins'), false);
++});
+diff --git a/apps/api/src/pipeline/generation-failure-classifier.test.ts b/apps/api/src/pipeline/generation-failure-classifier.test.ts
+index 8f25324..ba59a70 100644
+--- a/apps/api/src/pipeline/generation-failure-classifier.test.ts
++++ b/apps/api/src/pipeline/generation-failure-classifier.test.ts
+@@ -131,6 +131,16 @@ test('specific dependency install failures are not swallowed by orchestration ma
+   assert.equal(out.category, 'dependency_install_failure');
+ });
+ 
++test('strict-react-next-bundle-pins package validation failure maps to dependency_failure', () => {
++  const out = classifyGenerationFailure({
++    failedPhase: 'slice-4/7',
++    failedStep: "4/7 'users#2':slice-merge",
++    errorMessage: 'INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)',
++  });
++  assert.equal(out.category, 'dependency_failure');
++  assert.equal(out.code, 'DEPENDENCY_RESOLUTION');
++});
++
+ test('filesystem permission failures map to filesystem_permission_failure', () => {
+   const out = classifyGenerationFailure({
+     failedPhase: 'finalize',
+diff --git a/apps/api/src/pipeline/project-generator.ts b/apps/api/src/pipeline/project-generator.ts
+index 3ffb942..6a2cfec 100644
+--- a/apps/api/src/pipeline/project-generator.ts
++++ b/apps/api/src/pipeline/project-generator.ts
+@@ -70,6 +70,7 @@ import {
+ } from './preview-scheduler.js';
+ import { scheduleExecutionValidation as scheduleExecutionValidationForScheduler } from './execution-validation-scheduler.js';
+ import { enforceDeterministicGenerationContract, type GenerationManifest } from './deterministic-generation-contract.js';
++import { enforceCanonicalPackageManifest } from './package-manifest-guard.js';
+ 
+ export type {
+   GenerateRequest, UpdateRequest, GenerateResult, UpdateResult, StepSummary,
+@@ -3002,12 +3003,43 @@ export class ProjectGenerator {
+         // Slice converged (or hit cap). Update cumulative codebase from
+         // builder + qa + (final-slice) polish artifacts overlayed on previous.
+         const slicePolishApplied = sliceIdx === sliceCount - 1;
+-        const sliceMerged = getMergedFiles(sliceState.artifacts, slicePolishApplied);
++        const sliceMergedRaw = getMergedFiles(sliceState.artifacts, slicePolishApplied);
++        const manifestGuard = enforceCanonicalPackageManifest(sliceMergedRaw);
++        const sliceMerged = manifestGuard.files;
++        if (!project.diagnostics) project.diagnostics = {};
++        const diagnostics = project.diagnostics as Record<string, unknown>;
++        diagnostics.packageManifestSource = manifestGuard.diagnostics.packageManifestSource;
++        diagnostics.packageManifestRepaired = manifestGuard.diagnostics.packageManifestRepaired;
++        diagnostics.packageManifestRejected = manifestGuard.diagnostics.packageManifestRejected;
++        diagnostics.packageValidationRule = manifestGuard.diagnostics.packageValidationRule;
++        diagnostics.expectedPins = manifestGuard.diagnostics.expectedPins;
++        diagnostics.actualPins = manifestGuard.diagnostics.actualPins;
++        const checks = Array.isArray(diagnostics.packageManifestChecks)
++          ? diagnostics.packageManifestChecks as Array<Record<string, unknown>>
++          : [];
++        checks.push({
++          at: new Date().toISOString(),
++          phase: phaseRef.current,
++          step: `${sliceLabel}:slice-merge`,
++          source: manifestGuard.diagnostics.packageManifestSource,
++          repaired: manifestGuard.diagnostics.packageManifestRepaired,
++          rejected: manifestGuard.diagnostics.packageManifestRejected,
++          rule: manifestGuard.diagnostics.packageValidationRule,
++          expectedPins: manifestGuard.diagnostics.expectedPins,
++          actualPins: manifestGuard.diagnostics.actualPins,
++        });
++        diagnostics.packageManifestChecks = checks;
++        if (manifestGuard.diagnostics.packageManifestRejected) {
++          throw new Error(
++            `[artifact-integrity] ${phaseRef.current} -> ${sliceLabel}:slice-merge: INVALID_PACKAGE_JSON: ` +
++            `package.json failed validation (${manifestGuard.diagnostics.packageValidationRule ?? 'unknown'})`,
++          );
++        }
+         this.assertArtifactIntegrityOrThrow(sliceMerged, {
+           phase: phaseRef.current,
+           step: `${sliceLabel}:slice-merge`,
+           requireAppEntry: false,
+-          requirePackageJson: false,
++          requirePackageJson: true,
+         });
+ 
+         // -- File-integrity audit: builder/qa/polish artifacts --
+diff --git a/apps/api/src/pipeline/tier2-structured-runner.test.ts b/apps/api/src/pipeline/tier2-structured-runner.test.ts
+index a348535..67576b7 100644
+--- a/apps/api/src/pipeline/tier2-structured-runner.test.ts
++++ b/apps/api/src/pipeline/tier2-structured-runner.test.ts
+@@ -1,6 +1,8 @@
+ import { test } from 'node:test';
+ import assert from 'node:assert/strict';
+ import { runTier2StructuredGeneration } from './tier2-structured-runner.js';
++import { validatePackageJsonString } from '../../../../packages/agent-core/src/package-json-validator.js';
++import { REACT_18_NEXT_15 } from '../../../../packages/agent-core/src/stack-compatibility.js';
+ 
+ const loggerStub = {
+   debug: () => {},
+@@ -39,3 +41,26 @@ test('tier2 structured runner keeps backend/db artifacts out of generated file s
+   assert.equal(paths.some((p) => p.startsWith('src/server/')), false);
+   assert.equal(paths.some((p) => p.startsWith('src/app/api/')), false);
+ });
++
++test('tier2 structured runner emits canonical package manifest that satisfies strict-react-next-bundle-pins', async () => {
++  const result = await runTier2StructuredGeneration({
++    projectId: 'tier2-package-test',
++    prompt: 'Build an admin dashboard with forms, validation, filters, and complex state.',
++    logger: loggerStub,
++  });
++  const pkg = result.files.find((f) => f.path.replace(/\\/g, '/') === 'package.json');
++  assert.ok(pkg);
++  const parsed = JSON.parse(pkg!.content) as {
++    scripts?: Record<string, string>;
++    dependencies?: Record<string, string>;
++  };
++  const validation = validatePackageJsonString(pkg!.content);
++  assert.equal(validation.hasBlockingError, false);
++  assert.equal(validation.violations.some((v) => v.ruleId === 'strict-react-next-bundle-pins'), false);
++  assert.equal(parsed.dependencies?.next, REACT_18_NEXT_15.versions.next);
++  assert.equal(parsed.dependencies?.react, REACT_18_NEXT_15.versions.react);
++  assert.equal(parsed.dependencies?.['react-dom'], REACT_18_NEXT_15.versions['react-dom']);
++  assert.equal(typeof parsed.scripts?.dev, 'string');
++  assert.equal(typeof parsed.scripts?.build, 'string');
++  assert.equal(typeof parsed.scripts?.start, 'string');
++});
+diff --git a/apps/api/src/pipeline/tier2-structured-runner.ts b/apps/api/src/pipeline/tier2-structured-runner.ts
+index e0dd953..e9e1277 100644
+--- a/apps/api/src/pipeline/tier2-structured-runner.ts
++++ b/apps/api/src/pipeline/tier2-structured-runner.ts
+@@ -1,9 +1,8 @@
+-?import { createHash } from 'node:crypto';
+ import type { Logger } from '../../../../packages/agent-core/src/base-agent.js';
+ import { validateAndFixDependencies } from '../../../../packages/agent-core/src/dependency-validator.js';
+-import { REACT_18_NEXT_15 } from '../../../../packages/agent-core/src/stack-compatibility.js';
+ import { describeIntegrityFailure, runFinalIntegrityGate } from './final-integrity-gate.js';
+ import { enforceDeterministicGenerationContract } from './deterministic-generation-contract.js';
++import { enforceCanonicalPackageManifest } from './package-manifest-guard.js';
+ import { validateSliceManifest, type TierSliceManifest } from './tier-slice-validator.js';
+ import type { PromptTierClassification } from './prompt-tier-classifier.js';
+ 
+@@ -104,37 +103,8 @@ function languageFor(path: string): string | undefined {
+   return undefined;
+ }
+ 
+-function foundation(prompt: string): Tier2File[] {
+-  const deps = REACT_18_NEXT_15.versions;
+-  const name = `generated-tier2-${createHash('sha1').update(prompt).digest('hex').slice(0, 8)}`;
++function foundation(_prompt: string): Tier2File[] {
+   return [
+-    {
+-      path: 'package.json',
+-      content: JSON.stringify({
+-        name,
+-        private: true,
+-        version: '0.1.0',
+-        scripts: {
+-          dev: 'next dev',
+-          build: 'next build',
+-          start: 'next start',
+-          typecheck: 'tsc --noEmit',
+-          preview: 'next build && next start',
+-        },
+-        dependencies: {
+-          next: deps.next,
+-          react: deps.react,
+-          'react-dom': deps['react-dom'],
+-        },
+-        devDependencies: {
+-          typescript: deps.typescript,
+-          '@types/react': deps['@types/react'],
+-          '@types/react-dom': deps['@types/react-dom'],
+-          '@types/node': deps['@types/node'],
+-        },
+-      }, null, 2) + '\n',
+-      language: 'json',
+-    },
+     {
+       path: 'tsconfig.json',
+       content: JSON.stringify({
+@@ -313,6 +283,11 @@ export async function runTier2StructuredGeneration(opts: RunTier2Options): Promi
+ 
+   const contract = enforceDeterministicGenerationContract(assembled);
+   assembled = contract.files.map((f) => ({ path: f.path, content: f.content, language: languageFor(f.path) }));
++  const manifestGuard = enforceCanonicalPackageManifest(assembled);
++  if (manifestGuard.diagnostics.packageManifestRejected) {
++    throw new Error(`tier2 package manifest rejected: ${manifestGuard.diagnostics.packageValidationRule ?? 'unknown'}`);
++  }
++  assembled = manifestGuard.files.map((f) => ({ path: f.path, content: f.content, language: f.language }));
+   timer.end('assembling');
+ 
+   timer.begin('final_build');
+@@ -339,3 +314,4 @@ export async function runTier2StructuredGeneration(opts: RunTier2Options): Promi
+     finalBuildDurationMs: phaseDurations.final_build ?? 0,
+   };
+ }
++
+diff --git a/apps/api/src/pipeline/tier3-contract-runner.test.ts b/apps/api/src/pipeline/tier3-contract-runner.test.ts
+index c804e77..5e32c5e 100644
+--- a/apps/api/src/pipeline/tier3-contract-runner.test.ts
++++ b/apps/api/src/pipeline/tier3-contract-runner.test.ts
+@@ -1,6 +1,7 @@
+ import { test } from 'node:test';
+ import assert from 'node:assert/strict';
+ import { runTier3ContractFirstGeneration, validateTier3FrontendBackendContract } from './tier3-contract-runner.js';
++import { validatePackageJsonString } from '../../../../packages/agent-core/src/package-json-validator.js';
+ 
+ const loggerStub = {
+   debug: () => {},
+@@ -47,3 +48,16 @@ test('tier3 contract runner retains required src/contracts artifacts through ass
+   assert.equal(result.validation.some((item) => item.verdict === 'rejected' && item.manifest.path.startsWith('src/contracts/')), false);
+   assert.equal(result.validation.some((item) => item.verdict === 'rejected' && item.manifest.path === 'src/app/page.tsx'), false);
+ });
++
++test('tier3 output keeps package manifest strict-pin compatible', async () => {
++  const result = await runTier3ContractFirstGeneration({
++    projectId: 'tier3-package-test',
++    prompt: 'Build a fullstack SaaS app with user accounts, projects, dashboard, API routes, and persistent CRUD data model.',
++    logger: loggerStub,
++  });
++  const pkg = result.files.find((f) => f.path.replace(/\\/g, '/') === 'package.json');
++  assert.ok(pkg);
++  const validation = validatePackageJsonString(pkg!.content);
++  assert.equal(validation.hasBlockingError, false);
++  assert.equal(validation.violations.some((v) => v.ruleId === 'strict-react-next-bundle-pins'), false);
++});
+diff --git a/apps/api/src/testing/.api-restart-counter.json b/apps/api/src/testing/.api-restart-counter.json
+index 0c69b87..e3bb755 100644
+--- a/apps/api/src/testing/.api-restart-counter.json
++++ b/apps/api/src/testing/.api-restart-counter.json
+@@ -1,6 +1,6 @@
+ {
+-  "restartCount": 200,
++  "restartCount": 201,
+   "firstStartedAt": "2026-05-12T15:01:31.508Z",
+-  "lastStartedAt": "2026-05-19T19:19:07.459Z",
+-  "lastPid": 33540
++  "lastStartedAt": "2026-05-19T20:13:11.094Z",
++  "lastPid": 35572
+ }
+\ No newline at end of file
+diff --git a/apps/api/src/testing/.last-api-pid.json b/apps/api/src/testing/.last-api-pid.json
+index 5585197..0c11c2d 100644
+--- a/apps/api/src/testing/.last-api-pid.json
++++ b/apps/api/src/testing/.last-api-pid.json
+@@ -1,11 +1,11 @@
+ {
+-  "pid": 33540,
+-  "startedAt": "2026-05-19T19:19:07.459Z",
++  "pid": 35572,
++  "startedAt": "2026-05-19T20:13:11.094Z",
+   "argv": [
+     "C:\\Program Files\\nodejs\\node.exe",
+     "C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\server.ts"
+   ],
+   "watchMode": true,
+-  "reloadedFromPid": 31956,
+-  "reloadedFromStartedAt": "2026-05-19T18:47:24.780Z"
++  "reloadedFromPid": 33540,
++  "reloadedFromStartedAt": "2026-05-19T19:19:07.459Z"
+ }
+\ No newline at end of file
+diff --git a/apps/api/src/testing/last-builder-empty-failure.json b/apps/api/src/testing/last-builder-empty-failure.json
+index 0e9107d..19d32ae 100644
+--- a/apps/api/src/testing/last-builder-empty-failure.json
++++ b/apps/api/src/testing/last-builder-empty-failure.json
+@@ -1,59 +1,59 @@
+ {
+-  "timestamp": "2026-05-19T19:41:29.971Z",
++  "timestamp": "2026-05-19T20:41:44.097Z",
+   "validation": {
+     "rule": "output.files must be a non-empty array",
+     "message": "Validation: builder produced no files",
+     "location": "apps/api/src/agents/builder-agent.ts ? BuilderAgent.validateOutput"
+   },
+-  "projectId": "6zMqH3LZCaeA",
+-  "sessionId": "G72xnL_yV8kWvaag",
+-  "taskId": "G72xnL_yV8kWvaag-builder-1779219593035-e3ub",
++  "projectId": null,
++  "sessionId": "FTVHbUhp0yPXwJPy",
++  "taskId": "FTVHbUhp0yPXwJPy-builder-1779223202040-ew80#p3-components",
+   "agentRole": "builder",
+   "attempt": 3,
+-  "phase": null,
+-  "phaseIndex": null,
+-  "phaseTotal": null,
+-  "slice": {
+-    "id": "pricing",
+-    "name": null,
+-    "purpose": "Display three pricing plans and a feature comparison table."
+-  },
+-  "sliceIndex": 0,
+-  "totalSlices": 1,
++  "phase": "components",
++  "phaseIndex": 3,
++  "phaseTotal": 6,
++  "slice": null,
++  "sliceIndex": null,
++  "totalSlices": null,
+   "chunk": null,
+   "builderAttempt": 3,
+-  "iteration": 2,
++  "iteration": 1,
+   "model": "gpt-4.1",
+   "provider": "azure",
+-  "promptSizeEstimateBytes": 28918,
+-  "rawResponseLength": 16063,
+-  "parsedFileCount": 18,
+-  "filteredFileCount": 17,
++  "promptSizeEstimateBytes": 19222,
++  "rawResponseLength": 11032,
++  "parsedFileCount": 12,
++  "filteredFileCount": 9,
+   "acceptedPaths": [
+-    "src/components/ui/EmptyState.tsx",
++    "src/components/ui/Button.tsx",
++    "src/components/ui/Card.tsx",
++    "src/components/ui/Badge.tsx",
++    "src/components/ui/Table.tsx",
+     "src/components/ui/Skeleton.tsx",
+-    "src/components/ui/Separator.tsx",
++    "src/components/ui/EmptyState.tsx",
++    "src/components/ui/Spinner.tsx",
+     "src/components/ui/AppShell.tsx",
+     "src/components/layout/Sidebar.tsx",
+     "src/components/layout/Topbar.tsx",
+-    "src/components/ui/Button.tsx",
+-    "src/components/ui/Card.tsx",
+-    "src/components/ui/Badge.tsx",
+     "src/components/ui/PageHeader.tsx",
+-    "src/components/ui/Input.tsx",
+-    "src/lib/cn.ts",
+-    "tailwind.config.ts",
+-    "src/lib/design-tokens.ts",
+-    "src/components/ui/Dialog.tsx",
+-    "src/components/ui/Spinner.tsx",
+-    "src/__tests__/pricing-page-accessibility.test.tsx",
+-    "IMPLEMENTATION_CHECKLIST.md"
++    "src/lib/cn.ts"
+   ],
+   "discarded": [
++    {
++      "path": "src/components/ui/Button.tsx",
++      "reason": "content-incomplete:unbalanced JSX tags (3 open, 0 close)",
++      "bytes": 1493
++    },
+     {
+       "path": "src/components/ui/Card.tsx",
+       "reason": "content-incomplete:unbalanced JSX tags (7 open, 0 close)",
+-      "bytes": 1263
++      "bytes": 1794
++    },
++    {
++      "path": "src/components/ui/Badge.tsx",
++      "reason": "content-incomplete:unbalanced JSX tags (3 open, 0 close)",
++      "bytes": 971
+     }
+   ],
+   "jsonTruncated": false,
+@@ -62,16 +62,9 @@
+   "salvageStopReason": null,
+   "extractSource": "json",
+   "decision": "discard:content-incomplete",
+-  "manifestFileCount": 1,
+-  "manifest": [
+-    {
+-      "path": "IMPLEMENTATION_CHECKLIST.md",
+-      "bytes": 527,
+-      "lines": 21,
+-      "kind": "other"
+-    }
+-  ],
+-  "previousFileCount": 4,
++  "manifestFileCount": 0,
++  "manifest": [],
++  "previousFileCount": 8,
+   "currentStack": {
+     "backend": "none",
+     "frontend": "next",
+@@ -87,10 +80,10 @@
+       "styling": "Tailwind CSS + CVA primitives"
+     }
+   },
+-  "qaFeedbackPresent": true,
++  "qaFeedbackPresent": false,
+   "isFallbackAttempt": false,
+   "fallbackTargetPaths": null,
+   "primaryAttempt": null,
+-  "rawResponseHead": "```json\n{\n  \"files\": [\n    {\n      \"path\": \"src/components/ui/EmptyState.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\nimport { cn } from '@/lib/cn';\\n\\nexport interface EmptyStateProps {\\n  title: string;\\n  description?: string;\\n  action?: React.ReactNode;\\n  className?: string;\\n}\\n\\nexport const EmptyState: React.FC<EmptyStateProps> = ({ title, description, action, className }) => (\\n  <div className={cn('flex flex-col items-center justify-center rounded-lg bg-muted p-8 text-center', className)}>\\n    <div className=\\\"text-xl font-semibold text-foreground mb-2\\\">{title}</div>\\n    {description && <div className=\\\"text-sm text-muted-foreground mb-4\\\">{description}</div>}\\n    {action}\\n  </div>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/Skeleton.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\nimport { cn } from '@/lib/cn';\\n\\nexport interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {}\\n\\nexport const Skeleton = React.forwardRef<HTMLDivElement, SkeletonProps>(\\n  ({ className, ...props }, ref) => (\\n    <div\\n      ref={ref}\\n      className={cn('animate-pulse rounded-md bg-muted', className)}\\n      {...props}\\n    />\\n  )\\n);\\nSkeleton.displayName = 'Skeleton';\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/Separator.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\nimport { cn } from '@/lib/cn';\\n\\nexport interface SeparatorProps extends React.HTMLAttributes<HTMLHRElement> {\\n  orientation?: 'horizontal' | 'vertical';\\n}\\n\\nexport const Separator = React.forwardRef<HTMLHRElement, SeparatorProps>(\\n  ({ className, orientation = 'horizontal', ...props }, ref) => (\\n    <hr\\n      ref={ref}\\n      className={cn(\\n        'bg-border border-none',\\n        orientation === 'horizontal' ? 'h-px w-full my-6' : 'w-px h-full mx-6',\\n        className\\n      )}\\n      aria-orientation={orientation}\\n      {...props}\\n    />\\n  )\\n);\\nSeparator.displayName = 'Separator';\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/AppShell.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\nimport { Sidebar } from '@/components/layout/Sidebar';\\nimport { Topbar } from '@/components/layout/Topbar';\\n\\nexport interface AppShellProps {\\n  children: React.ReactNode;\\n}\\n\\nexport const AppShell: React.FC<AppShellProps> = ({ children }) => (\\n  <div className=\\\"flex min-h-screen bg-background\\\">\\n    <Sidebar />\\n    <div className=\\\"flex-1 flex flex-col min-w-0\\\">\\n      <Topbar />\\n      <main className=\\\"flex-1 overflow-y-auto\\\">\\n        <div className=\\\"mx-auto max-w-7xl p-6\\\">{children}</div>\\n      </main>\\n    </div>\\n  </div>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/components/layout/Sidebar.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\nimport Link from 'next/link';\\n\\nexport const Sidebar: React.FC = () => (\\n  <nav className=\\\"hidden md:flex flex-col w-64 shrink-0 bg-card border-r border-border min-h-screen p-6\\\">\\n    <div className=\\\"mb-8 text-2xl font-semibold text-foreground\\\">Pricing Page</div>\\n    <ul className=\\\"space-y-4\\\">\\n      <li>\\n        <Link href=\\\"/pricing\\\" className=\\\"text-base text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-md px-2 py-1\\\">\\n          Pricing\\n        </Link>\\n      </li>\\n    </ul>\\n  </nav>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/components/layout/Topbar.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\n\\nexport const Topbar: React.FC = () => (\\n  <header className=\\\"sticky top-0 z-10 h-14 bg-background border-b border-border flex items-center px-6\\\">\\n    <span className=\\\"text-lg font-medium text-foreground\\\">Simple Pricing Page</span>\\n  </header>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/Button.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import * as React from 'react';\\nimport { cn } from '@/lib/cn';\\n\\nexport interface ButtonPro",
+-  "rawResponseTail": " 'Arial', 'sans-serif'],\\n    mono: ['Fira Mono', 'SFMono-Regular', 'Menlo', 'monospace'],\\n  },\\n  boxShadow: {\\n    sm: '0 1px 2px 0 rgba(16, 24, 40, 0.05)',\\n    md: '0 4px 8px 0 rgba(16, 24, 40, 0.08)',\\n    lg: '0 12px 24px 0 rgba(16, 24, 40, 0.12)',\\n  },\\n};\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/Dialog.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import * as React from 'react';\\n\\nexport interface DialogProps {\\n  open: boolean;\\n  onOpenChange: (open: boolean) => void;\\n  children: React.ReactNode;\\n}\\n\\nexport const Dialog: React.FC<DialogProps> = ({ open, onOpenChange, children }) => {\\n  if (!open) return null;\\n  return (\\n    <div className=\\\"fixed inset-0 z-50 flex items-center justify-center bg-black/50\\\">\\n      <div className=\\\"bg-card rounded-lg shadow-lg p-8 max-w-lg w-full\\\">\\n        {children}\\n        <button\\n          className=\\\"absolute top-4 right-4 text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary\\\"\\n          aria-label=\\\"Close\\\"\\n          onClick={() => onOpenChange(false)}\\n        >\\n          ×\\n        </button>\\n      </div>\\n    </div>\\n  );\\n};\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/Spinner.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import React from 'react';\\n\\nexport const Spinner: React.FC<{ className?: string }> = ({ className }) => (\\n  <svg\\n    className={className ? className + ' animate-spin' : 'animate-spin'}\\n    width=\\\"24\\\"\\n    height=\\\"24\\\"\\n    viewBox=\\\"0 0 24 24\\\"\\n    fill=\\\"none\\\"\\n    xmlns=\\\"http://www.w3.org/2000/svg\\\"\\n    aria-label=\\\"Loading\\\"\\n  >\\n    <circle\\n      className=\\\"opacity-25\\\"\\n      cx=\\\"12\\\"\\n      cy=\\\"12\\\"\\n      r=\\\"10\\\"\\n      stroke=\\\"currentColor\\\"\\n      strokeWidth=\\\"4\\\"\\n    />\\n    <path\\n      className=\\\"opacity-75\\\"\\n      fill=\\\"currentColor\\\"\\n      d=\\\"M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z\\\"\\n    />\\n  </svg>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/__tests__/pricing-page-accessibility.test.tsx\",\n      \"language\": \"typescript\",\n      \"content\": \"import { render, screen } from '@testing-library/react';\\nimport PricingPage from '@/app/pricing/page';\\nimport userEvent from '@testing-library/user-event';\\n\\ndescribe('PricingPage accessibility', () => {\\n  it('renders three pricing plans', () => {\\n    render(<PricingPage />);\\n    expect(screen.getByText('Basic')).toBeInTheDocument();\\n    expect(screen.getByText('Pro')).toBeInTheDocument();\\n    expect(screen.getByText('Enterprise')).toBeInTheDocument();\\n  });\\n\\n  it('CTAs are focusable and keyboard-accessible', async () => {\\n    render(<PricingPage />);\\n    const buttons = screen.getAllByRole('button', { name: /choose/i });\\n    expect(buttons.length).toBe(3);\\n    await userEvent.tab(); // focus first CTA\\n    expect(buttons[0]).toHaveFocus();\\n  });\\n\\n  it('feature table is accessible', () => {\\n    render(<PricingPage />);\\n    expect(screen.getByRole('table', { name: /feature comparison/i })).toBeInTheDocument();\\n    expect(screen.getByText('Feature A')).toBeInTheDocument();\\n  });\\n});\\n\"\n    },\n    {\n      \"path\": \"IMPLEMENTATION_CHECKLIST.md\",\n      \"language\": \"markdown\",\n      \"content\": \"## Pages\\n[x] /pricing — PricingPage\\n\\n## Components\\n[x] PricingPlanCard\\n[x] FeatureComparisonTable\\n[x] HeroSection\\n[x] PrimaryCTA (Button)\\n[x] EmptyState\\n[x] Skeleton\\n[x] Separator\\n[x] AppShell\\n[x] Sidebar\\n[x] Topbar\\n[x] Card\\n[x] Badge\\n[x] PageHeader\\n[x] Input\\n[x] Dialog\\n[x] Spinner\\n\\n## API contracts\\n[n/a] (no API contracts for this slice)\\n\\n## User flows\\n[x] visitor-chooses-plan\\n  - View hero section and pricing cards\\n  - Tab through and compare features using keyboard\\n  - Click or activate a plan's CTA\\n\\n## Feature slices\\n[x] pricing — Display three pricing plans and a feature comparison table.\\n\"\n    }\n  ],\n  \"summary\": \"All missing design system primitives, the AppShell layout, and the cn utility are now implemented. Automated accessibility tests for the pricing page are included. The implementation checklist is updated to reflect full coverage for the 'pricing' slice.\"\n}\n```"
++  "rawResponseHead": "{\n  \"files\": [\n    {\n      \"path\": \"src/components/ui/Button.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import * as React from \\\"react\\\";\\nimport { cva, type VariantProps } from \\\"class-variance-authority\\\";\\nimport { cn } from \\\"@/lib/cn\\\";\\n\\nconst buttonVariants = cva(\\n  \\\"inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none\\\",\\n  {\\n    variants: {\\n      variant: {\\n        default: \\\"bg-primary text-primary-foreground hover:bg-primary/90\\\",\\n        outline: \\\"border border-input bg-background hover:bg-muted text-foreground\\\",\\n        ghost: \\\"bg-transparent hover:bg-muted text-foreground\\\",\\n        destructive: \\\"bg-destructive text-destructive-foreground hover:bg-destructive/90\\\"\\n      },\\n      size: {\\n        sm: \\\"h-9 px-4 text-sm\\\",\\n        md: \\\"h-11 px-6 text-base\\\",\\n        lg: \\\"h-14 px-8 text-lg\\\"\\n      }\\n    },\\n    defaultVariants: {\\n      variant: \\\"default\\\",\\n      size: \\\"md\\\"\\n    }\\n  }\\n);\\n\\nexport interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {\\n  asChild?: boolean;\\n}\\n\\nexport const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(\\n  ({ className, variant, size, asChild = false, ...props }, ref) => {\\n    const Comp = asChild ? (\\\"span\\\" as any) : \\\"button\\\";\\n    return (\\n      <Comp\\n        className={cn(buttonVariants({ variant, size }), className)}\\n        ref={ref}\\n        {...props}\\n      />\\n    );\\n  }\\n);\\nButton.displayName = \\\"Button\\\";\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/Card.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import * as React from \\\"react\\\";\\nimport { cn } from \\\"@/lib/cn\\\";\\n\\nexport interface CardProps extends React.HTMLAttributes<HTMLDivElement> {}\\n\\nexport const Card = React.forwardRef<HTMLDivElement, CardProps>(({ className, ...props }, ref) => (\\n  <div\\n    ref={ref}\\n    className={cn(\\n      \\\"bg-card text-card-foreground rounded-lg border border-border shadow-sm\\\",\\n      className\\n    )}\\n    {...props}\\n  />\\n));\\nCard.displayName = \\\"Card\\\";\\n\\nexport const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(\\n  ({ className, ...props }, ref) => (\\n    <div ref={ref} className={cn(\\\"p-6 pb-0\\\", className)} {...props} />\\n  )\\n);\\nCardHeader.displayName = \\\"CardHeader\\\";\\n\\nexport const CardTitle = React.forwardRef<HTMLHeadingElement, React.HTMLAttributes<HTMLHeadingElement>>(\\n  ({ className, ...props }, ref) => (\\n    <h3 ref={ref} className={cn(\\\"text-lg font-semibold\\\", className)} {...props} />\\n  )\\n);\\nCardTitle.displayName = \\\"CardTitle\\\";\\n\\nexport const CardDescription = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLParagraphElement>>(\\n  ({ className, ...props }, ref) => (\\n    <p ref={ref} className={cn(\\\"text-sm text-muted-foreground\\\", className)} {...props} />\\n  )\\n);\\nCardDescription.displayName = \\\"CardDescription\\\";\\n\\nexport const CardContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(\\n  ({ className, ...props }, ref) => (\\n    <div ref={ref} className={cn(\\\"p-6 pt-0\\\", className)} {...props} />\\n  )\\n);\\nCardContent.displayName = \\\"CardContent\\\";\\n\\nexport const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(\\n  ({ className, ...props }, ref) => (\\n    <div ref={ref} className={cn(\\\"p-6 pt-0 flex items-center gap-3\\\", className)} {...props} />\\n  )\\n);\\nCardFooter.displayName = \\\"CardFooter\\\";\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/Badge.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import * as React from \\\"react\\\";\\nimport { cva, type VariantProps } from \\\"class-variance-authority\\\";\\nimport { cn } from \\\"@/lib/cn\\\";\\n\\nconst badgeVariants = cva(\\n  \\\"inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-r",
++  "rawResponseTail": "div>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/Spinner.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import * as React from \\\"react\\\";\\nimport { cn } from \\\"@/lib/cn\\\";\\n\\nexport interface SpinnerProps {\\n  size?: number;\\n  className?: string;\\n}\\n\\nexport const Spinner: React.FC<SpinnerProps> = ({ size = 24, className }) => (\\n  <svg\\n    className={cn(\\\"animate-spin text-primary\\\", className)}\\n    width={size}\\n    height={size}\\n    viewBox=\\\"0 0 24 24\\\"\\n    fill=\\\"none\\\"\\n    aria-label=\\\"Loading\\\"\\n    role=\\\"status\\\"\\n  >\\n    <circle\\n      className=\\\"opacity-25\\\"\\n      cx=\\\"12\\\"\\n      cy=\\\"12\\\"\\n      r=\\\"10\\\"\\n      stroke=\\\"currentColor\\\"\\n      strokeWidth=\\\"4\\\"\\n    />\\n    <path\\n      className=\\\"opacity-75\\\"\\n      fill=\\\"currentColor\\\"\\n      d=\\\"M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z\\\"\\n    />\\n  </svg>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/AppShell.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import * as React from \\\"react\\\";\\nimport { Sidebar } from \\\"@/components/layout/Sidebar\\\";\\nimport { Topbar } from \\\"@/components/layout/Topbar\\\";\\n\\nexport interface AppShellProps {\\n  children: React.ReactNode;\\n}\\n\\nexport const AppShell: React.FC<AppShellProps> = ({ children }) => (\\n  <div className=\\\"min-h-screen flex flex-col bg-background\\\">\\n    <Topbar />\\n    <div className=\\\"flex flex-1\\\">\\n      <Sidebar />\\n      <main className=\\\"flex-1 overflow-y-auto\\\">\\n        <div className=\\\"mx-auto max-w-7xl p-6\\\">{children}</div>\\n      </main>\\n    </div>\\n  </div>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/components/layout/Sidebar.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import Link from \\\"next/link\\\";\\n\\nexport const Sidebar = () => (\\n  <aside className=\\\"hidden md:flex flex-col w-64 shrink-0 bg-card border-r border-border min-h-screen p-6\\\">\\n    <nav className=\\\"flex flex-col gap-4\\\">\\n      <Link href=\\\"/\\\" className=\\\"text-lg font-semibold text-foreground hover:text-primary transition-colors\\\">Home</Link>\\n      <Link href=\\\"/pricing\\\" className=\\\"text-lg font-semibold text-foreground hover:text-primary transition-colors\\\">Pricing</Link>\\n      <Link href=\\\"/about\\\" className=\\\"text-lg font-semibold text-foreground hover:text-primary transition-colors\\\">About</Link>\\n    </nav>\\n  </aside>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/components/layout/Topbar.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"export const Topbar = () => (\\n  <header className=\\\"sticky top-0 z-30 h-14 bg-background border-b border-border flex items-center px-6\\\">\\n    <span className=\\\"text-2xl font-semibold text-primary\\\">Simple Pricing Page</span>\\n  </header>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/components/ui/PageHeader.tsx\",\n      \"language\": \"typescriptreact\",\n      \"content\": \"import * as React from \\\"react\\\";\\nimport { cn } from \\\"@/lib/cn\\\";\\n\\nexport interface PageHeaderProps {\\n  title: string;\\n  description?: string;\\n  actions?: React.ReactNode;\\n  className?: string;\\n}\\n\\nexport const PageHeader: React.FC<PageHeaderProps> = ({ title, description, actions, className }) => (\\n  <section className={cn(\\\"mb-8\\\", className)}>\\n    <div className=\\\"flex flex-col md:flex-row md:items-center md:justify-between gap-4\\\">\\n      <div>\\n        <h1 className=\\\"text-2xl font-semibold text-foreground mb-1\\\">{title}</h1>\\n        {description && <p className=\\\"text-muted-foreground text-base\\\">{description}</p>}\\n      </div>\\n      {actions && <div>{actions}</div>}\\n    </div>\\n  </section>\\n);\\n\"\n    },\n    {\n      \"path\": \"src/lib/cn.ts\",\n      \"language\": \"typescript\",\n      \"content\": \"export function cn(...inputs: (string | undefined | null | false)[]): string {\\n  return inputs.filter(Boolean).join(\\\" \\\");\\n}\\n\"\n    }\n  ],\n  \"summary\": \"Emitted all required design system primitives for the Simple Pricing Page: Button, Card, Badge, Table, Skeleton, EmptyState, Spinner, AppShell (with Sidebar and Topbar), PageHeader, and the cn utility. All components use semantic tokens and are accessible, responsive, and ready for use in pages.\"\n}"
+ }
+\ No newline at end of file
+diff --git a/apps/api/src/testing/last-failure.json b/apps/api/src/testing/last-failure.json
+index bf1399a..e85078a 100644
+--- a/apps/api/src/testing/last-failure.json
++++ b/apps/api/src/testing/last-failure.json
+@@ -1,361 +1,622 @@
+ {
+-  "writtenAt": "2026-05-19T19:37:52.783Z",
+-  "projectId": "QRAmPAcgGUzv",
+-  "sessionId": "1CyvYEwItI2kFvY3",
++  "writtenAt": "2026-05-19T20:35:12.713Z",
++  "projectId": "Gw9TSE3mHAEm",
++  "sessionId": "LmO9799sM53A44sE",
+   "status": "failed",
+-  "phase": "slice-4/7",
+-  "step": "step:qa:done",
+-  "llmCallCount": 25,
+-  "totalTokens": 459156,
+-  "totalCostUsd": 1.2729840000000001,
+-  "filesWritten": 16,
+-  "slicesPlanned": 7,
+-  "lastSuccessfulPhase": "slice-3/7",
+-  "lastSuccessfulStep": "reserved",
+-  "error": "[artifact-integrity] slice-4/7 -> 4/7 'users#2':slice-merge: INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)",
++  "phase": "finalize",
++  "step": "finalize:dependency-validation",
++  "llmCallCount": 45,
++  "totalTokens": 996652,
++  "totalCostUsd": 2.6274919999999997,
++  "filesWritten": 41,
++  "slicesPlanned": 8,
++  "lastSuccessfulPhase": "slice-8/8",
++  "lastSuccessfulStep": "final-assembly:deterministic-contract",
++  "error": "Deterministic generation contract FAILED: import/export mismatch: src/app/logout/page.tsx imports {useEffect} from '@/lib/api-client' but deterministic contract cannot synthesize these exports.",
+   "errorName": "Error",
+-  "errorStack": "Error: [artifact-integrity] slice-4/7 -> 4/7 'users#2':slice-merge: INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)\n    at ProjectGenerator.assertArtifactIntegrityOrThrow (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:596:11)\n    at ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:3006:14)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2088:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:746:22)",
+-  "failedPhase": "slice-4/7",
+-  "failedStep": "4/7 'users#2':builder-rebuild-3",
+-  "failedAt": "2026-05-19T19:37:52.741Z",
++  "errorStack": "Error: Deterministic generation contract FAILED: import/export mismatch: src/app/logout/page.tsx imports {useEffect} from '@/lib/api-client' but deterministic contract cannot synthesize these exports.\n    at ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:3495:15)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2089:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:747:22)",
++  "failedPhase": "final-assembly",
++  "failedStep": "final-assembly:deterministic-contract",
++  "failedAt": "2026-05-19T20:35:12.672Z",
+   "durationMs": 0,
+-  "diagnosticContextStartedAt": "2026-05-19T19:24:59.406Z",
+-  "postPersistStepStatuses": [],
++  "diagnosticContextStartedAt": "2026-05-19T20:17:23.169Z",
++  "postPersistStepStatuses": [
++    {
++      "step": "final-assembly:merge-cumulative-artifacts",
++      "sliceId": "slice-8/8",
++      "startedAt": "2026-05-19T20:35:12.581Z",
++      "durationMs": 0,
++      "status": "ok"
++    },
++    {
++      "step": "final-assembly:assembleProject",
++      "sliceId": "slice-8/8",
++      "startedAt": "2026-05-19T20:35:12.581Z",
++      "durationMs": 3,
++      "status": "ok"
++    },
++    {
++      "step": "final-assembly:validateAndFixDependencies",
++      "sliceId": "slice-8/8",
++      "startedAt": "2026-05-19T20:35:12.625Z",
++      "durationMs": 1,
++      "status": "ok"
++    },
++    {
++      "step": "final-assembly:deterministic-contract",
++      "sliceId": "slice-8/8",
++      "startedAt": "2026-05-19T20:35:12.664Z",
++      "durationMs": 3,
++      "status": "ok"
++    }
++  ],
+   "usageLog": [
+     {
+-      "at": "2026-05-19T19:25:45.851Z",
++      "at": "2026-05-19T20:18:16.187Z",
+       "phase": "spec",
+       "agent": "spec",
+       "model": "gpt-4.1",
+       "provider": "azure",
+       "promptTokens": 7043,
+-      "completionTokens": 7032,
+-      "totalTokens": 14075,
+-      "costUsd": 0.070342,
+-      "latencyMs": 46440
++      "completionTokens": 7558,
++      "totalTokens": 14601,
++      "costUsd": 0.07455,
++      "latencyMs": 53010
+     },
+     {
+-      "at": "2026-05-19T19:26:07.322Z",
+-      "phase": "slice-1/7",
++      "at": "2026-05-19T20:19:28.930Z",
++      "phase": "slice-1/8",
+       "agent": "builder",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 16492,
+-      "completionTokens": 4865,
+-      "totalTokens": 21357,
+-      "costUsd": 0.071904,
+-      "latencyMs": 21439
++      "promptTokens": 6388,
++      "completionTokens": 2149,
++      "totalTokens": 8537,
++      "costUsd": 0.029968,
++      "latencyMs": 72702
+     },
+     {
+-      "at": "2026-05-19T19:26:12.489Z",
+-      "phase": "slice-1/7",
++      "at": "2026-05-19T20:19:52.726Z",
++      "phase": "slice-1/8",
+       "agent": "qa",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 17876,
+-      "completionTokens": 517,
+-      "totalTokens": 18393,
+-      "costUsd": 0.039888,
+-      "latencyMs": 5166
++      "promptTokens": 16223,
++      "completionTokens": 3524,
++      "totalTokens": 19747,
++      "costUsd": 0.060638,
++      "latencyMs": 23795
+     },
+     {
+-      "at": "2026-05-19T19:28:21.855Z",
+-      "phase": "slice-1/7",
++      "at": "2026-05-19T20:21:17.984Z",
++      "phase": "slice-1/8",
+       "agent": "builder",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 6397,
+-      "completionTokens": 2255,
+-      "totalTokens": 8652,
+-      "costUsd": 0.030834,
+-      "latencyMs": 129341
++      "promptTokens": 23767,
++      "completionTokens": 3004,
++      "totalTokens": 26771,
++      "costUsd": 0.071566,
++      "latencyMs": 85237
+     },
+     {
+-      "at": "2026-05-19T19:28:43.590Z",
+-      "phase": "slice-1/7",
++      "at": "2026-05-19T20:21:25.831Z",
++      "phase": "slice-1/8",
+       "agent": "qa",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 17355,
+-      "completionTokens": 3513,
+-      "totalTokens": 20868,
+-      "costUsd": 0.062814,
+-      "latencyMs": 21734
++      "promptTokens": 18134,
++      "completionTokens": 730,
++      "totalTokens": 18864,
++      "costUsd": 0.042108,
++      "latencyMs": 7846
+     },
+     {
+-      "at": "2026-05-19T19:29:43.589Z",
+-      "phase": "slice-1/7",
++      "at": "2026-05-19T20:21:46.655Z",
++      "phase": "slice-1/8",
+       "agent": "builder",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 6397,
+-      "completionTokens": 2293,
+-      "totalTokens": 8690,
+-      "costUsd": 0.031138,
+-      "latencyMs": 59995
++      "promptTokens": 20251,
++      "completionTokens": 3417,
++      "totalTokens": 23668,
++      "costUsd": 0.067838,
++      "latencyMs": 20818
+     },
+     {
+-      "at": "2026-05-19T19:30:03.488Z",
+-      "phase": "slice-1/7",
++      "at": "2026-05-19T20:21:54.718Z",
++      "phase": "slice-1/8",
+       "agent": "qa",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 16053,
+-      "completionTokens": 2469,
+-      "totalTokens": 18522,
+-      "costUsd": 0.051858,
+-      "latencyMs": 19898
++      "promptTokens": 18727,
++      "completionTokens": 815,
++      "totalTokens": 19542,
++      "costUsd": 0.043974,
++      "latencyMs": 8063
+     },
+     {
+-      "at": "2026-05-19T19:30:20.923Z",
+-      "phase": "slice-2/7",
++      "at": "2026-05-19T20:22:55.257Z",
++      "phase": "slice-2/8",
+       "agent": "builder",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 17729,
+-      "completionTokens": 2701,
+-      "totalTokens": 20430,
+-      "costUsd": 0.057066,
+-      "latencyMs": 17365
++      "promptTokens": 6383,
++      "completionTokens": 2037,
++      "totalTokens": 8420,
++      "costUsd": 0.029062,
++      "latencyMs": 60444
+     },
+     {
+-      "at": "2026-05-19T19:30:39.451Z",
+-      "phase": "slice-2/7",
++      "at": "2026-05-19T20:23:15.054Z",
++      "phase": "slice-2/8",
+       "agent": "qa",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 17167,
+-      "completionTokens": 2184,
+-      "totalTokens": 19351,
+-      "costUsd": 0.051806,
+-      "latencyMs": 18527
++      "promptTokens": 16821,
++      "completionTokens": 2563,
++      "totalTokens": 19384,
++      "costUsd": 0.054146,
++      "latencyMs": 19797
+     },
+     {
+-      "at": "2026-05-19T19:32:30.601Z",
+-      "phase": "slice-2/7",
++      "at": "2026-05-19T20:24:30.244Z",
++      "phase": "slice-2/8",
+       "agent": "builder",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 6389,
+-      "completionTokens": 2080,
+-      "totalTokens": 8469,
+-      "costUsd": 0.029418,
+-      "latencyMs": 111115
++      "promptTokens": 6383,
++      "completionTokens": 2023,
++      "totalTokens": 8406,
++      "costUsd": 0.02895,
++      "latencyMs": 75141
+     },
+     {
+-      "at": "2026-05-19T19:32:55.692Z",
+-      "phase": "slice-2/7",
++      "at": "2026-05-19T20:24:49.115Z",
++      "phase": "slice-2/8",
+       "agent": "qa",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 17207,
+-      "completionTokens": 3319,
+-      "totalTokens": 20526,
+-      "costUsd": 0.060966,
+-      "latencyMs": 25091
++      "promptTokens": 16812,
++      "completionTokens": 2321,
++      "totalTokens": 19133,
++      "costUsd": 0.052192,
++      "latencyMs": 18870
+     },
+     {
+-      "at": "2026-05-19T19:34:49.795Z",
+-      "phase": "slice-2/7",
++      "at": "2026-05-19T20:25:01.340Z",
++      "phase": "slice-3/8",
+       "agent": "builder",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 6389,
+-      "completionTokens": 2090,
+-      "totalTokens": 8479,
+-      "costUsd": 0.029498,
+-      "latencyMs": 114096
++      "promptTokens": 18947,
++      "completionTokens": 1629,
++      "totalTokens": 20576,
++      "costUsd": 0.050926,
++      "latencyMs": 12127
+     },
+     {
+-      "at": "2026-05-19T19:35:07.686Z",
+-      "phase": "slice-2/7",
++      "at": "2026-05-19T20:25:22.388Z",
++      "phase": "slice-3/8",
+       "agent": "qa",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 15734,
+-      "completionTokens": 2155,
+-      "totalTokens": 17889,
+-      "costUsd": 0.048708,
+-      "latencyMs": 17889
++      "promptTokens": 17504,
++      "completionTokens": 2814,
++      "totalTokens": 20318,
++      "costUsd": 0.05752,
++      "latencyMs": 21047
+     },
+     {
+-      "at": "2026-05-19T19:35:35.195Z",
+-      "phase": "slice-3/7",
++      "at": "2026-05-19T20:25:29.693Z",
++      "phase": "slice-3/8",
+       "agent": "builder",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 17841,
+-      "completionTokens": 3967,
+-      "totalTokens": 21808,
+-      "costUsd": 0.067418,
+-      "latencyMs": 27434
++      "promptTokens": 24073,
++      "completionTokens": 1152,
++      "totalTokens": 25225,
++      "costUsd": 0.057362,
++      "latencyMs": 7256
+     },
+     {
+-      "at": "2026-05-19T19:35:42.387Z",
+-      "phase": "slice-3/7",
++      "at": "2026-05-19T20:25:39.164Z",
++      "phase": "slice-3/8",
+       "agent": "qa",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 18223,
+-      "completionTokens": 730,
+-      "totalTokens": 18953,
+-      "costUsd": 0.042286,
+-      "latencyMs": 7191
++      "promptTokens": 18228,
++      "completionTokens": 1031,
++      "totalTokens": 19259,
++      "costUsd": 0.044704,
++      "latencyMs": 9470
++    },
++    {
++      "at": "2026-05-19T20:26:16.326Z",
++      "phase": "slice-3/8",
++      "agent": "builder",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 20917,
++      "completionTokens": 2622,
++      "totalTokens": 23539,
++      "costUsd": 0.06281,
++      "latencyMs": 37159
++    },
++    {
++      "at": "2026-05-19T20:26:26.911Z",
++      "phase": "slice-3/8",
++      "agent": "qa",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 17968,
++      "completionTokens": 990,
++      "totalTokens": 18958,
++      "costUsd": 0.043856,
++      "latencyMs": 10585
++    },
++    {
++      "at": "2026-05-19T20:26:50.596Z",
++      "phase": "slice-4/8",
++      "agent": "builder",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 19162,
++      "completionTokens": 3350,
++      "totalTokens": 22512,
++      "costUsd": 0.065124,
++      "latencyMs": 23553
++    },
++    {
++      "at": "2026-05-19T20:27:10.269Z",
++      "phase": "slice-4/8",
++      "agent": "qa",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 20518,
++      "completionTokens": 2673,
++      "totalTokens": 23191,
++      "costUsd": 0.06242,
++      "latencyMs": 19672
++    },
++    {
++      "at": "2026-05-19T20:27:47.269Z",
++      "phase": "slice-4/8",
++      "agent": "builder",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 27896,
++      "completionTokens": 4152,
++      "totalTokens": 32048,
++      "costUsd": 0.089008,
++      "latencyMs": 36941
++    },
++    {
++      "at": "2026-05-19T20:27:51.763Z",
++      "phase": "slice-4/8",
++      "agent": "qa",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 21457,
++      "completionTokens": 343,
++      "totalTokens": 21800,
++      "costUsd": 0.045658,
++      "latencyMs": 4494
++    },
++    {
++      "at": "2026-05-19T20:28:16.779Z",
++      "phase": "slice-4/8",
++      "agent": "builder",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 26217,
++      "completionTokens": 1551,
++      "totalTokens": 27768,
++      "costUsd": 0.064842,
++      "latencyMs": 25012
++    },
++    {
++      "at": "2026-05-19T20:28:19.859Z",
++      "phase": "slice-4/8",
++      "agent": "qa",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 22059,
++      "completionTokens": 187,
++      "totalTokens": 22246,
++      "costUsd": 0.045614,
++      "latencyMs": 3080
++    },
++    {
++      "at": "2026-05-19T20:28:25.923Z",
++      "phase": "slice-5/8",
++      "agent": "builder",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 19249,
++      "completionTokens": 655,
++      "totalTokens": 19904,
++      "costUsd": 0.043738,
++      "latencyMs": 5924
++    },
++    {
++      "at": "2026-05-19T20:28:28.549Z",
++      "phase": "slice-5/8",
++      "agent": "qa",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 16713,
++      "completionTokens": 169,
++      "totalTokens": 16882,
++      "costUsd": 0.034778,
++      "latencyMs": 2625
++    },
++    {
++      "at": "2026-05-19T20:28:35.942Z",
++      "phase": "slice-5/8",
++      "agent": "builder",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 19780,
++      "completionTokens": 954,
++      "totalTokens": 20734,
++      "costUsd": 0.047192,
++      "latencyMs": 7332
++    },
++    {
++      "at": "2026-05-19T20:28:39.179Z",
++      "phase": "slice-5/8",
++      "agent": "qa",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 17252,
++      "completionTokens": 176,
++      "totalTokens": 17428,
++      "costUsd": 0.035912,
++      "latencyMs": 3237
++    },
++    {
++      "at": "2026-05-19T20:29:23.602Z",
++      "phase": "slice-6/8",
++      "agent": "builder",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 19586,
++      "completionTokens": 2219,
++      "totalTokens": 21805,
++      "costUsd": 0.056924,
++      "latencyMs": 44273
++    },
++    {
++      "at": "2026-05-19T20:29:41.165Z",
++      "phase": "slice-6/8",
++      "agent": "qa",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 19307,
++      "completionTokens": 1947,
++      "totalTokens": 21254,
++      "costUsd": 0.05419,
++      "latencyMs": 17562
++    },
++    {
++      "at": "2026-05-19T20:30:16.969Z",
++      "phase": "slice-6/8",
++      "agent": "builder",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 25676,
++      "completionTokens": 5729,
++      "totalTokens": 31405,
++      "costUsd": 0.097184,
++      "latencyMs": 35732
++    },
++    {
++      "at": "2026-05-19T20:30:28.196Z",
++      "phase": "slice-6/8",
++      "agent": "qa",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 23261,
++      "completionTokens": 1416,
++      "totalTokens": 24677,
++      "costUsd": 0.05785,
++      "latencyMs": 11226
+     },
+     {
+-      "at": "2026-05-19T19:36:20.662Z",
+-      "phase": "slice-3/7",
++      "at": "2026-05-19T20:30:36.192Z",
++      "phase": "slice-6/8",
+       "agent": "builder",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 22521,
+-      "completionTokens": 5636,
+-      "totalTokens": 28157,
+-      "costUsd": 0.09013,
+-      "latencyMs": 38235
++      "promptTokens": 28171,
++      "completionTokens": 1164,
++      "totalTokens": 29335,
++      "costUsd": 0.065654,
++      "latencyMs": 7993
+     },
+     {
+-      "at": "2026-05-19T19:36:26.742Z",
+-      "phase": "slice-3/7",
++      "at": "2026-05-19T20:30:48.911Z",
++      "phase": "slice-6/8",
+       "agent": "qa",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 21828,
+-      "completionTokens": 573,
+-      "totalTokens": 22401,
+-      "costUsd": 0.04824,
+-      "latencyMs": 6079
++      "promptTokens": 22162,
++      "completionTokens": 1574,
++      "totalTokens": 23736,
++      "costUsd": 0.056916,
++      "latencyMs": 12718
+     },
+     {
+-      "at": "2026-05-19T19:36:34.271Z",
+-      "phase": "slice-3/7",
++      "at": "2026-05-19T20:31:30.628Z",
++      "phase": "slice-7/8",
+       "agent": "builder",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 20865,
+-      "completionTokens": 640,
+-      "totalTokens": 21505,
+-      "costUsd": 0.04685,
+-      "latencyMs": 7525
++      "promptTokens": 19658,
++      "completionTokens": 2067,
++      "totalTokens": 21725,
++      "costUsd": 0.055852,
++      "latencyMs": 41499
+     },
+     {
+-      "at": "2026-05-19T19:36:42.409Z",
+-      "phase": "slice-3/7",
++      "at": "2026-05-19T20:31:48.013Z",
++      "phase": "slice-7/8",
+       "agent": "qa",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 17500,
+-      "completionTokens": 947,
+-      "totalTokens": 18447,
+-      "costUsd": 0.042576,
+-      "latencyMs": 8138
++      "promptTokens": 18990,
++      "completionTokens": 2058,
++      "totalTokens": 21048,
++      "costUsd": 0.054444,
++      "latencyMs": 17385
+     },
+     {
+-      "at": "2026-05-19T19:36:58.629Z",
+-      "phase": "slice-4/7",
++      "at": "2026-05-19T20:31:57.577Z",
++      "phase": "slice-7/8",
+       "agent": "builder",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 17923,
+-      "completionTokens": 2501,
+-      "totalTokens": 20424,
+-      "costUsd": 0.055854,
+-      "latencyMs": 16137
++      "promptTokens": 26099,
++      "completionTokens": 1095,
++      "totalTokens": 27194,
++      "costUsd": 0.060958,
++      "latencyMs": 9494
+     },
+     {
+-      "at": "2026-05-19T19:37:15.313Z",
+-      "phase": "slice-4/7",
++      "at": "2026-05-19T20:32:11.421Z",
++      "phase": "slice-7/8",
+       "agent": "qa",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 16926,
+-      "completionTokens": 2314,
+-      "totalTokens": 19240,
+-      "costUsd": 0.052364,
+-      "latencyMs": 16684
++      "promptTokens": 19483,
++      "completionTokens": 1520,
++      "totalTokens": 21003,
++      "costUsd": 0.051126,
++      "latencyMs": 13842
+     },
+     {
+-      "at": "2026-05-19T19:37:26.692Z",
+-      "phase": "slice-4/7",
++      "at": "2026-05-19T20:32:30.126Z",
++      "phase": "slice-7/8",
+       "agent": "builder",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 23383,
+-      "completionTokens": 1467,
+-      "totalTokens": 24850,
+-      "costUsd": 0.058502,
+-      "latencyMs": 11207
++      "promptTokens": 23726,
++      "completionTokens": 3058,
++      "totalTokens": 26784,
++      "costUsd": 0.071916,
++      "latencyMs": 18702
+     },
+     {
+-      "at": "2026-05-19T19:37:30.261Z",
+-      "phase": "slice-4/7",
++      "at": "2026-05-19T20:32:52.628Z",
++      "phase": "slice-7/8",
+       "agent": "qa",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 17798,
+-      "completionTokens": 213,
+-      "totalTokens": 18011,
+-      "costUsd": 0.0373,
+-      "latencyMs": 3569
++      "promptTokens": 19998,
++      "completionTokens": 2565,
++      "totalTokens": 22563,
++      "costUsd": 0.060516,
++      "latencyMs": 22501
++    },
++    {
++      "at": "2026-05-19T20:33:07.009Z",
++      "phase": "slice-8/8",
++      "agent": "builder",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 20368,
++      "completionTokens": 2053,
++      "totalTokens": 22421,
++      "costUsd": 0.05716,
++      "latencyMs": 14225
++    },
++    {
++      "at": "2026-05-19T20:33:09.693Z",
++      "phase": "slice-8/8",
++      "agent": "qa",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 18529,
++      "completionTokens": 176,
++      "totalTokens": 18705,
++      "costUsd": 0.038466,
++      "latencyMs": 2684
++    },
++    {
++      "at": "2026-05-19T20:34:01.956Z",
++      "phase": "slice-8/8",
++      "agent": "polish",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 29687,
++      "completionTokens": 10575,
++      "totalTokens": 40262,
++      "costUsd": 0.143974,
++      "latencyMs": 52262
+     },
+     {
+-      "at": "2026-05-19T19:37:48.891Z",
+-      "phase": "slice-4/7",
++      "at": "2026-05-19T20:34:08.029Z",
++      "phase": "slice-8/8",
+       "agent": "builder",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 19424,
+-      "completionTokens": 2445,
+-      "totalTokens": 21869,
+-      "costUsd": 0.058408,
+-      "latencyMs": 18628
++      "promptTokens": 22607,
++      "completionTokens": 569,
++      "totalTokens": 23176,
++      "costUsd": 0.049766,
++      "latencyMs": 5993
+     },
+     {
+-      "at": "2026-05-19T19:37:52.737Z",
+-      "phase": "slice-4/7",
++      "at": "2026-05-19T20:34:14.537Z",
++      "phase": "slice-8/8",
+       "agent": "qa",
+       "model": "gpt-4.1",
+       "provider": "azure",
+-      "promptTokens": 17584,
+-      "completionTokens": 206,
+-      "totalTokens": 17790,
+-      "costUsd": 0.036816,
+-      "latencyMs": 3845
++      "promptTokens": 18808,
++      "completionTokens": 197,
++      "totalTokens": 19005,
++      "costUsd": 0.039192,
++      "latencyMs": 6508
++    },
++    {
++      "at": "2026-05-19T20:35:12.431Z",
++      "phase": "slice-8/8",
++      "agent": "polish",
++      "model": "gpt-4.1",
++      "provider": "azure",
++      "promptTokens": 29966,
++      "completionTokens": 11127,
++      "totalTokens": 41093,
++      "costUsd": 0.148948,
++      "latencyMs": 57892
+     }
+   ],
+   "warnings": [
+     {
+       "code": "QA_FALLBACK_SIMPLIFIED",
+-      "message": "Slice 1/7 'auth#1': 4 file(s) replaced with simplified stubs after 3 QA iter(s) failed to converge",
++      "message": "Slice 1/8 'auth#1': 3 file(s) replaced with simplified stubs after 3 QA iter(s) failed to converge",
+       "details": {
+-        "sliceLabel": "1/7 'auth#1'",
++        "sliceLabel": "1/8 'auth#1'",
+         "iterations": 3,
+-        "finalIssueCount": 22,
++        "finalIssueCount": 11,
+         "replacedFiles": [
+-          "src/app/layout.tsx",
+-          "src/app/logout/page.tsx",
+-          "src/components/LoginForm.tsx",
+-          "src/app/api/auth.login/route.ts"
++          "src/components/ui/Button.tsx",
++          "src/components/layout/Sidebar.tsx",
++          "src/components/layout/Topbar.tsx"
+         ]
+       }
+     },
+     {
+       "code": "QUICK_CHECK_AUTO_REPAIR",
+-      "message": "Slice 1/7 'auth#1': quick-check auto-fixed 11 issue(s) before next slice [added scripts: dev, build, start, preview, typecheck]",
++      "message": "Slice 1/8 'auth#1': quick-check auto-fixed 4 issue(s) before next slice [added scripts: dev, build, start, preview, typecheck]",
+       "details": {
+-        "sliceLabel": "1/7 'auth#1'",
++        "sliceLabel": "1/8 'auth#1'",
+         "issues": [
+-          "dropped tier1 backend runtime artifact: src/app/api/auth.login/route.ts",
+-          "package.json: Dropped non-referenced dependency \"@prisma/client\" from package.json.",
+-          "package.json: Dropped non-referenced dependency \"bcrypt\" from package.json.",
+-          "package.json: Dropped non-referenced dependency \"express\" from package.json.",
+-          "package.json: Dropped non-referenced dependency \"jsonwebtoken\" from package.json.",
+-          "package.json: Dropped non-referenced dependency \"zod\" from package.json.",
+-          "package.json: Dropped non-referenced dependency \"@types/bcrypt\" from package.json.",
+-          "package.json: Dropped non-referenced dependency \"@types/express\" from package.json.",
+-          "package.json: Dropped non-referenced dependency \"@types/jsonwebtoken\" from package.json.",
+-          "package.json: Dropped non-referenced dependency \"prisma\" from package.json.",
+-          "package.json: dropped 9 non-deterministic dependency declaration(s)."
++          "dropped generated test artifact: src/app/api/auth/login/route.test.ts",
++          "package.json: Dropped non-referenced dependency \"fastify\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"vitest\" from package.json.",
++          "package.json: dropped 2 non-deterministic dependency declaration(s)."
+         ],
+         "synthesizedPackageJson": false,
+         "addedScripts": [
+@@ -370,11 +631,11 @@
+     },
+     {
+       "code": "QA_FALLBACK_SIMPLIFIED",
+-      "message": "Slice 2/7 'auth#2': 3 file(s) replaced with simplified stubs after 3 QA iter(s) failed to converge",
++      "message": "Slice 2/8 'auth#2': 3 file(s) replaced with simplified stubs after 2 QA iter(s) failed to converge",
+       "details": {
+-        "sliceLabel": "2/7 'auth#2'",
+-        "iterations": 3,
+-        "finalIssueCount": 26,
++        "sliceLabel": "2/8 'auth#2'",
++        "iterations": 2,
++        "finalIssueCount": 28,
+         "replacedFiles": [
+           "src/app/layout.tsx",
+           "src/components/RegisterForm.tsx",
+@@ -384,22 +645,110 @@
+     },
+     {
+       "code": "QUICK_CHECK_AUTO_REPAIR",
+-      "message": "Slice 2/7 'auth#2': quick-check auto-fixed 12 issue(s) before next slice [added scripts: dev, build, start, preview, typecheck]",
++      "message": "Slice 2/8 'auth#2': quick-check auto-fixed 5 issue(s) before next slice [added scripts: dev, build, start, preview, typecheck]",
+       "details": {
+-        "sliceLabel": "2/7 'auth#2'",
++        "sliceLabel": "2/8 'auth#2'",
+         "issues": [
+-          "dropped tier1 backend runtime artifact: src/app/api/auth.login/route.ts",
++          "dropped generated test artifact: src/app/api/auth/login/route.test.ts",
+           "dropped tier1 backend runtime artifact: src/app/api/auth.register/route.ts",
++          "package.json: Dropped non-referenced dependency \"fastify\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"vitest\" from package.json.",
++          "package.json: dropped 2 non-deterministic dependency declaration(s)."
++        ],
++        "synthesizedPackageJson": false,
++        "addedScripts": [
++          "dev",
++          "build",
++          "start",
++          "preview",
++          "typecheck"
++        ],
++        "touchedPackageJson": "package.json"
++      }
++    },
++    {
++      "code": "QUICK_CHECK_AUTO_REPAIR",
++      "message": "Slice 3/8 'auth#3': quick-check auto-fixed 10 issue(s) before next slice [added scripts: dev, build, start, preview, typecheck]",
++      "details": {
++        "sliceLabel": "3/8 'auth#3'",
++        "issues": [
++          "patched api-client contract exports: src/lib/api-client.ts (request, getJson, postJson, fetcher, apiClient, default)",
++          "dropped generated test artifact: src/app/api/auth/login/route.test.ts",
++          "dropped tier1 backend runtime artifact: src/app/api/auth.register/route.ts",
++          "added use client directive for hook-based component: src/app/page.tsx",
++          "added use client directive for hook-based component: src/app/logout/page.tsx",
++          "package.json: Dropped non-referenced dependency \"fastify\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"vitest\" from package.json.",
++          "package.json: dropped 2 non-deterministic dependency declaration(s).",
++          "import/export mismatch: src/app/page.tsx imports {useEffect} from '@/lib/api-client' but deterministic contract cannot synthesize these exports.",
++          "import/export mismatch: src/app/logout/page.tsx imports {useEffect} from '@/lib/api-client' but deterministic contract cannot synthesize these exports."
++        ],
++        "synthesizedPackageJson": false,
++        "addedScripts": [
++          "dev",
++          "build",
++          "start",
++          "preview",
++          "typecheck"
++        ],
++        "touchedPackageJson": "package.json"
++      }
++    },
++    {
++      "code": "QA_FALLBACK_SIMPLIFIED",
++      "message": "Slice 4/8 'users#1': 1 file(s) replaced with simplified stubs after 3 QA iter(s) failed to converge",
++      "details": {
++        "sliceLabel": "4/8 'users#1'",
++        "iterations": 3,
++        "finalIssueCount": 9,
++        "replacedFiles": [
++          "src/components/profile/ProfileForm.test.tsx"
++        ]
++      }
++    },
++    {
++      "code": "QUICK_CHECK_AUTO_REPAIR",
++      "message": "Slice 4/8 'users#1': quick-check auto-fixed 7 issue(s) before next slice [added scripts: dev, build, start, preview, typecheck]",
++      "details": {
++        "sliceLabel": "4/8 'users#1'",
++        "issues": [
++          "dropped generated test artifact: src/app/api/auth/login/route.test.ts",
++          "dropped generated test artifact: src/components/profile/ProfileForm.test.tsx",
++          "dropped tier1 backend runtime artifact: src/app/api/auth.register/route.ts",
++          "package.json: Dropped non-referenced dependency \"fastify\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"vitest\" from package.json.",
++          "package.json: dropped 2 non-deterministic dependency declaration(s).",
++          "import/export mismatch: src/app/logout/page.tsx imports {useEffect} from '@/lib/api-client' but deterministic contract cannot synthesize these exports."
++        ],
++        "synthesizedPackageJson": false,
++        "addedScripts": [
++          "dev",
++          "build",
++          "start",
++          "preview",
++          "typecheck"
++        ],
++        "touchedPackageJson": "package.json"
++      }
++    },
++    {
++      "code": "QUICK_CHECK_AUTO_REPAIR",
++      "message": "Slice 5/8 'users#2': quick-check auto-fixed 12 issue(s) before next slice [added scripts: dev, build, start, preview, typecheck]",
++      "details": {
++        "sliceLabel": "5/8 'users#2'",
++        "issues": [
++          "dropped generated test artifact: src/app/api/auth/login/route.test.ts",
++          "dropped generated test artifact: src/components/profile/ProfileForm.test.tsx",
++          "dropped tier1 backend runtime artifact: src/app/api/auth.register/route.ts",
++          "dropped tier1 backend runtime artifact: apps/api/src/server.ts",
++          "package.json: Dropped non-referenced dependency \"@fastify/cors\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"@fastify/helmet\" from package.json.",
+           "package.json: Dropped non-referenced dependency \"@prisma/client\" from package.json.",
+-          "package.json: Dropped non-referenced dependency \"bcryptjs\" from package.json.",
+-          "package.json: Dropped non-referenced dependency \"express\" from package.json.",
+-          "package.json: Dropped non-referenced dependency \"jsonwebtoken\" from package.json.",
+-          "package.json: Dropped non-referenced dependency \"zod\" from package.json.",
+-          "package.json: Dropped non-referenced dependency \"@types/bcryptjs\" from package.json.",
+-          "package.json: Dropped non-referenced dependency \"@types/express\" from package.json.",
+-          "package.json: Dropped non-referenced dependency \"@types/jsonwebtoken\" from package.json.",
+-          "package.json: Dropped non-referenced dependency \"prisma\" from package.json.",
+-          "package.json: dropped 9 non-deterministic dependency declaration(s)."
++          "package.json: Dropped non-referenced dependency \"fastify\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"pino\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"vitest\" from package.json.",
++          "package.json: dropped 6 non-deterministic dependency declaration(s).",
++          "import/export mismatch: src/app/logout/page.tsx imports {useEffect} from '@/lib/api-client' but deterministic contract cannot synthesize these exports."
+         ],
+         "synthesizedPackageJson": false,
+         "addedScripts": [
+@@ -414,47 +763,171 @@
+     },
+     {
+       "code": "QA_FALLBACK_SIMPLIFIED",
+-      "message": "Slice 3/7 'users#1': 1 file(s) replaced with simplified stubs after 3 QA iter(s) failed to converge",
++      "message": "Slice 6/8 'dashboard#1': 1 file(s) replaced with simplified stubs after 3 QA iter(s) failed to converge",
+       "details": {
+-        "sliceLabel": "3/7 'users#1'",
++        "sliceLabel": "6/8 'dashboard#1'",
+         "iterations": 3,
+-        "finalIssueCount": 15,
++        "finalIssueCount": 10,
+         "replacedFiles": [
+-          "src/components/ui/Avatar.tsx"
++          "src/components/layout/Sidebar.tsx"
+         ]
+       }
++    },
++    {
++      "code": "QUICK_CHECK_AUTO_REPAIR",
++      "message": "Slice 6/8 'dashboard#1': quick-check auto-fixed 12 issue(s) before next slice [added scripts: dev, build, start, preview, typecheck]",
++      "details": {
++        "sliceLabel": "6/8 'dashboard#1'",
++        "issues": [
++          "dropped generated test artifact: src/app/api/auth/login/route.test.ts",
++          "dropped generated test artifact: src/components/profile/ProfileForm.test.tsx",
++          "dropped tier1 backend runtime artifact: src/app/api/auth.register/route.ts",
++          "dropped tier1 backend runtime artifact: apps/api/src/server.ts",
++          "package.json: Dropped non-referenced dependency \"@fastify/cors\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"@fastify/helmet\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"@prisma/client\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"fastify\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"pino\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"vitest\" from package.json.",
++          "package.json: dropped 6 non-deterministic dependency declaration(s).",
++          "import/export mismatch: src/app/logout/page.tsx imports {useEffect} from '@/lib/api-client' but deterministic contract cannot synthesize these exports."
++        ],
++        "synthesizedPackageJson": false,
++        "addedScripts": [
++          "dev",
++          "build",
++          "start",
++          "preview",
++          "typecheck"
++        ],
++        "touchedPackageJson": "package.json"
++      }
++    },
++    {
++      "code": "QA_FALLBACK_SIMPLIFIED",
++      "message": "Slice 7/8 'dashboard#2': 1 file(s) replaced with simplified stubs after 3 QA iter(s) failed to converge",
++      "details": {
++        "sliceLabel": "7/8 'dashboard#2'",
++        "iterations": 3,
++        "finalIssueCount": 30,
++        "replacedFiles": [
++          "src/components/dashboard/ActivityFeed.tsx"
++        ]
++      }
++    },
++    {
++      "code": "BUILD_CHECK_AUTO_REPAIR",
++      "message": "Slice 7/8 'dashboard#2': in-process build check repaired 1 file(s) with parse/import errors before continuing to next slice",
++      "details": {
++        "sliceLabel": "7/8 'dashboard#2'",
++        "repairedFiles": [
++          "src/app/api/activity/list/route.ts"
++        ],
++        "issueCount": 4
++      }
++    },
++    {
++      "code": "QUICK_CHECK_AUTO_REPAIR",
++      "message": "Slice 7/8 'dashboard#2': quick-check auto-fixed 17 issue(s) before next slice [added scripts: dev, build, start, preview, typecheck]",
++      "details": {
++        "sliceLabel": "7/8 'dashboard#2'",
++        "issues": [
++          "dropped generated test artifact: src/app/api/auth/login/route.test.ts",
++          "dropped generated test artifact: src/components/profile/ProfileForm.test.tsx",
++          "dropped generated test artifact: src/components/dashboard/ActivityFeed.test.tsx",
++          "dropped generated test artifact: src/app/api/activity/list/route.test.ts",
++          "dropped tier1 backend runtime artifact: src/app/api/auth.register/route.ts",
++          "dropped tier1 backend runtime artifact: apps/api/src/server.ts",
++          "dropped tier1 backend runtime artifact: src/app/api/activity/list/route.ts",
++          "package.json: Dropped non-referenced dependency \"@fastify/cors\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"@fastify/helmet\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"@prisma/client\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"fastify\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"pino\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"supertest\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"@testing-library/react\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"vitest\" from package.json.",
++          "package.json: dropped 8 non-deterministic dependency declaration(s).",
++          "import/export mismatch: src/app/logout/page.tsx imports {useEffect} from '@/lib/api-client' but deterministic contract cannot synthesize these exports."
++        ],
++        "synthesizedPackageJson": false,
++        "addedScripts": [
++          "dev",
++          "build",
++          "start",
++          "preview",
++          "typecheck"
++        ],
++        "touchedPackageJson": "package.json"
++      }
++    },
++    {
++      "code": "QUICK_CHECK_AUTO_REPAIR",
++      "message": "Slice 8/8 'dashboard#3': quick-check auto-fixed 18 issue(s) before next slice [added scripts: dev, build, start, preview, typecheck]",
++      "details": {
++        "sliceLabel": "8/8 'dashboard#3'",
++        "issues": [
++          "dropped generated test artifact: src/app/api/auth/login/route.test.ts",
++          "dropped generated test artifact: src/components/profile/ProfileForm.test.tsx",
++          "dropped generated test artifact: src/components/dashboard/ActivityFeed.test.tsx",
++          "dropped generated test artifact: src/app/api/activity/list/route.test.ts",
++          "dropped tier1 backend runtime artifact: src/app/api/auth.register/route.ts",
++          "dropped tier1 backend runtime artifact: apps/api/src/server.ts",
++          "dropped tier1 backend runtime artifact: src/app/api/activity/list/route.ts",
++          "added use client directive for hook-based component: src/components/ui/Toast.tsx",
++          "package.json: Dropped non-referenced dependency \"@fastify/cors\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"@fastify/helmet\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"@prisma/client\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"fastify\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"pino\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"supertest\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"@testing-library/react\" from package.json.",
++          "package.json: Dropped non-referenced dependency \"vitest\" from package.json.",
++          "package.json: dropped 8 non-deterministic dependency declaration(s).",
++          "import/export mismatch: src/app/logout/page.tsx imports {useEffect} from '@/lib/api-client' but deterministic contract cannot synthesize these exports."
++        ],
++        "synthesizedPackageJson": false,
++        "addedScripts": [
++          "dev",
++          "build",
++          "start",
++          "preview",
++          "typecheck"
++        ],
++        "touchedPackageJson": "package.json"
++      }
+     }
+   ],
+   "failure": {
+-    "failedPhase": "slice-4/7",
++    "failedPhase": "final-assembly",
+     "errorName": "Error",
+-    "errorMessage": "[artifact-integrity] slice-4/7 -> 4/7 'users#2':slice-merge: INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)",
+-    "stack": "Error: [artifact-integrity] slice-4/7 -> 4/7 'users#2':slice-merge: INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)\n    at ProjectGenerator.assertArtifactIntegrityOrThrow (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:596:11)\n    at ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:3006:14)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2088:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:746:22)",
+-    "errorStack": "Error: [artifact-integrity] slice-4/7 -> 4/7 'users#2':slice-merge: INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)\n    at ProjectGenerator.assertArtifactIntegrityOrThrow (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:596:11)\n    at ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:3006:14)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2088:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:746:22)",
+-    "failedAt": "2026-05-19T19:37:52.741Z",
+-    "lastSuccessfulPhase": "slice-3/7",
+-    "llmCallCount": 25,
+-    "failedStep": "4/7 'users#2':builder-rebuild-3",
+-    "lastSuccessfulStep": "reserved",
++    "errorMessage": "Deterministic generation contract FAILED: import/export mismatch: src/app/logout/page.tsx imports {useEffect} from '@/lib/api-client' but deterministic contract cannot synthesize these exports.",
++    "stack": "Error: Deterministic generation contract FAILED: import/export mismatch: src/app/logout/page.tsx imports {useEffect} from '@/lib/api-client' but deterministic contract cannot synthesize these exports.\n    at ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:3495:15)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2089:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:747:22)",
++    "errorStack": "Error: Deterministic generation contract FAILED: import/export mismatch: src/app/logout/page.tsx imports {useEffect} from '@/lib/api-client' but deterministic contract cannot synthesize these exports.\n    at ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:3495:15)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2089:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:747:22)",
++    "failedAt": "2026-05-19T20:35:12.672Z",
++    "lastSuccessfulPhase": "slice-8/8",
++    "llmCallCount": 45,
++    "failedStep": "final-assembly:deterministic-contract",
++    "lastSuccessfulStep": "final-assembly:deterministic-contract",
+     "classification": {
+-      "category": "dependency_failure",
+-      "code": "DEPENDENCY_RESOLUTION",
+-      "reason": "Dependency graph or package manifest validation failed."
+-    },
+-    "failureCategory": "dependency_failure",
+-    "failurePhase": "slice-4/7",
+-    "failureReason": "[artifact-integrity] slice-4/7 -> 4/7 'users#2':slice-merge: INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)",
+-    "failedAgent": "builder",
++      "category": "generated_import_export_mismatch",
++      "code": "GENERATED_IMPORT_EXPORT_MISMATCH",
++      "reason": "Generated application imports symbols that are not exported by target modules."
++    },
++    "failureCategory": "generated_import_export_mismatch",
++    "failurePhase": "final-assembly",
++    "failureReason": "Deterministic generation contract FAILED: import/export mismatch: src/app/logout/page.tsx imports {useEffect} from '@/lib/api-client' but deterministic contract cannot synthesize these exports.",
++    "failedAgent": "pipeline",
+     "retryCount": 0,
+-    "lastValidCheckpoint": "y3cbEuhQa7",
+-    "filesGeneratedBeforeFailure": 16,
++    "lastValidCheckpoint": "RCye__HzwD",
++    "filesGeneratedBeforeFailure": 41,
+     "recoveryAttempted": false,
+-    "recommendedNextAction": "Fix dependency graph/package manifest issues and rerun mission.",
++    "recommendedNextAction": "Fix generated import/export contract mismatches (missing named/default exports) before rerunning preview/export validation.",
+     "zeroFileClassification": null
+   },
+   "failureClassification": {
+-    "category": "dependency_failure",
+-    "code": "DEPENDENCY_RESOLUTION",
+-    "reason": "Dependency graph or package manifest validation failed."
++    "category": "generated_import_export_mismatch",
++    "code": "GENERATED_IMPORT_EXPORT_MISMATCH",
++    "reason": "Generated application imports symbols that are not exported by target modules."
+   }
+ }
+\ No newline at end of file
+diff --git a/apps/api/src/testing/last-finalization-failure.json b/apps/api/src/testing/last-finalization-failure.json
+index f11bec4..888e3c7 100644
+--- a/apps/api/src/testing/last-finalization-failure.json
++++ b/apps/api/src/testing/last-finalization-failure.json
+@@ -1,88 +1,82 @@
+ {
+-  "writtenAt": "2026-05-17T22:11:00.581Z",
+-  "projectId": "x0DteHoUxYOG",
+-  "sessionId": "jAB-GQlxtELuT-fX",
++  "writtenAt": "2026-05-19T20:35:12.714Z",
++  "projectId": "Gw9TSE3mHAEm",
++  "sessionId": "LmO9799sM53A44sE",
+   "phase": "finalize",
+-  "step": "finalize:manifest-refreshed",
+-  "lastMeaningfulStep": "finalize:manifest-refreshed",
+-  "llmCallCount": 9,
+-  "totalTokens": 10710,
+-  "totalCostUsd": 0.043362,
+-  "cumulativeFileCount": 44,
+-  "persistedFileCount": 44,
++  "step": "finalize:dependency-validation",
++  "lastMeaningfulStep": "finalize:dependency-validation",
++  "llmCallCount": 45,
++  "totalTokens": 996652,
++  "totalCostUsd": 2.6274919999999997,
++  "cumulativeFileCount": 41,
++  "persistedFileCount": 41,
+   "persistedFilePaths": [
++    "src/components/ui/Button.tsx",
++    "src/components/layout/Sidebar.tsx",
++    "src/components/layout/Topbar.tsx",
++    "src/components/ui/AppShell.tsx",
++    "src/lib/design-tokens.ts",
++    "tailwind.config.ts",
++    "src/app/api/auth/login/route.test.ts",
++    "IMPLEMENTATION_CHECKLIST.md",
+     "package.json",
+     "tsconfig.json",
+     "next.config.mjs",
+     "postcss.config.js",
+     "src/app/layout.tsx",
+-    "src/app/globals.css",
+     "src/app/page.tsx",
+-    "src/components/ProductDetails.tsx",
+-    "src/components/HeroBanner.tsx",
+-    ".gitignore",
+-    ".env.local",
+-    "tailwind.config.ts",
+-    "next-env.d.ts",
+-    ".env.example",
+-    ".dockerignore",
+-    "Dockerfile",
+-    "docker-compose.yml",
+-    "scripts/deploy.sh",
+-    "scripts/deploy.ps1",
+-    "scripts/validate-env.sh",
+-    "scripts/validate-env.ps1",
+-    ".github/workflows/deploy.yml",
+-    "vercel.json",
+-    "infra/aws/cloudformation.yaml",
+-    "src/lib/cn.ts",
+-    "src/components/ui/Button.tsx",
++    "src/app/globals.css",
++    "src/app/register/page.tsx",
++    "src/components/RegisterForm.tsx",
++    "src/app/api/auth.register/route.ts",
+     "src/components/ui/Input.tsx",
+-    "src/components/ui/Badge.tsx",
+     "src/components/ui/Card.tsx",
++    "src/components/ui/Badge.tsx",
++    "src/components/ui/Dialog.tsx",
+     "src/components/ui/Spinner.tsx",
++    "src/components/ui/Avatar.tsx",
++    "src/lib/api-client.ts",
++    "src/app/logout/page.tsx",
++    "src/components/ui/Alert.tsx",
+     "src/components/ui/Skeleton.tsx",
+-    "src/components/ui/EmptyState.tsx",
+-    "src/components/ui/AppShell.tsx",
+     "src/components/ui/PageHeader.tsx",
+-    "src/components/ui/Textarea.tsx",
+-    "src/components/ui/Select.tsx",
+-    "src/components/ui/Alert.tsx",
+-    "src/components/ui/Separator.tsx",
+-    "src/components/ui/Avatar.tsx",
+-    "src/components/ui/Tabs.tsx",
+-    "src/components/ui/Dialog.tsx",
+-    "src/components/ui/Toast.tsx",
+-    "src/components/ui/index.ts",
+-    "DESIGN_SYSTEM.md"
++    "src/components/profile/ProfileForm.test.tsx",
++    "apps/api/src/server.ts",
++    "src/components/dashboard/ActivityFeed.tsx",
++    "src/components/dashboard/ActivityFeed.test.tsx",
++    "src/app/api/activity/list/route.test.ts",
++    "src/components/ui/EmptyState.tsx",
++    "src/app/api/activity/list/route.ts",
++    "src/components/dashboard/KpiCard.tsx",
++    "src/components/dashboard/DashboardSkeleton.tsx",
++    "src/components/dashboard/EmptyActivityState.tsx",
++    "src/lib/cn.ts",
++    "src/components/ui/Toast.tsx"
+   ],
+-  "failedStep": "qa-gate:pipeline-not-completed",
+-  "failedPhase": "qa-gate",
+-  "failedAt": "2026-05-17T22:11:00.533Z",
+-  "error": "Pipeline did not reach 'completed' state (state=failed, error=Critical step \"QA\" failed: All models exhausted after 0ms. Tried: [azure/gpt-4.1, azure/gpt-4o-mini]. Last error: unavailable)",
++  "failedStep": "final-assembly:deterministic-contract",
++  "failedPhase": "final-assembly",
++  "failedAt": "2026-05-19T20:35:12.672Z",
++  "error": "Deterministic generation contract FAILED: import/export mismatch: src/app/logout/page.tsx imports {useEffect} from '@/lib/api-client' but deterministic contract cannot synthesize these exports.",
+   "errorName": "Error",
+-  "errorStack": "Error: Pipeline did not reach 'completed' state (state=failed, error=Critical step \"QA\" failed: All models exhausted after 0ms. Tried: [azure/gpt-4.1, azure/gpt-4o-mini]. Last error: unavailable)\n    at ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:3734:16)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2080:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:738:22)",
++  "errorStack": "Error: Deterministic generation contract FAILED: import/export mismatch: src/app/logout/page.tsx imports {useEffect} from '@/lib/api-client' but deterministic contract cannot synthesize these exports.\n    at ProjectGenerator.runPipelineBody (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:3495:15)\n    at async ProjectGenerator.generate (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:2089:22)\n    at async ProjectGenerator.runReserved (C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\pipeline\\project-generator.ts:747:22)",
+   "finalizationStepStatuses": {
+     "assembleProject": {
+       "name": "assembleProject",
+       "status": "ok",
+-      "sliceId": "slice-2/2",
+-      "startedAt": "2026-05-17T22:11:00.347Z",
+-      "durationMs": 2
++      "sliceId": "slice-8/8",
++      "startedAt": "2026-05-19T20:35:12.581Z",
++      "durationMs": 3
+     },
+     "validateAndFixDependencies": {
+       "name": "validateAndFixDependencies",
+       "status": "ok",
+-      "sliceId": "slice-2/2",
+-      "startedAt": "2026-05-17T22:11:00.364Z",
++      "sliceId": "slice-8/8",
++      "startedAt": "2026-05-19T20:35:12.625Z",
+       "durationMs": 1
+     },
+     "runQualityAssurance": {
+       "name": "runQualityAssurance",
+-      "status": "ok",
+-      "sliceId": "slice-2/2",
+-      "startedAt": "2026-05-17T22:11:00.397Z",
+-      "durationMs": 3
++      "status": "not-run"
+     },
+     "scheduleExecutionValidation": {
+       "name": "scheduleExecutionValidation",
+@@ -100,94 +94,31 @@
+   "postPersistTrace": [
+     {
+       "step": "final-assembly:merge-cumulative-artifacts",
+-      "sliceId": "slice-2/2",
+-      "startedAt": "2026-05-17T22:11:00.346Z",
+-      "durationMs": 1,
++      "sliceId": "slice-8/8",
++      "startedAt": "2026-05-19T20:35:12.581Z",
++      "durationMs": 0,
+       "status": "ok"
+     },
+     {
+       "step": "final-assembly:assembleProject",
+-      "sliceId": "slice-2/2",
+-      "startedAt": "2026-05-17T22:11:00.347Z",
+-      "durationMs": 2,
++      "sliceId": "slice-8/8",
++      "startedAt": "2026-05-19T20:35:12.581Z",
++      "durationMs": 3,
+       "status": "ok"
+     },
+     {
+       "step": "final-assembly:validateAndFixDependencies",
+-      "sliceId": "slice-2/2",
+-      "startedAt": "2026-05-17T22:11:00.364Z",
++      "sliceId": "slice-8/8",
++      "startedAt": "2026-05-19T20:35:12.625Z",
+       "durationMs": 1,
+       "status": "ok"
+     },
+     {
+       "step": "final-assembly:deterministic-contract",
+-      "sliceId": "slice-2/2",
+-      "startedAt": "2026-05-17T22:11:00.381Z",
+-      "durationMs": 1,
+-      "status": "ok"
+-    },
+-    {
+-      "step": "final-assembly:buildTaskSummaries",
+-      "sliceId": "slice-2/2",
+-      "startedAt": "2026-05-17T22:11:00.382Z",
+-      "durationMs": 1,
+-      "status": "ok"
+-    },
+-    {
+-      "step": "final-assembly:buildStepSummaries",
+-      "sliceId": "slice-2/2",
+-      "startedAt": "2026-05-17T22:11:00.383Z",
+-      "durationMs": 0,
+-      "status": "ok"
+-    },
+-    {
+-      "step": "qa-gate:runQualityAssurance",
+-      "sliceId": "slice-2/2",
+-      "startedAt": "2026-05-17T22:11:00.397Z",
++      "sliceId": "slice-8/8",
++      "startedAt": "2026-05-19T20:35:12.664Z",
+       "durationMs": 3,
+       "status": "ok"
+-    },
+-    {
+-      "step": "qa-gate:validateAndFixDependencies-after-qa",
+-      "sliceId": "slice-2/2",
+-      "startedAt": "2026-05-17T22:11:00.435Z",
+-      "durationMs": 0,
+-      "status": "ok"
+-    },
+-    {
+-      "step": "qa-gate:apply-soft-deadline-warning",
+-      "sliceId": "slice-2/2",
+-      "startedAt": "2026-05-17T22:11:00.528Z",
+-      "durationMs": 1,
+-      "status": "ok"
+-    },
+-    {
+-      "step": "qa-gate:assign-artifacts",
+-      "sliceId": "slice-2/2",
+-      "startedAt": "2026-05-17T22:11:00.529Z",
+-      "durationMs": 0,
+-      "status": "ok"
+-    },
+-    {
+-      "step": "qa-gate:assign-qa-assurance",
+-      "sliceId": "slice-2/2",
+-      "startedAt": "2026-05-17T22:11:00.529Z",
+-      "durationMs": 0,
+-      "status": "ok"
+-    },
+-    {
+-      "step": "qa-gate:assign-tasks-and-totals",
+-      "sliceId": "slice-2/2",
+-      "startedAt": "2026-05-17T22:11:00.529Z",
+-      "durationMs": 0,
+-      "status": "ok"
+-    },
+-    {
+-      "step": "qa-gate:assign-optimization",
+-      "sliceId": "slice-2/2",
+-      "startedAt": "2026-05-17T22:11:00.529Z",
+-      "durationMs": 0,
+-      "status": "ok"
+     }
+   ]
+ }
+\ No newline at end of file
+diff --git a/apps/api/src/testing/successful-mission-results.json b/apps/api/src/testing/successful-mission-results.json
+index 1ca0512..e1d0810 100644
+--- a/apps/api/src/testing/successful-mission-results.json
++++ b/apps/api/src/testing/successful-mission-results.json
+@@ -1,6 +1,6 @@
+ {
+-  "startedAt": "2026-05-19T19:19:08.986Z",
+-  "completedAt": "2026-05-19T19:43:23.477Z",
++  "startedAt": "2026-05-19T20:13:12.555Z",
++  "completedAt": "2026-05-19T20:41:31.534Z",
+   "apiUrl": "http://127.0.0.1:3003",
+   "prompts": [
+     "Build a simple landing page with hero section, features, and CTA.",
+@@ -14,12 +14,12 @@
+     "succeeded": 2,
+     "failed": 1,
+     "successRate": 0.6666666666666666,
+-    "averageCompletionMs": 338397,
++    "averageCompletionMs": 313276,
+     "retryFrequency": 0,
+     "previewStartupSuccess": 0.6666666666666666,
+     "exportSuccessRate": 0.6666666666666666,
+     "failureCategories": {
+-      "dependency_failure": 1
++      "generated_import_export_mismatch": 1
+     },
+     "reliabilityByTier": [
+       {
+@@ -47,7 +47,7 @@
+   },
+   "preflightBefore": {
+     "ok": true,
+-    "checkedAt": "2026-05-19T19:19:09.003Z",
++    "checkedAt": "2026-05-19T20:13:12.571Z",
+     "requiredProviders": [
+       "azure"
+     ],
+@@ -61,18 +61,18 @@
+           "provider": "openai",
+           "healthy": false,
+           "reason": "provider-healthcheck-failed",
+-          "checkedAt": "2026-05-19T19:19:09.126Z",
+-          "latencyMs": 495
++          "checkedAt": "2026-05-19T20:13:12.704Z",
++          "latencyMs": 515
+         },
+         "azure": {
+           "provider": "azure",
+           "healthy": true,
+           "reason": "ok",
+-          "checkedAt": "2026-05-19T19:19:09.621Z",
++          "checkedAt": "2026-05-19T20:13:13.219Z",
+           "latencyMs": 0
+         }
+       },
+-      "checkedAt": "2026-05-19T19:19:09.126Z"
++      "checkedAt": "2026-05-19T20:13:12.704Z"
+     },
+     "services": {
+       "storage": {
+@@ -88,7 +88,7 @@
+   },
+   "preflightAfter": {
+     "ok": true,
+-    "checkedAt": "2026-05-19T19:43:22.459Z",
++    "checkedAt": "2026-05-19T20:41:30.373Z",
+     "requiredProviders": [
+       "azure"
+     ],
+@@ -102,18 +102,18 @@
+           "provider": "openai",
+           "healthy": false,
+           "reason": "provider-healthcheck-failed",
+-          "checkedAt": "2026-05-19T19:43:22.608Z",
+-          "latencyMs": 498
++          "checkedAt": "2026-05-19T20:41:30.580Z",
++          "latencyMs": 484
+         },
+         "azure": {
+           "provider": "azure",
+           "healthy": true,
+           "reason": "ok",
+-          "checkedAt": "2026-05-19T19:43:23.106Z",
++          "checkedAt": "2026-05-19T20:41:31.064Z",
+           "latencyMs": 0
+         }
+       },
+-      "checkedAt": "2026-05-19T19:43:22.608Z"
++      "checkedAt": "2026-05-19T20:41:30.580Z"
+     },
+     "services": {
+       "storage": {
+@@ -128,17 +128,18 @@
+     "reason": null
+   },
+   "runtimeTelemetry": {
+-    "observedAt": "2026-05-19T19:43:23.477Z",
++    "observedAt": "2026-05-19T20:41:31.533Z",
+     "missions": {
+       "accepted": 3,
+-      "terminal": 193,
+-      "completed": 95,
+-      "failed": 98,
+-      "successRate": 0.49222797927461137,
+-      "avgCompletionMs": 353603
++      "terminal": 196,
++      "completed": 97,
++      "failed": 99,
++      "successRate": 0.49489795918367346,
++      "avgCompletionMs": 347617
+     },
+     "reliability": {
+       "failuresByCategory": {
++        "generated_import_export_mismatch": 1,
+         "dependency_failure": 11,
+         "unknown": 44,
+         "orchestration_failure": 36,
+@@ -146,13 +147,13 @@
+         "empty_generation": 4
+       },
+       "failuresByPhase": {
++        "final-assembly": 10,
+         "slice-4/7": 1,
+         "unknown": 14,
+         "qa-gate": 30,
+         "terminal-consistency": 10,
+         "finalize": 1,
+         "final-integrity-gate": 2,
+-        "final-assembly": 9,
+         "watchdog": 3,
+         "slice-1/3": 3,
+         "slice-1/4": 2,
+@@ -167,7 +168,7 @@
+         "slice-2/5": 1,
+         "slice-1/20": 1
+       },
+-      "artifactCorruptionRate": 0.015544041450777202
++      "artifactCorruptionRate": 0.015306122448979591
+     },
+     "providers": {
+       "preflightBlockedLaunches": 0,
+@@ -179,14 +180,14 @@
+           "provider": "openai",
+           "healthy": false,
+           "reason": "provider-healthcheck-failed",
+-          "checkedAt": "2026-05-19T19:43:23.364Z",
+-          "latencyMs": 113
++          "checkedAt": "2026-05-19T20:41:31.417Z",
++          "latencyMs": 116
+         },
+         "azure": {
+           "provider": "azure",
+           "healthy": true,
+           "reason": "ok",
+-          "checkedAt": "2026-05-19T19:43:23.477Z",
++          "checkedAt": "2026-05-19T20:41:31.533Z",
+           "latencyMs": 0
+         }
+       },
+@@ -196,9 +197,9 @@
+       "averageRetriesPerSession": 0
+     },
+     "preview": {
+-      "attempted": 56,
+-      "ready": 23,
+-      "startupSuccessRate": 0.4107142857142857
++      "attempted": 57,
++      "ready": 24,
++      "startupSuccessRate": 0.42105263157894735
+     },
+     "export": {
+       "attempts": 2,
+@@ -212,22 +213,21 @@
+       "index": 0,
+       "tier": "custom",
+       "prompt": "Build a simple landing page with hero section, features, and CTA.",
+-      "projectId": "pCSFQCln7w5A",
+-      "sessionId": "Qlo9QrHSs-Kdi_g9",
++      "projectId": "BuZ91nwzTtku",
++      "sessionId": "mZCrXKILPJAWUis4",
+       "status": "pass",
+-      "durationMs": 349135,
++      "durationMs": 249306,
+       "filesCount": 45,
+       "previewState": "ready",
+-      "previewUrl": "/preview/pCSFQCln7w5A/",
++      "previewUrl": "/preview/BuZ91nwzTtku/",
+       "exportOk": true,
+       "exportState": "ok",
+-      "exportDurationMs": 21,
++      "exportDurationMs": 26,
+       "retriesObserved": 0,
+       "phasesSeen": [
+         "init",
+         "planning",
+         "backend_generation",
+-        "verification",
+         "artifact_packaging"
+       ],
+       "failureCategory": null,
+@@ -242,23 +242,23 @@
+       "recommendedNextAction": null,
+       "zeroFileClassification": null,
+       "previewStageDurations": {
+-        "queued": 2,
+-        "stagingFiles": 19,
+-        "installing": 74729,
+-        "building": 11202,
+-        "spawningServer": 8,
+-        "waitingForPort": 2,
+-        "httpProbing": 3222,
++        "queued": 1,
++        "stagingFiles": 27,
++        "installing": 41388,
++        "building": 12739,
++        "spawningServer": 9,
++        "waitingForPort": 4,
++        "httpProbing": 3310,
+         "ready": null,
+         "failed": null,
+         "timeout": null
+       },
+-      "installDurationMs": 74729,
+-      "buildDurationMs": 11202,
+-      "serverStartDurationMs": 8,
+-      "healthProbeDurationMs": 3222,
+-      "contentHealthDurationMs": 3222,
+-      "previewStartupTotalMs": 89184,
++      "installDurationMs": 41388,
++      "buildDurationMs": 12739,
++      "serverStartDurationMs": 9,
++      "healthProbeDurationMs": 3310,
++      "contentHealthDurationMs": 3310,
++      "previewStartupTotalMs": 57478,
+       "previewFailurePhase": null,
+       "previewFailureReason": null,
+       "cacheDecision": "miss",
+@@ -268,11 +268,11 @@
+       "installExitCode": null,
+       "buildExitCode": null,
+       "startCommand": "npm.cmd run dev",
+-      "runtimeCwd": "..\\..\\data\\projects\\pCSFQCln7w5A\\output\\.preview-runtime",
++      "runtimeCwd": "..\\..\\data\\projects\\BuZ91nwzTtku\\output\\.preview-runtime",
+       "timeoutSource": null,
+       "timeoutLimit": null,
+       "currentPreviewPhase": "preview:ready",
+-      "elapsedTime": 89203,
++      "elapsedTime": 57498,
+       "lastPreviewLogLine": "<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies",
+       "processState": null
+     },
+@@ -280,12 +280,12 @@
+       "index": 1,
+       "tier": "custom",
+       "prompt": "Build a simple SaaS dashboard with sidebar, KPI cards, and recent activity.",
+-      "projectId": "QRAmPAcgGUzv",
+-      "sessionId": "1CyvYEwItI2kFvY3",
++      "projectId": "Gw9TSE3mHAEm",
++      "sessionId": "LmO9799sM53A44sE",
+       "status": "fail",
+-      "reason": "dependency_failure/slice-4/7: [artifact-integrity] slice-4/7 -> 4/7 'users#2':slice-merge: INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)",
+-      "durationMs": 776036,
+-      "filesCount": 16,
++      "reason": "generated_import_export_mismatch/final-assembly: Deterministic generation contract FAILED: import/export mismatch: src/app/logout/page.tsx imports {useEffect} from '@/lib/api-client' but deterministic contract cannot synthesize these exports.",
++      "durationMs": 1070598,
++      "filesCount": 41,
+       "previewState": null,
+       "previewUrl": null,
+       "exportOk": false,
+@@ -293,18 +293,18 @@
+       "exportDurationMs": null,
+       "retriesObserved": 0,
+       "phasesSeen": [
+-        "backend_generation"
++        "artifact_packaging"
+       ],
+-      "failureCategory": "dependency_failure",
+-      "failurePhase": "slice-4/7",
+-      "failureReason": "[artifact-integrity] slice-4/7 -> 4/7 'users#2':slice-merge: INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)",
+-      "failedAgent": "builder",
+-      "failedStep": "4/7 'users#2':builder-rebuild-3",
++      "failureCategory": "generated_import_export_mismatch",
++      "failurePhase": "final-assembly",
++      "failureReason": "Deterministic generation contract FAILED: import/export mismatch: src/app/logout/page.tsx imports {useEffect} from '@/lib/api-client' but deterministic contract cannot synthesize these exports.",
++      "failedAgent": "pipeline",
++      "failedStep": "final-assembly:deterministic-contract",
+       "retryCount": 0,
+-      "lastValidCheckpoint": "y3cbEuhQa7",
+-      "filesGeneratedBeforeFailure": 16,
++      "lastValidCheckpoint": "RCye__HzwD",
++      "filesGeneratedBeforeFailure": 41,
+       "recoveryAttempted": false,
+-      "recommendedNextAction": "Fix dependency graph/package manifest issues and rerun mission.",
++      "recommendedNextAction": "Fix generated import/export contract mismatches (missing named/default exports) before rerunning preview/export validation.",
+       "zeroFileClassification": null,
+       "previewStageDurations": null,
+       "installDurationMs": null,
+@@ -334,13 +334,13 @@
+       "index": 2,
+       "tier": "custom",
+       "prompt": "Build a simple pricing page with three plans and feature comparison.",
+-      "projectId": "6zMqH3LZCaeA",
+-      "sessionId": "ns_elNoSH8xxS0xb",
++      "projectId": "H8SrdBwMUa7y",
++      "sessionId": "wAMw4vHbb1SNGOew",
+       "status": "pass",
+-      "durationMs": 327658,
+-      "filesCount": 49,
++      "durationMs": 377245,
++      "filesCount": 55,
+       "previewState": "ready",
+-      "previewUrl": "/preview/6zMqH3LZCaeA/",
++      "previewUrl": "/preview/H8SrdBwMUa7y/",
+       "exportOk": true,
+       "exportState": "ok",
+       "exportDurationMs": 27,
+@@ -358,28 +358,28 @@
+       "failedStep": null,
+       "retryCount": 0,
+       "lastValidCheckpoint": null,
+-      "filesGeneratedBeforeFailure": 49,
++      "filesGeneratedBeforeFailure": 55,
+       "recoveryAttempted": false,
+       "recommendedNextAction": null,
+       "zeroFileClassification": null,
+       "previewStageDurations": {
+         "queued": 1,
+-        "stagingFiles": 28,
+-        "installing": 31376,
+-        "building": 13554,
+-        "spawningServer": 3,
+-        "waitingForPort": 3,
+-        "httpProbing": 3655,
++        "stagingFiles": 21,
++        "installing": 67065,
++        "building": 16182,
++        "spawningServer": 4,
++        "waitingForPort": 2,
++        "httpProbing": 4333,
+         "ready": null,
+         "failed": null,
+         "timeout": null
+       },
+-      "installDurationMs": 31376,
+-      "buildDurationMs": 13554,
+-      "serverStartDurationMs": 3,
+-      "healthProbeDurationMs": 3655,
+-      "contentHealthDurationMs": 3655,
+-      "previewStartupTotalMs": 48620,
++      "installDurationMs": 67065,
++      "buildDurationMs": 16182,
++      "serverStartDurationMs": 4,
++      "healthProbeDurationMs": 4333,
++      "contentHealthDurationMs": 4333,
++      "previewStartupTotalMs": 87608,
+       "previewFailurePhase": null,
+       "previewFailureReason": null,
+       "cacheDecision": "miss",
+@@ -389,11 +389,11 @@
+       "installExitCode": null,
+       "buildExitCode": null,
+       "startCommand": "npm.cmd run dev",
+-      "runtimeCwd": "..\\..\\data\\projects\\6zMqH3LZCaeA\\output\\.preview-runtime",
++      "runtimeCwd": "..\\..\\data\\projects\\H8SrdBwMUa7y\\output\\.preview-runtime",
+       "timeoutSource": null,
+       "timeoutLimit": null,
+       "currentPreviewPhase": "preview:ready",
+-      "elapsedTime": 48640,
++      "elapsedTime": 87649,
+       "lastPreviewLogLine": "<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies",
+       "processState": null
+     }

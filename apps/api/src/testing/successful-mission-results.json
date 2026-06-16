@@ -1,25 +1,23 @@
 {
-  "startedAt": "2026-05-19T19:19:08.986Z",
-  "completedAt": "2026-05-19T19:43:23.477Z",
-  "apiUrl": "http://127.0.0.1:3003",
+  "startedAt": "2026-05-28T19:34:01.637Z",
+  "completedAt": "2026-05-28T20:13:27.939Z",
+  "apiUrl": "http://127.0.0.1:3303",
   "prompts": [
-    "Build a simple landing page with hero section, features, and CTA.",
-    "Build a simple SaaS dashboard with sidebar, KPI cards, and recent activity.",
-    "Build a simple pricing page with three plans and feature comparison."
+    "Build a simple SaaS dashboard with sidebar, KPI cards, and recent activity."
   ],
   "repeatCycles": 1,
-  "minSuccessMissions": 1,
+  "minSuccessMissions": 0,
   "summary": {
-    "total": 3,
-    "succeeded": 2,
+    "total": 1,
+    "succeeded": 0,
     "failed": 1,
-    "successRate": 0.6666666666666666,
-    "averageCompletionMs": 338397,
+    "successRate": 0,
+    "averageCompletionMs": null,
     "retryFrequency": 0,
-    "previewStartupSuccess": 0.6666666666666666,
-    "exportSuccessRate": 0.6666666666666666,
+    "previewStartupSuccess": 0,
+    "exportSuccessRate": 0,
     "failureCategories": {
-      "dependency_failure": 1
+      "generated_app_build_failure": 1
     },
     "reliabilityByTier": [
       {
@@ -47,7 +45,7 @@
   },
   "preflightBefore": {
     "ok": true,
-    "checkedAt": "2026-05-19T19:19:09.003Z",
+    "checkedAt": "2026-05-28T19:34:01.655Z",
     "requiredProviders": [
       "azure"
     ],
@@ -61,18 +59,18 @@
           "provider": "openai",
           "healthy": false,
           "reason": "provider-healthcheck-failed",
-          "checkedAt": "2026-05-19T19:19:09.126Z",
-          "latencyMs": 495
+          "checkedAt": "2026-05-28T19:34:01.655Z",
+          "latencyMs": 114
         },
         "azure": {
           "provider": "azure",
           "healthy": true,
           "reason": "ok",
-          "checkedAt": "2026-05-19T19:19:09.621Z",
+          "checkedAt": "2026-05-28T19:34:01.769Z",
           "latencyMs": 0
         }
       },
-      "checkedAt": "2026-05-19T19:19:09.126Z"
+      "checkedAt": "2026-05-28T19:34:01.655Z"
     },
     "services": {
       "storage": {
@@ -88,7 +86,7 @@
   },
   "preflightAfter": {
     "ok": true,
-    "checkedAt": "2026-05-19T19:43:22.459Z",
+    "checkedAt": "2026-05-28T20:13:27.328Z",
     "requiredProviders": [
       "azure"
     ],
@@ -102,18 +100,18 @@
           "provider": "openai",
           "healthy": false,
           "reason": "provider-healthcheck-failed",
-          "checkedAt": "2026-05-19T19:43:22.608Z",
-          "latencyMs": 498
+          "checkedAt": "2026-05-28T20:13:27.329Z",
+          "latencyMs": 493
         },
         "azure": {
           "provider": "azure",
           "healthy": true,
           "reason": "ok",
-          "checkedAt": "2026-05-19T19:43:23.106Z",
+          "checkedAt": "2026-05-28T20:13:27.822Z",
           "latencyMs": 0
         }
       },
-      "checkedAt": "2026-05-19T19:43:22.608Z"
+      "checkedAt": "2026-05-28T20:13:27.329Z"
     },
     "services": {
       "storage": {
@@ -128,46 +126,19 @@
     "reason": null
   },
   "runtimeTelemetry": {
-    "observedAt": "2026-05-19T19:43:23.477Z",
+    "observedAt": "2026-05-28T20:13:27.940Z",
     "missions": {
-      "accepted": 3,
-      "terminal": 193,
-      "completed": 95,
-      "failed": 98,
-      "successRate": 0.49222797927461137,
-      "avgCompletionMs": 353603
+      "accepted": 1,
+      "terminal": 1,
+      "completed": 1,
+      "failed": 0,
+      "successRate": 1,
+      "avgCompletionMs": 107139
     },
     "reliability": {
-      "failuresByCategory": {
-        "dependency_failure": 11,
-        "unknown": 44,
-        "orchestration_failure": 36,
-        "artifact_corruption": 3,
-        "empty_generation": 4
-      },
-      "failuresByPhase": {
-        "slice-4/7": 1,
-        "unknown": 14,
-        "qa-gate": 30,
-        "terminal-consistency": 10,
-        "finalize": 1,
-        "final-integrity-gate": 2,
-        "final-assembly": 9,
-        "watchdog": 3,
-        "slice-1/3": 3,
-        "slice-1/4": 2,
-        "slice-1/7": 1,
-        "slice-1/6": 1,
-        "slice-1/5": 3,
-        "slice-1/2": 2,
-        "slice-1/1": 10,
-        "slice-4/4": 1,
-        "validate-request": 2,
-        "slice-2/2": 1,
-        "slice-2/5": 1,
-        "slice-1/20": 1
-      },
-      "artifactCorruptionRate": 0.015544041450777202
+      "failuresByCategory": {},
+      "failuresByPhase": {},
+      "artifactCorruptionRate": 0
     },
     "providers": {
       "preflightBlockedLaunches": 0,
@@ -179,14 +150,14 @@
           "provider": "openai",
           "healthy": false,
           "reason": "provider-healthcheck-failed",
-          "checkedAt": "2026-05-19T19:43:23.364Z",
+          "checkedAt": "2026-05-28T20:13:27.826Z",
           "latencyMs": 113
         },
         "azure": {
           "provider": "azure",
           "healthy": true,
           "reason": "ok",
-          "checkedAt": "2026-05-19T19:43:23.477Z",
+          "checkedAt": "2026-05-28T20:13:27.939Z",
           "latencyMs": 0
         }
       },
@@ -196,96 +167,28 @@
       "averageRetriesPerSession": 0
     },
     "preview": {
-      "attempted": 56,
-      "ready": 23,
-      "startupSuccessRate": 0.4107142857142857
+      "attempted": 1,
+      "ready": 0,
+      "startupSuccessRate": 0
     },
     "export": {
-      "attempts": 2,
-      "successes": 2,
+      "attempts": 0,
+      "successes": 0,
       "failures": 0,
-      "successRate": 1
+      "successRate": null
     }
   },
   "results": [
     {
       "index": 0,
       "tier": "custom",
-      "prompt": "Build a simple landing page with hero section, features, and CTA.",
-      "projectId": "pCSFQCln7w5A",
-      "sessionId": "Qlo9QrHSs-Kdi_g9",
-      "status": "pass",
-      "durationMs": 349135,
-      "filesCount": 45,
-      "previewState": "ready",
-      "previewUrl": "/preview/pCSFQCln7w5A/",
-      "exportOk": true,
-      "exportState": "ok",
-      "exportDurationMs": 21,
-      "retriesObserved": 0,
-      "phasesSeen": [
-        "init",
-        "planning",
-        "backend_generation",
-        "verification",
-        "artifact_packaging"
-      ],
-      "failureCategory": null,
-      "failurePhase": null,
-      "failureReason": null,
-      "failedAgent": null,
-      "failedStep": null,
-      "retryCount": 0,
-      "lastValidCheckpoint": null,
-      "filesGeneratedBeforeFailure": 45,
-      "recoveryAttempted": false,
-      "recommendedNextAction": null,
-      "zeroFileClassification": null,
-      "previewStageDurations": {
-        "queued": 2,
-        "stagingFiles": 19,
-        "installing": 74729,
-        "building": 11202,
-        "spawningServer": 8,
-        "waitingForPort": 2,
-        "httpProbing": 3222,
-        "ready": null,
-        "failed": null,
-        "timeout": null
-      },
-      "installDurationMs": 74729,
-      "buildDurationMs": 11202,
-      "serverStartDurationMs": 8,
-      "healthProbeDurationMs": 3222,
-      "contentHealthDurationMs": 3222,
-      "previewStartupTotalMs": 89184,
-      "previewFailurePhase": null,
-      "previewFailureReason": null,
-      "cacheDecision": "miss",
-      "cacheHit": false,
-      "dependencyHash": null,
-      "installSkipped": false,
-      "installExitCode": null,
-      "buildExitCode": null,
-      "startCommand": "npm.cmd run dev",
-      "runtimeCwd": "..\\..\\data\\projects\\pCSFQCln7w5A\\output\\.preview-runtime",
-      "timeoutSource": null,
-      "timeoutLimit": null,
-      "currentPreviewPhase": "preview:ready",
-      "elapsedTime": 89203,
-      "lastPreviewLogLine": "<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies",
-      "processState": null
-    },
-    {
-      "index": 1,
-      "tier": "custom",
       "prompt": "Build a simple SaaS dashboard with sidebar, KPI cards, and recent activity.",
-      "projectId": "QRAmPAcgGUzv",
-      "sessionId": "1CyvYEwItI2kFvY3",
+      "projectId": "ZEUh0nPxYChu",
+      "sessionId": "X2yE_dXuYCfnSmz4",
       "status": "fail",
-      "reason": "dependency_failure/slice-4/7: [artifact-integrity] slice-4/7 -> 4/7 'users#2':slice-merge: INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)",
-      "durationMs": 776036,
-      "filesCount": 16,
+      "reason": "generated_app_build_failure/finalize: Local preview failed: build failed: npm run build exited code=1 - ./src/lib/db.ts | 8:3  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment | 10:5  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment | 13:3  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment |  | info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/building-your-application/configuring/eslint#disabling-rules | build-diagnostics: phase=preview:building; failedFile=unknown; errorMessage=10:36  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any; recommendedRepairPath=Repair generated TypeScript/build errors and rerun build validation before preview start.\nlast successful step: install cache hit\nstderr tail:\n34  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n6:18  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n10:13  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n24:17  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n28:17  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n32:18  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n32:43  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n45:17  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n\n./src/lib/cn.ts\n1:29  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n\n./src/lib/db.ts\n8:3  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment\n10:5  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment\n13:3  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment\n\ninfo  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/building-your-application/configuring/eslint#disabling-rules",
+      "durationMs": 2365553,
+      "filesCount": 64,
       "previewState": null,
       "previewUrl": null,
       "exportOk": false,
@@ -293,109 +196,53 @@
       "exportDurationMs": null,
       "retriesObserved": 0,
       "phasesSeen": [
-        "backend_generation"
-      ],
-      "failureCategory": "dependency_failure",
-      "failurePhase": "slice-4/7",
-      "failureReason": "[artifact-integrity] slice-4/7 -> 4/7 'users#2':slice-merge: INVALID_PACKAGE_JSON: package.json failed validation (strict-react-next-bundle-pins)",
-      "failedAgent": "builder",
-      "failedStep": "4/7 'users#2':builder-rebuild-3",
-      "retryCount": 0,
-      "lastValidCheckpoint": "y3cbEuhQa7",
-      "filesGeneratedBeforeFailure": 16,
-      "recoveryAttempted": false,
-      "recommendedNextAction": "Fix dependency graph/package manifest issues and rerun mission.",
-      "zeroFileClassification": null,
-      "previewStageDurations": null,
-      "installDurationMs": null,
-      "buildDurationMs": null,
-      "serverStartDurationMs": null,
-      "healthProbeDurationMs": null,
-      "contentHealthDurationMs": null,
-      "previewStartupTotalMs": null,
-      "previewFailurePhase": null,
-      "previewFailureReason": null,
-      "cacheDecision": null,
-      "cacheHit": null,
-      "dependencyHash": null,
-      "installSkipped": null,
-      "installExitCode": null,
-      "buildExitCode": null,
-      "startCommand": null,
-      "runtimeCwd": null,
-      "timeoutSource": null,
-      "timeoutLimit": null,
-      "currentPreviewPhase": null,
-      "elapsedTime": null,
-      "lastPreviewLogLine": null,
-      "processState": null
-    },
-    {
-      "index": 2,
-      "tier": "custom",
-      "prompt": "Build a simple pricing page with three plans and feature comparison.",
-      "projectId": "6zMqH3LZCaeA",
-      "sessionId": "ns_elNoSH8xxS0xb",
-      "status": "pass",
-      "durationMs": 327658,
-      "filesCount": 49,
-      "previewState": "ready",
-      "previewUrl": "/preview/6zMqH3LZCaeA/",
-      "exportOk": true,
-      "exportState": "ok",
-      "exportDurationMs": 27,
-      "retriesObserved": 0,
-      "phasesSeen": [
-        "init",
-        "planning",
-        "backend_generation",
         "artifact_packaging"
       ],
-      "failureCategory": null,
-      "failurePhase": null,
-      "failureReason": null,
-      "failedAgent": null,
-      "failedStep": null,
+      "failureCategory": "generated_app_build_failure",
+      "failurePhase": "finalize",
+      "failureReason": "Local preview failed: build failed: npm run build exited code=1 - ./src/lib/db.ts | 8:3  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment | 10:5  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment | 13:3  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment |  | info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/building-your-application/configuring/eslint#disabling-rules | build-diagnostics: phase=preview:building; failedFile=unknown; errorMessage=10:36  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any; recommendedRepairPath=Repair generated TypeScript/build errors and rerun build validation before preview start.\nlast successful step: install cache hit\nstderr tail:\n34  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n6:18  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n10:13  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n24:17  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n28:17  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n32:18  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n32:43  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n45:17  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n\n./src/lib/cn.ts\n1:29  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n\n./src/lib/db.ts\n8:3  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment\n10:5  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment\n13:3  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment\n\ninfo  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/building-your-application/configuring/eslint#disabling-rules",
+      "failedAgent": "pipeline",
+      "failedStep": "finalize:completed",
       "retryCount": 0,
-      "lastValidCheckpoint": null,
-      "filesGeneratedBeforeFailure": 49,
+      "lastValidCheckpoint": "8yyli8JFXh",
+      "filesGeneratedBeforeFailure": 64,
       "recoveryAttempted": false,
-      "recommendedNextAction": null,
+      "recommendedNextAction": "Inspect generated build logs and resolve compile/runtime build blockers before retry.",
       "zeroFileClassification": null,
       "previewStageDurations": {
         "queued": 1,
-        "stagingFiles": 28,
-        "installing": 31376,
-        "building": 13554,
-        "spawningServer": 3,
-        "waitingForPort": 3,
-        "httpProbing": 3655,
+        "stagingFiles": 34,
+        "installing": 58771,
+        "building": 17756,
+        "spawningServer": null,
+        "waitingForPort": null,
+        "httpProbing": null,
         "ready": null,
         "failed": null,
         "timeout": null
       },
-      "installDurationMs": 31376,
-      "buildDurationMs": 13554,
-      "serverStartDurationMs": 3,
-      "healthProbeDurationMs": 3655,
-      "contentHealthDurationMs": 3655,
-      "previewStartupTotalMs": 48620,
-      "previewFailurePhase": null,
-      "previewFailureReason": null,
+      "installDurationMs": 58771,
+      "buildDurationMs": 17756,
+      "serverStartDurationMs": null,
+      "healthProbeDurationMs": null,
+      "contentHealthDurationMs": null,
+      "previewStartupTotalMs": 76562,
+      "previewFailurePhase": "preview:failed",
+      "previewFailureReason": "Local preview failed: build failed: npm run build exited code=1 - ./src/lib/db.ts | 8:3  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment | 10:5  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment | 13:3  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment |  | info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/building-your-application/configuring/eslint#disabling-rules | build-diagnostics: phase=preview:building; failedFile=unknown; errorMessage=10:36  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any; recommendedRepairPath=Repair generated TypeScript/build errors and rerun build validation before preview start.\nlast successful step: install cache hit\nstderr tail:\n34  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n6:18  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n10:13  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n24:17  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n28:17  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n32:18  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n32:43  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n45:17  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n\n./src/lib/cn.ts\n1:29  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any\n\n./src/lib/db.ts\n8:3  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment\n10:5  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment\n13:3  Error: Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.  @typescript-eslint/ban-ts-comment\n\ninfo  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/building-your-application/configuring/eslint#disabling-rules",
       "cacheDecision": "miss",
       "cacheHit": false,
       "dependencyHash": null,
       "installSkipped": false,
       "installExitCode": null,
-      "buildExitCode": null,
-      "startCommand": "npm.cmd run dev",
-      "runtimeCwd": "..\\..\\data\\projects\\6zMqH3LZCaeA\\output\\.preview-runtime",
+      "buildExitCode": 1,
+      "startCommand": "npm.cmd run build",
+      "runtimeCwd": "C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\data\\test-runs\\2026-05-28T19-33-57-912Z-29260\\projects\\ZEUh0nPxYChu\\output\\.preview-runtime",
       "timeoutSource": null,
       "timeoutLimit": null,
-      "currentPreviewPhase": "preview:ready",
-      "elapsedTime": 48640,
-      "lastPreviewLogLine": "<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: Unable to snapshot resolve dependencies",
-      "processState": null
+      "currentPreviewPhase": "preview:failed",
+      "elapsedTime": 76669,
+      "lastPreviewLogLine": "info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/building-your-application/configuring/eslint#disabling-rules",
+      "processState": "alive-hanging"
     }
   ]
 }

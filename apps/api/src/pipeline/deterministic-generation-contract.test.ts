@@ -387,4 +387,145 @@ test('deterministic contract blocks unrecoverable api-client import/export misma
       v.includes("import/export mismatch: src/app/profile/ProfileContent.tsx imports {customMutation} from '@/lib/api-client'"),
     ),
   );
+  assert.ok(
+    result.blockingViolations.some((v) =>
+      v.includes('failedFile=src/app/profile/ProfileContent.tsx')
+      && v.includes('invalidImportName=customMutation')
+      && v.includes("importedFrom=@/lib/api-client")
+      && v.includes('repairAttempted=true')
+      && v.includes('repairResult=failed'),
+    ),
+  );
+});
+
+test('deterministic contract moves React hooks from api-client import to react import and preserves api-client symbols', () => {
+  const result = enforceDeterministicGenerationContract([
+    {
+      path: 'src/app/logout/page.tsx',
+      content: [
+        "'use client';",
+        "import { useEffect, fetcher } from '@/lib/api-client';",
+        'export default function LogoutPage(){',
+        '  useEffect(() => {}, []);',
+        "  return <button onClick={() => fetcher('/api/logout')}>logout</button>;",
+        '}',
+        '',
+      ].join('\n'),
+    },
+    {
+      path: 'src/lib/api-client.ts',
+      content: 'export async function fetcher(){ return null; }\n',
+    },
+  ]);
+
+  const logout = result.files.find((f) => f.path === 'src/app/logout/page.tsx')?.content ?? '';
+  assert.match(logout, /import\s+\{\s*useEffect\s*\}\s+from\s+['"]react['"]/);
+  assert.match(logout, /import\s+\{\s*fetcher\s*\}\s+from\s+['"]@\/lib\/api-client['"]/);
+  assert.equal(
+    result.blockingViolations.some((v) => v.includes('imports {useEffect} from \'@/lib/api-client\'')),
+    false,
+  );
+});
+
+test('deterministic contract moves React hooks imported from wrong local modules to react', () => {
+  const result = enforceDeterministicGenerationContract([
+    {
+      path: 'src/components/dashboard/SummaryCard.tsx',
+      content: [
+        "'use client';",
+        "import { useMemo } from '@/lib/view-helpers';",
+        'export default function SummaryCard(){',
+        '  const v = useMemo(() => 1, []);',
+        '  return <main>{v}</main>;',
+        '}',
+        '',
+      ].join('\n'),
+    },
+    {
+      path: 'src/lib/view-helpers.ts',
+      content: 'export const marker = true;\n',
+    },
+  ]);
+  const card = result.files.find((f) => f.path === 'src/components/dashboard/SummaryCard.tsx')?.content ?? '';
+  assert.match(card, /import\s+\{\s*useMemo\s*\}\s+from\s+['"]react['"]/);
+  assert.equal(card.includes("from '@/lib/view-helpers'"), false);
+});
+
+test('deterministic contract repairs missing required callback props by making preview-safe callback optional', () => {
+  const result = enforceDeterministicGenerationContract([
+    {
+      path: 'src/app/logout/page.tsx',
+      content: [
+        "import { LogoutButton } from '@/components/LogoutButton';",
+        'export default function LogoutPage(){',
+        '  return <LogoutButton />;',
+        '}',
+        '',
+      ].join('\n'),
+    },
+    {
+      path: 'src/components/LogoutButton.tsx',
+      content: [
+        'export interface LogoutButtonProps {',
+        '  onLogout: () => void;',
+        '}',
+        'export function LogoutButton({ onLogout }: LogoutButtonProps) {',
+        '  return <button onClick={onLogout}>Logout</button>;',
+        '}',
+        '',
+      ].join('\n'),
+    },
+  ]);
+
+  const logoutButton = result.files.find((f) => f.path === 'src/components/LogoutButton.tsx')?.content ?? '';
+  assert.match(logoutButton, /onLogout\?: \(\) => void;/);
+  assert.equal(result.blockingViolations.some((v) => v.includes('generated_component_prop_mismatch')), false);
+  assert.ok(
+    result.componentPropViolations.some((v) =>
+      v.componentName === 'LogoutButton' && v.missingProp === 'onLogout' && v.repairResult === 'repaired'
+    ),
+  );
+});
+
+test('deterministic contract fails unrecoverable required non-callback props with component mismatch diagnostics', () => {
+  const result = enforceDeterministicGenerationContract([
+    {
+      path: 'src/app/dashboard/page.tsx',
+      content: [
+        "import { KpiCard } from '@/components/KpiCard';",
+        'export default function DashboardPage(){',
+        '  return <KpiCard />;',
+        '}',
+        '',
+      ].join('\n'),
+    },
+    {
+      path: 'src/components/KpiCard.tsx',
+      content: [
+        'export interface KpiCardProps {',
+        '  title: string;',
+        '}',
+        'export function KpiCard({ title }: KpiCardProps) {',
+        '  return <article>{title}</article>;',
+        '}',
+        '',
+      ].join('\n'),
+    },
+  ]);
+
+  assert.ok(result.blockingViolations.some((v) => v.includes('generated_component_prop_mismatch')));
+  assert.ok(
+    result.blockingViolations.some((v) =>
+      v.includes('failedFile=src/app/dashboard/page.tsx')
+      && v.includes('componentName=KpiCard')
+      && v.includes('missingProp=title')
+      && v.includes('repairAttempted=false')
+      && v.includes('repairResult=failed'),
+    ),
+  );
+  assert.ok(
+    result.componentPropViolations.some((v) =>
+      v.componentName === 'KpiCard' && v.missingProp === 'title' && v.repairResult === 'failed'
+    ),
+  );
 });

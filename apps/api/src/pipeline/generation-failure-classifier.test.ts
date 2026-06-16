@@ -61,6 +61,28 @@ test('deterministic import/export mismatch signal maps to generated_import_expor
   assert.equal(out.category, 'generated_import_export_mismatch');
 });
 
+test('deterministic component prop mismatch signal maps to generated_component_prop_mismatch', () => {
+  const out = classifyGenerationFailure({
+    failedPhase: 'final-assembly',
+    failedStep: 'final-assembly:deterministic-contract',
+    errorMessage:
+      "generated_component_prop_mismatch: src/app/logout/page.tsx renders <LogoutButton> without required prop 'onLogout'. [failedFile=src/app/logout/page.tsx componentName=LogoutButton missingProp=onLogout propType=() => void usageLocation=src/app/logout/page.tsx:3:10 repairAttempted=true repairResult=failed]",
+  });
+  assert.equal(out.category, 'generated_component_prop_mismatch');
+  assert.equal(out.code, 'GENERATED_COMPONENT_PROP_MISMATCH');
+});
+
+test('preview type error for missing required props maps to generated_component_prop_mismatch', () => {
+  const out = classifyGenerationFailure({
+    failedPhase: 'finalize',
+    failedStep: 'preview:building',
+    errorMessage:
+      "Type error: Property 'onLogout' is missing in type '{}' but required in type 'LogoutButtonProps'.",
+  });
+  assert.equal(out.category, 'generated_component_prop_mismatch');
+  assert.equal(out.code, 'GENERATED_COMPONENT_PROP_MISMATCH');
+});
+
 test('local preview build failure with Type error stays generated_typescript_error', () => {
   const out = classifyGenerationFailure({
     failedPhase: 'finalize',

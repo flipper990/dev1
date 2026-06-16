@@ -19,9 +19,33 @@ export interface TierValidationIssue {
     | 'ts_parse'
     | 'css_syntax'
     | 'unresolved_import'
-    | 'missing_named_export';
+    | 'missing_named_export'
+    | 'react_hook_wrong_source'
+    | 'component_prop_mismatch';
   message: string;
 }
+
+const API_CLIENT_IMPORT_SPECIFIER = '@/lib/api-client';
+const SUPPORTED_API_CLIENT_EXPORTS = new Set([
+  'apiFetch',
+  'request',
+  'getJson',
+  'postJson',
+  'fetcher',
+  'apiClient',
+]);
+const REACT_HOOK_IMPORTS = new Set([
+  'useEffect',
+  'useState',
+  'useMemo',
+  'useCallback',
+  'useRef',
+  'useReducer',
+  'useContext',
+  'useTransition',
+  'useDeferredValue',
+  'useId',
+]);
 
 function checkCssSyntax(content: string): boolean {
   let open = 0;
@@ -139,5 +163,169 @@ export function validateSliceManifest(
     }
   }
 
+  const parsedImports = parseImportClauses(manifest.content);
+  for (const parsedImport of parsedImports) {
+    for (const symbol of parsedImport.named) {
+      if (REACT_HOOK_IMPORTS.has(symbol) && parsedImport.specifier !== 'react') {
+        issues.push({
+          code: 'react_hook_wrong_source',
+          message: `${path} imports React hook ${symbol} from ${parsedImport.specifier}; expected source is react`,
+        });
+      }
+    }
+
+    if (parsedImport.specifier === API_CLIENT_IMPORT_SPECIFIER) {
+      for (const symbol of parsedImport.named) {
+        if (!SUPPORTED_API_CLIENT_EXPORTS.has(symbol)) {
+          issues.push({
+            code: 'missing_named_export',
+            message: `${path} imports ${symbol} from ${API_CLIENT_IMPORT_SPECIFIER}, but export is missing from canonical api-client contract`,
+          });
+        }
+      }
+    }
+  }
+
+  const componentPropIssues = detectComponentPropMismatches(path, manifest.content, known);
+  issues.push(...componentPropIssues);
+
   return issues;
+}
+
+function parseImportClauses(content: string): Array<{ specifier: string; named: string[]; bindings: Array<{ localName: string; importedName: string }> }> {
+  const out: Array<{ specifier: string; named: string[]; bindings: Array<{ localName: string; importedName: string }> }> = [];
+  const importRe = /import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"]\s*;?/g;
+  for (const match of content.matchAll(importRe)) {
+    const clause = String(match[1] ?? '').trim();
+    const specifier = String(match[2] ?? '').trim();
+    if (!specifier) continue;
+    const namedBlock = clause.match(/\{([\s\S]*?)\}/);
+    const named = (namedBlock?.[1] ?? '')
+      .split(',')
+      .map((token) => token.trim())
+      .filter(Boolean)
+      .map((token) => token.replace(/^type\s+/, '').trim())
+      .map((token) => {
+        const alias = token.match(/^([A-Za-z_$][\w$]*)\s+as\s+[A-Za-z_$][\w$]*$/);
+        return alias ? alias[1] : token;
+      })
+      .filter((token) => /^[A-Za-z_$][\w$]*$/.test(token));
+    const bindings = parseComponentBindings(clause);
+    out.push({ specifier, named, bindings });
+  }
+  return out;
+}
+
+function parseComponentBindings(clause: string): Array<{ localName: string; importedName: string }> {
+  const out: Array<{ localName: string; importedName: string }> = [];
+  const withoutNamed = clause.replace(/\{[\s\S]*?\}/, '').trim();
+  const defaultPart = withoutNamed
+    .split(',')
+    .map((token) => token.trim())
+    .find((token) => token && token !== 'type');
+  if (defaultPart && /^[A-Za-z_$][\w$]*$/.test(defaultPart)) {
+    out.push({ localName: defaultPart, importedName: 'default' });
+  }
+
+  const namedBlock = clause.match(/\{([\s\S]*?)\}/)?.[1] ?? '';
+  for (const token of namedBlock.split(',').map((item) => item.trim()).filter(Boolean)) {
+    const normalized = token.replace(/^type\s+/, '').trim();
+    const alias = normalized.match(/^([A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)$/);
+    if (alias) {
+      out.push({ localName: alias[2], importedName: alias[1] });
+      continue;
+    }
+    if (/^[A-Za-z_$][\w$]*$/.test(normalized)) {
+      out.push({ localName: normalized, importedName: normalized });
+    }
+  }
+  return out;
+}
+
+function detectComponentPropMismatches(
+  failedFile: string,
+  source: string,
+  known: Map<string, TierSliceManifest>,
+): TierValidationIssue[] {
+  const out: TierValidationIssue[] = [];
+  const imports = parseImportClauses(source)
+    .filter((item) => item.specifier.startsWith('./') || item.specifier.startsWith('../') || item.specifier.startsWith('@/'));
+
+  for (const item of imports) {
+    const resolved = resolveInternalImport(item.specifier, failedFile);
+    const targetPath = possibleCandidates(resolved).find((candidate) => known.has(normalizeArtifactPath(candidate)));
+    if (!targetPath) continue;
+    const target = known.get(normalizeArtifactPath(targetPath));
+    if (!target) continue;
+
+    for (const binding of item.bindings) {
+      if (!/^[A-Z]/.test(binding.localName)) continue;
+      const requiredProps = extractRequiredComponentProps(target.content, binding.importedName);
+      if (requiredProps.length === 0) continue;
+
+      for (const usage of findJsxUsages(source, binding.localName, failedFile)) {
+        for (const prop of requiredProps) {
+          if (new RegExp(`\\b${escapeRegExp(prop.name)}(?:\\s*=|\\s|$)`).test(usage.attributes)) continue;
+          out.push({
+            code: 'component_prop_mismatch',
+            message:
+              `${failedFile} renders <${binding.localName}> without required prop ${prop.name}; `
+              + `[failedFile=${failedFile} componentName=${binding.localName} missingProp=${prop.name} propType=${prop.type} usageLocation=${usage.location} repairAttempted=false repairResult=failed]`,
+          });
+        }
+      }
+    }
+  }
+
+  return out;
+}
+
+function extractRequiredComponentProps(content: string, importedName: string): Array<{ name: string; type: string }> {
+  if (importedName === 'default') return [];
+  const escaped = escapeRegExp(importedName);
+  const functionMatch = content.match(
+    new RegExp(`(?:export\\s+)?function\\s+${escaped}\\s*\\(\\s*[\\s\\S]*?:\\s*([A-Za-z_$][\\w$]*)\\s*\\)`, 'm'),
+  );
+  const constMatch = content.match(
+    new RegExp(`(?:export\\s+)?const\\s+${escaped}\\s*=\\s*\\(\\s*[\\s\\S]*?:\\s*([A-Za-z_$][\\w$]*)\\s*\\)\\s*=>`, 'm'),
+  );
+  const propsTypeName = functionMatch?.[1] ?? constMatch?.[1];
+  if (!propsTypeName) return [];
+
+  const body = extractTypeBody(content, propsTypeName);
+  if (!body) return [];
+  const required: Array<{ name: string; type: string }> = [];
+  for (const rawLine of body.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    const propMatch = line.match(/^(?:readonly\s+)?([A-Za-z_$][\w$]*)(\??)\s*:\s*([^;]+);?$/);
+    if (!propMatch || propMatch[2] === '?') continue;
+    required.push({ name: propMatch[1], type: propMatch[3].trim() });
+  }
+  return required;
+}
+
+function extractTypeBody(content: string, typeName: string): string | null {
+  const escaped = escapeRegExp(typeName);
+  const interfaceMatch = content.match(new RegExp(`interface\\s+${escaped}\\s*\\{([\\s\\S]*?)\\n\\}`, 'm'));
+  if (interfaceMatch?.[1]) return interfaceMatch[1];
+  const typeMatch = content.match(new RegExp(`type\\s+${escaped}\\s*=\\s*\\{([\\s\\S]*?)\\n\\}`, 'm'));
+  return typeMatch?.[1] ?? null;
+}
+
+function findJsxUsages(source: string, componentName: string, failedFile: string): Array<{ attributes: string; location: string }> {
+  const escaped = escapeRegExp(componentName);
+  const usageRe = new RegExp(`<${escaped}\\b([^>]*)\\/?>`, 'g');
+  const out: Array<{ attributes: string; location: string }> = [];
+  for (const match of source.matchAll(usageRe)) {
+    const idx = match.index ?? 0;
+    const before = source.slice(0, idx);
+    const line = before.split('\n').length;
+    const col = idx - before.lastIndexOf('\n');
+    out.push({ attributes: String(match[1] ?? ''), location: `${failedFile}:${line}:${col}` });
+  }
+  return out;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

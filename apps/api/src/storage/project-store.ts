@@ -858,6 +858,7 @@ export interface ProjectRecord {
         | 'dependency_install_failure'
         | 'generated_app_build_failure'
         | 'generated_import_export_mismatch'
+        | 'generated_component_prop_mismatch'
         | 'generated_typescript_error'
         | 'preview_runner_internal_error'
         | 'project_persistence_failure'

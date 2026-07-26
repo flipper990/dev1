@@ -1,11 +1,11 @@
 {
-  "pid": 18996,
-  "startedAt": "2026-06-06T18:42:05.962Z",
+  "pid": 9452,
+  "startedAt": "2026-07-23T13:44:06.975Z",
   "argv": [
     "C:\\Program Files\\nodejs\\node.exe",
     "C:\\Users\\AJ\\Documents\\GitHub\\dev1\\apps\\api\\src\\server.ts"
   ],
   "watchMode": true,
-  "reloadedFromPid": 21500,
-  "reloadedFromStartedAt": "2026-06-03T19:47:28.436Z"
+  "reloadedFromPid": 21128,
+  "reloadedFromStartedAt": "2026-07-22T21:35:53.968Z"
 }

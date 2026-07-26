@@ -10,3 +10,7 @@ export { WorkspaceMainPanel } from './WorkspaceMainPanel';
 export { WorkspaceSidePanel } from './WorkspaceSidePanel';
 export { WorkspaceStatusArea } from './WorkspaceStatusArea';
 export { AgentPipelineRail } from './AgentPipelineRail';
+export { CodeWorkbench } from './CodeWorkbench';
+export { ConversationWorkspace } from './ConversationWorkspace';
+export { RuntimeControlPanel } from './RuntimeControlPanel';
+export { MemoryWorkspace } from './MemoryWorkspace';

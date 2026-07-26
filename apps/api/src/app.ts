@@ -125,9 +125,11 @@ export async function buildApp() {
   // Wire learning engine into agent hooks (observe task start/end)
   for (const agent of Object.values(agents)) {
     agent.setHooks({
-      beforeExecute: async (_ctx: unknown, task: unknown) => {
-        learningEngine.observeTaskStart(task as import('@agent-core/types.js').Task, agent._lastLoadedMemories);
-        return task as never;
+      beforeExecute: async (_ctx: unknown, task: unknown) => task as never,
+      onMemoriesLoaded: async (ctx: import('@agent-core/types.js').ExecutionContext, task: import('@agent-core/types.js').Task, memories: import('@agent-core/types.js').MemoryEntry[]) => {
+        learningEngine.observeTaskStart(task, memories);
+        const projectId = typeof ctx.variables.projectId === 'string' ? ctx.variables.projectId : '';
+        if (projectId) await memoryStore.recordInfluence({ projectId, runId: task.sessionId, taskId: task.id, agentRole: task.agentRole, memories });
       },
       afterExecute: async (_ctx: unknown, task: unknown) => {
         await learningEngine.observeTaskEnd(task as import('@agent-core/types.js').Task);

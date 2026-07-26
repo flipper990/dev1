@@ -69,7 +69,8 @@ function collectTail(project: GeneratedProject | null, kind: 'stdout' | 'stderr'
   return runtimeTail ?? (kind === 'stdout' ? timelineTail?.stdoutTail : timelineTail?.stderrTail) ?? null;
 }
 
-function EvidenceList({ title, items, empty }: { title: string; items: string[]; empty: string }) {
+function EvidenceList({ title, items, empty, collapsed = false }: { title: string; items: string[]; empty: string; collapsed?: boolean }) {
+  if (collapsed && items.length) return <details className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3"><summary className="cursor-pointer text-label-m text-text-primary">{title} · {items.length} downstream event{items.length === 1 ? '' : 's'}</summary><ul className="mt-2 space-y-2">{items.map((item, index) => <li key={`${title}-${index}`} className="rounded-[var(--radius-control)] border border-border-muted bg-surface-raised p-2 font-mono text-mono-s text-text-secondary">{item}</li>)}</ul></details>;
   return (
     <section className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3">
       <h4 className="text-label-m text-text-primary">{title}</h4>
@@ -107,6 +108,8 @@ export function DiagnosticsSummary({ project, status, previewTruth, onOpenLogs, 
     || status.key === 'preview-failed'
     || project?.status === 'failed'
     || project?.verificationStatus === 'failed';
+  const failureTrace = project?.diagnostics?.generationFailureTrace as { summary?: string; error?: string; failedPhase?: string; failedStep?: string; failedAgent?: string; lastSuccessfulPhase?: string; lastSuccessfulStep?: string; recommendedAction?: string; recovery?: string } | undefined;
+  const rootCause = failureTrace?.summary ?? failureTrace?.error ?? project?.executionValidation?.buildErrors?.[0] ?? project?.executionValidation?.runtimeErrors?.[0] ?? preview?.overlayDetection?.detectedErrorMessage ?? preview?.previewError ?? null;
 
   const copyReproduce = async () => {
     try {
@@ -124,6 +127,7 @@ export function DiagnosticsSummary({ project, status, previewTruth, onOpenLogs, 
       subtitle="Technical evidence only. Lifecycle, transport, and health statuses are summarized above."
       actions={<Button variant="secondary" size="sm" onClick={onOpenLogs}>Open logs</Button>}
     >
+      {rootCause ? <section className="mb-4 rounded-[var(--radius-control)] border-2 border-status-error/55 bg-status-error-subtle p-4" aria-labelledby="root-cause-heading"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0 flex-1"><p className="text-label-s uppercase tracking-[.14em] text-status-error">Primary root cause</p><h3 id="root-cause-heading" className="mt-2 whitespace-pre-wrap break-words font-mono text-mono-s text-text-primary">{rootCause}</h3></div><Button variant="secondary" size="sm" onClick={() => { void navigator.clipboard.writeText(rootCause); }}><Copy className="h-4 w-4"/>Copy error</Button></div><dl className="mt-4 grid gap-2 text-body-s sm:grid-cols-3"><div><dt className="text-text-muted">Failed stage</dt><dd className="text-text-primary">{failureTrace?.failedPhase ?? preview?.previewStep ?? 'Runtime validation'}</dd></div><div><dt className="text-text-muted">Step</dt><dd className="text-text-primary">{failureTrace?.failedStep ?? 'First failing evidence'}</dd></div><div><dt className="text-text-muted">Agent</dt><dd className="text-text-primary">{failureTrace?.failedAgent ?? 'Runtime'}</dd></div></dl>{failureTrace?.recommendedAction && <div className="mt-3 rounded-lg border border-status-error/25 bg-surface-raised p-3"><p className="text-label-s text-text-muted">Recommended recovery</p><p className="mt-1 text-body-s text-text-primary">{failureTrace.recommendedAction}</p></div>}<div className="mt-3 flex gap-2"><Button size="sm" variant="secondary" onClick={onOpenLogs}>Open correlated logs</Button>{hasFailure && <Button size="sm" variant="secondary" loading={retrying} onClick={onRetryPreview}>Retry preview</Button>}</div></section> : null}
       <div className="grid gap-3 lg:grid-cols-2">
         <section className="rounded-[var(--radius-control)] border border-border-muted bg-surface-base p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -156,7 +160,7 @@ export function DiagnosticsSummary({ project, status, previewTruth, onOpenLogs, 
         </section>
 
         <EvidenceList title="Dependency evidence" items={dependencyEvidence} empty="No dependency errors or fixes were reported." />
-        <EvidenceList title="Runtime errors" items={runtimeErrors} empty="No framework or runtime errors were reported." />
+        <EvidenceList title="Downstream runtime failures" items={runtimeErrors.filter((item) => item !== rootCause)} empty="No downstream framework or runtime errors were reported." collapsed />
         <EvidenceList title="Install / build / start commands" items={commands} empty="No command evidence was captured." />
 
         <section className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3">

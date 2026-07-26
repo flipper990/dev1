@@ -34,7 +34,7 @@ export function useWorkspacePreview(params: {
   }, [rawTab]);
 
   useEffect(() => {
-    if (activeTab !== 'overview') setEvidenceOpen(true);
+    if (activeTab !== 'code') setEvidenceOpen(true);
   }, [activeTab]);
 
   useEffect(() => {

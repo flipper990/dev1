@@ -15,7 +15,7 @@ const variantClasses: Record<ButtonVariant, string> = {
   primary:
     'border-brand-primary bg-brand-primary text-brand-primary-contrast shadow-hairline hover:bg-brand-primary-hover active:bg-brand-primary-hover',
   secondary:
-    'border-border bg-surface-raised text-text-primary shadow-hairline hover:border-border-strong hover:bg-surface-tint active:bg-surface-tint',
+    'border-border bg-surface-base text-text-primary hover:border-border-strong hover:bg-surface-raised active:bg-surface-tint',
   ghost:
     'border-transparent bg-transparent text-text-primary hover:bg-surface-tint active:bg-surface-tint',
   success:
@@ -49,9 +49,9 @@ export function Button({
       {...props}
       className={cn(
         'inline-flex min-w-11 items-center justify-center gap-2 rounded-[var(--radius-control)] border',
-        'transition-[background-color,border-color,color,box-shadow,transform,filter] duration-120 ease-ledger',
+        'font-semibold transition-[background-color,border-color,color,box-shadow,transform,filter] duration-120 ease-ledger hover:-translate-y-px active:translate-y-0 active:scale-[0.985]',
         'focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none',
-        'disabled:cursor-not-allowed disabled:opacity-55',
+        'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0',
         variantClasses[variant],
         sizeClasses[size],
         className,

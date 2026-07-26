@@ -1,61 +1,46 @@
-import { Badge, Card } from '../../../../components/ui';
+'use client';
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { CheckCircle2, ChevronDown, ChevronRight, Clipboard, Copy, Download, ExternalLink, FileCode2, Filter, Pause, Play, Search, TerminalSquare, TriangleAlert, XCircle } from 'lucide-react';
+import { Badge, Button, Card } from '../../../../components/ui';
+import { cn } from '../../../../lib/cn';
 
 export interface LogEntry {
-  id: string;
-  timestamp: string;
-  severity: 'info' | 'warning' | 'error';
-  step: string;
-  message: string;
-  explanation?: string;
+  id: string; timestamp: string; severity: 'info' | 'warning' | 'error'; step: string; message: string; explanation?: string;
+  stage?: string; agent?: string; runtime?: string; stackTrace?: string; command?: string; relatedFiles?: string[]; relatedPrompt?: string; rootCause?: boolean; downstream?: boolean;
 }
+interface Props { entries: LogEntry[]; onJumpToSource?: (path: string) => void; onRelatedAgent?: (agent: string) => void; onRelatedPrompt?: () => void; }
+type GroupBy = 'none' | 'stage' | 'agent' | 'runtime';
+type Row = { kind: 'group'; id: string; label: string; count: number } | { kind: 'event'; id: string; entry: LogEntry };
+const ROW_HEIGHT = 72; const VIEWPORT_HEIGHT = 560; const OVERSCAN = 8;
+const formatTime = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
 
-interface LogEvidenceViewProps {
-  entries: LogEntry[];
-}
+function copyText(text: string, setNotice: (value: string) => void) { navigator.clipboard?.writeText(text).then(() => setNotice('Copied to clipboard.'), () => setNotice('Clipboard access was denied.')); }
+function download(entries: LogEntry[]) { const text = entries.map((entry) => `[${entry.timestamp}] ${entry.severity.toUpperCase()} ${entry.stage ?? entry.step}${entry.agent ? ` [${entry.agent}]` : ''}\n${entry.message}${entry.stackTrace && entry.stackTrace !== entry.message ? `\n${entry.stackTrace}` : ''}`).join('\n\n'); const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `devteam-logs-${new Date().toISOString().replaceAll(':', '-')}.log`; document.body.appendChild(anchor); anchor.click(); anchor.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000); }
 
-const severityVariant: Record<LogEntry['severity'], 'neutral' | 'warning' | 'error'> = {
-  info: 'neutral',
-  warning: 'warning',
-  error: 'error',
-};
+export function LogEvidenceView({ entries, onJumpToSource, onRelatedAgent, onRelatedPrompt }: Props) {
+  const [query, setQuery] = useState(''); const [severity, setSeverity] = useState<'all' | LogEntry['severity']>('all'); const [groupBy, setGroupBy] = useState<GroupBy>('stage'); const [source, setSource] = useState('all');
+  const [follow, setFollow] = useState(true); const [collapseDownstream, setCollapseDownstream] = useState(true); const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<string | null>(null); const [scrollTop, setScrollTop] = useState(0); const [notice, setNotice] = useState(''); const viewport = useRef<HTMLDivElement>(null); const previousCount = useRef(entries.length);
+  const sources = useMemo(() => [...new Set(entries.map((entry) => entry.runtime ?? 'unknown'))].sort(), [entries]);
+  const filtered = useMemo(() => entries.filter((entry) => severity === 'all' || entry.severity === severity).filter((entry) => source === 'all' || (entry.runtime ?? 'unknown') === source).filter((entry) => !collapseDownstream || !entry.downstream).filter((entry) => !query || `${entry.message} ${entry.stackTrace ?? ''} ${entry.stage ?? ''} ${entry.agent ?? ''} ${entry.runtime ?? ''} ${entry.relatedFiles?.join(' ') ?? ''}`.toLowerCase().includes(query.toLowerCase())), [collapseDownstream, entries, query, severity, source]);
+  const rows = useMemo<Row[]>(() => { if (groupBy === 'none') return filtered.map((entry) => ({ kind: 'event', id: entry.id, entry })); const groups = new Map<string, LogEntry[]>(); filtered.forEach((entry) => { const key = groupBy === 'stage' ? entry.stage ?? entry.step : groupBy === 'agent' ? entry.agent ?? 'Unassigned agent' : entry.runtime ?? 'Unknown runtime'; const list = groups.get(key) ?? []; list.push(entry); groups.set(key, list); }); return [...groups.entries()].flatMap(([label, list]) => [{ kind: 'group' as const, id: `group:${groupBy}:${label}`, label, count: list.length }, ...(collapsed.has(`group:${groupBy}:${label}`) ? [] : list.map((entry) => ({ kind: 'event' as const, id: entry.id, entry })))]); }, [collapsed, filtered, groupBy]);
+  useEffect(() => { if (follow && viewport.current && entries.length !== previousCount.current) viewport.current.scrollTop = viewport.current.scrollHeight; previousCount.current = entries.length; }, [entries.length, follow]);
+  const virtual = rows.length > 150; const start = virtual ? Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN) : 0; const end = virtual ? Math.min(rows.length, Math.ceil((scrollTop + VIEWPORT_HEIGHT) / ROW_HEIGHT) + OVERSCAN) : rows.length; const visible = rows.slice(start, end); const selectedEntry = entries.find((entry) => entry.id === selected) ?? null; const downstreamCount = entries.filter((entry) => entry.downstream).length;
+  const toggleGroup = (id: string) => setCollapsed((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  if (!entries.length) return <Card><h3 className="text-title-s text-text-primary">Logs</h3><p className="mt-2 text-body-s text-text-secondary">No runtime, pipeline, or validation evidence has been captured yet.</p></Card>;
 
-export function LogEvidenceView({ entries }: LogEvidenceViewProps) {
-  if (entries.length === 0) {
-    return (
-      <Card>
-        <h3 className="text-title-s text-text-primary">Log evidence</h3>
-        <p className="mt-2 text-body-s text-text-secondary">No logs yet. Activity will appear here with step context and severity.</p>
-      </Card>
-    );
-  }
-
-  const grouped = entries.reduce<Record<string, LogEntry[]>>((acc, entry) => {
-    acc[entry.step] = acc[entry.step] ? [...acc[entry.step], entry] : [entry];
-    return acc;
-  }, {});
-
-  return (
-    <Card>
-      <h3 className="text-title-s text-text-primary">Log evidence</h3>
-      <div className="mt-4 space-y-3">
-        {Object.entries(grouped).map(([step, stepEntries]) => (
-          <section key={step} className="rounded-[var(--radius-control)] border border-border bg-surface-tint p-3">
-            <h4 className="text-label-m text-text-primary">{step}</h4>
-            <ul className="mt-2 space-y-2">
-              {stepEntries.map((entry) => (
-                <li key={entry.id} className="rounded-[var(--radius-control)] border border-border bg-surface-raised p-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-label-s text-text-secondary">{new Date(entry.timestamp).toLocaleString()}</span>
-                    <Badge variant={severityVariant[entry.severity]}>{entry.severity}</Badge>
-                  </div>
-                  <p className="mt-1 text-body-s text-text-primary">{entry.message}</p>
-                  {entry.explanation ? <p className="mt-1 text-label-s text-text-secondary">Next: {entry.explanation}</p> : null}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
+  return <div className="overflow-hidden rounded-[var(--radius-panel)] border border-border bg-surface-base shadow-card">
+    <header className="border-b border-border p-3"><div className="flex flex-wrap items-center gap-2"><label className="flex min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-border bg-surface-raised px-3"><Search className="h-4 w-4 text-text-muted"/><span className="sr-only">Search logs</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search messages, files, agents…" className="h-10 min-w-0 flex-1 bg-transparent text-body-s outline-none"/></label><select aria-label="Severity" value={severity} onChange={(event) => setSeverity(event.target.value as typeof severity)} className="h-10 rounded-lg border border-border bg-surface-raised px-3 text-body-s"><option value="all">All severity</option><option value="error">Errors</option><option value="warning">Warnings</option><option value="info">Info</option></select><select aria-label="Group logs" value={groupBy} onChange={(event) => setGroupBy(event.target.value as GroupBy)} className="h-10 rounded-lg border border-border bg-surface-raised px-3 text-body-s"><option value="none">Chronological</option><option value="stage">Group: stage</option><option value="agent">Group: agent</option><option value="runtime">Group: runtime</option></select><Button size="sm" variant={follow ? 'primary' : 'secondary'} onClick={() => { setFollow((value) => !value); if (!follow && viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight; }}>{follow ? <Pause className="h-4 w-4"/> : <Play className="h-4 w-4"/>}{follow ? 'Following' : 'Resume'}</Button><Button size="sm" variant="secondary" onClick={() => download(filtered)}><Download className="h-4 w-4"/> Download</Button></div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-label-s text-text-muted"><Filter className="h-3.5 w-3.5"/><select aria-label="Runtime source" value={source} onChange={(event) => setSource(event.target.value)} className="rounded-full border border-border bg-surface-raised px-2 py-1 text-text-secondary"><option value="all">All sources</option>{sources.map((item) => <option key={item} value={item}>{item}</option>)}</select><span>{filtered.length} of {entries.length} events</span>{downstreamCount > 0 && <button className="rounded-full border border-border px-2 py-1 text-text-secondary" onClick={() => setCollapseDownstream((value) => !value)}>{collapseDownstream ? `Show ${downstreamCount} downstream failures` : 'Collapse downstream failures'}</button>} {virtual && <Badge>Virtualized</Badge>}</div>
+    </header>
+    <div className="grid min-h-0 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div ref={viewport} onScroll={(event) => { const node = event.currentTarget; setScrollTop(node.scrollTop); if (node.scrollHeight - node.scrollTop - node.clientHeight > 28) setFollow(false); }} className="studio-scroll overflow-auto bg-surface-canvas" style={{ height: VIEWPORT_HEIGHT }} role="list" aria-label="Log events">
+        <div className="relative" style={{ height: virtual ? rows.length * ROW_HEIGHT : undefined, minHeight: '100%' }}>{visible.map((row, index) => { const position = start + index; if (row.kind === 'group') { const closed = collapsed.has(row.id); return <button key={row.id} type="button" onClick={() => toggleGroup(row.id)} className="flex w-full items-center gap-2 border-b border-border bg-surface-tint px-3 text-left text-label-m text-text-primary" style={virtual ? { position: 'absolute', top: position * ROW_HEIGHT, height: ROW_HEIGHT } : { height: ROW_HEIGHT }}>{closed ? <ChevronRight className="h-4 w-4"/> : <ChevronDown className="h-4 w-4"/>}<span className="capitalize">{row.label}</span><Badge className="ml-auto">{row.count}</Badge></button>; } const entry = row.entry; return <button role="listitem" key={row.id} type="button" onClick={() => setSelected(entry.id)} className={cn('grid w-full grid-cols-[92px_22px_minmax(0,1fr)] items-center gap-2 border-b border-border-muted px-3 text-left hover:bg-surface-tint', selected === entry.id && 'bg-brand-primary-subtle', entry.rootCause && 'border-l-4 border-l-status-error bg-status-error-subtle')} style={virtual ? { position: 'absolute', top: position * ROW_HEIGHT, height: ROW_HEIGHT } : { height: ROW_HEIGHT }}><time dateTime={entry.timestamp} className="font-mono text-[11px] text-text-muted">{formatTime.format(new Date(entry.timestamp))}</time><span aria-label={entry.severity}>{entry.severity === 'error' ? <XCircle className="h-4 w-4 text-status-error"/> : entry.severity === 'warning' ? <TriangleAlert className="h-4 w-4 text-status-warning"/> : <CheckCircle2 className="h-4 w-4 text-status-info"/>}</span><span className="min-w-0"><span className="flex items-center gap-2"><span className="truncate font-mono text-mono-s text-text-primary">{entry.message.replaceAll('\n', ' ')}</span>{entry.rootCause && <Badge variant="error">Root cause</Badge>}</span><span className="mt-1 flex gap-2 text-label-s text-text-muted"><span>{entry.stage ?? entry.step}</span>{entry.agent && <span>· {entry.agent}</span>}{entry.runtime && <span>· {entry.runtime}</span>}</span></span></button>; })}</div>
       </div>
-    </Card>
-  );
+      <aside className="studio-scroll h-[560px] overflow-y-auto border-t border-border bg-surface-base p-4 lg:border-l lg:border-t-0">{selectedEntry ? <EventDetail entry={selectedEntry} setNotice={setNotice} onJumpToSource={onJumpToSource} onRelatedAgent={onRelatedAgent} onRelatedPrompt={onRelatedPrompt}/> : <div className="flex h-full items-center justify-center text-center text-body-s text-text-muted"><div><TerminalSquare className="mx-auto mb-2 h-6 w-6"/><p>Select an event to inspect stack traces, commands, files, agents, and prompt context.</p></div></div>}</aside>
+    </div>{notice && <div className="border-t border-border px-3 py-2 text-label-s text-text-secondary" role="status">{notice}</div>}
+  </div>;
 }
+
+function EventDetail({ entry, setNotice, onJumpToSource, onRelatedAgent, onRelatedPrompt }: { entry: LogEntry; setNotice: (value: string) => void; onJumpToSource?: (path: string) => void; onRelatedAgent?: (agent: string) => void; onRelatedPrompt?: () => void }) { return <div className="space-y-4"><div><div className="flex items-center gap-2"><Badge variant={entry.severity === 'error' ? 'error' : entry.severity === 'warning' ? 'warning' : 'info'}>{entry.severity}</Badge>{entry.rootCause && <Badge variant="error">Primary root cause</Badge>}{entry.downstream && <Badge>Downstream</Badge>}</div><h3 className="mt-3 text-title-s text-text-primary">{entry.stage ?? entry.step}</h3><time dateTime={entry.timestamp} className="mt-1 block text-label-s text-text-muted">{new Date(entry.timestamp).toLocaleString()}</time></div><p className="whitespace-pre-wrap break-words text-body-s text-text-primary">{entry.message}</p>{entry.explanation && <div className="rounded-lg border border-brand-primary/25 bg-brand-primary-subtle p-3"><p className="text-label-s uppercase tracking-wide text-brand-primary">Recommended action</p><p className="mt-1 text-body-s text-text-primary">{entry.explanation}</p></div>}{entry.stackTrace && <details open className="rounded-lg border border-border bg-surface-canvas"><summary className="cursor-pointer p-3 text-label-m text-text-primary">Stack trace / raw error</summary><pre className="max-h-64 overflow-auto whitespace-pre-wrap border-t border-border p-3 font-mono text-mono-s text-text-secondary">{entry.stackTrace}</pre><div className="border-t border-border p-2"><Button size="sm" variant="ghost" onClick={() => copyText(entry.stackTrace!, setNotice)}><Copy className="h-4 w-4"/> Copy error</Button></div></details>}{entry.command && <section><p className="text-label-s text-text-muted">Command</p><div className="mt-1 flex items-start gap-2 rounded-lg bg-surface-canvas p-2"><code className="min-w-0 flex-1 break-all font-mono text-mono-s">{entry.command}</code><button aria-label="Copy command" onClick={() => copyText(entry.command!, setNotice)}><Clipboard className="h-4 w-4"/></button></div></section>}{entry.relatedFiles?.length ? <section><p className="text-label-s text-text-muted">Related files</p><div className="mt-2 flex flex-wrap gap-2">{entry.relatedFiles.map((path) => <button key={path} disabled={!onJumpToSource} onClick={() => onJumpToSource?.(path)} className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 font-mono text-[11px] text-text-secondary hover:text-brand-primary disabled:opacity-50"><FileCode2 className="h-3.5 w-3.5"/>{path}</button>)}</div></section> : null}{entry.agent && <button disabled={!onRelatedAgent} onClick={() => onRelatedAgent?.(entry.agent!)} className="flex w-full items-center justify-between rounded-lg border border-border p-3 text-body-s text-text-secondary hover:text-brand-primary disabled:opacity-50"><span>Related agent · {entry.agent}</span><ExternalLink className="h-4 w-4"/></button>}{entry.relatedPrompt && <button disabled={!onRelatedPrompt} onClick={onRelatedPrompt} className="flex w-full items-center justify-between rounded-lg border border-border p-3 text-body-s text-text-secondary hover:text-brand-primary disabled:opacity-50"><span className="truncate">Related prompt · {entry.relatedPrompt}</span><ExternalLink className="h-4 w-4 shrink-0"/></button>}</div>; }

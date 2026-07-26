@@ -142,6 +142,54 @@ const FRONTEND_CONTRACTS: FrontendContract[] = [
     sourcePattern: /export\s+async\s+function\s+getProjectFile[\s\S]*?`\/api\/projects\/\$\{projectId\}\/files\/\$\{encodedPath\}`/,
   },
   {
+    fn: 'getProjectRevisionState', method: 'GET', path: '/api/projects/:id/versions',
+    sourcePattern: /export\s+async\s+function\s+getProjectRevisionState[\s\S]*?`\/api\/projects\/\$\{projectId\}\/versions`/,
+  },
+  {
+    fn: 'getProjectRuntime', method: 'GET', path: '/api/projects/:id/runtime',
+    sourcePattern: /export\s+async\s+function\s+getProjectRuntime[\s\S]*?`\/api\/projects\/\$\{projectId\}\/runtime`/,
+  },
+  {
+    fn: 'getProjectMemories', method: 'GET', path: '/api/projects/:id/memories',
+    sourcePattern: /export\s+async\s+function\s+getProjectMemories[\s\S]*?`\/api\/projects\/\$\{projectId\}\/memories/,
+  },
+  {
+    fn: 'createProjectMemory', method: 'POST', path: '/api/projects/:id/memories',
+    sourcePattern: /export\s+async\s+function\s+createProjectMemory[\s\S]*?method:\s*'POST'/,
+  },
+  {
+    fn: 'updateProjectMemory', method: 'PATCH', path: '/api/projects/:id/memories/:memoryId',
+    sourcePattern: /export\s+async\s+function\s+updateProjectMemory[\s\S]*?method:\s*'PATCH'/,
+  },
+  {
+    fn: 'deleteProjectMemory', method: 'DELETE', path: '/api/projects/:id/memories/:memoryId',
+    sourcePattern: /export\s+async\s+function\s+deleteProjectMemory[\s\S]*?method:\s*'DELETE'/,
+  },
+  {
+    fn: 'controlProjectRuntime', method: 'POST', path: '/api/projects/:id/runtime/control',
+    sourcePattern: /export\s+async\s+function\s+controlProjectRuntime[\s\S]*?runtime\/control[\s\S]*?method:\s*'POST'/,
+  },
+  {
+    fn: 'commitProjectFile', method: 'PUT', path: '/api/projects/:id/files/*',
+    sourcePattern: /export\s+async\s+function\s+commitProjectFile[\s\S]*?method:\s*'PUT'/,
+  },
+  {
+    fn: 'createProjectCheckpoint', method: 'POST', path: '/api/projects/:id/checkpoints',
+    sourcePattern: /export\s+async\s+function\s+createProjectCheckpoint[\s\S]*?method:\s*'POST'/,
+  },
+  {
+    fn: 'restoreProjectCheckpoint', method: 'POST', path: '/api/projects/:id/versions/:version/restore',
+    sourcePattern: /export\s+async\s+function\s+restoreProjectCheckpoint[\s\S]*?method:\s*'POST'/,
+  },
+  {
+    fn: 'branchProjectRevision', method: 'POST', path: '/api/projects/:id/versions/:version/branch',
+    sourcePattern: /export\s+async\s+function\s+branchProjectRevision[\s\S]*?method:\s*'POST'/,
+  },
+  {
+    fn: 'compareProjectRevisions', method: 'GET', path: '/api/projects/:id/versions/compare',
+    sourcePattern: /export\s+async\s+function\s+compareProjectRevisions[\s\S]*?versions\/compare\?from=/,
+  },
+  {
     fn: 'updateProject',
     method: 'POST',
     path: '/api/projects/:id/prompts',

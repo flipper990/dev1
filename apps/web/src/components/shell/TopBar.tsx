@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, Building2, Command, Factory, Menu, Moon, PanelRightOpen, Sparkles, Sun } from 'lucide-react';
+import { Building2, Factory, Menu, Moon, PanelRightOpen, Sun } from 'lucide-react';
 import { Badge } from '../../../components/ui/Badge';
 import { IconButton } from '../../../components/ui/IconButton';
 import { cn } from '../../../lib/cn';
@@ -146,8 +146,7 @@ export function TopBar({
             <Factory className="h-4 w-4" aria-hidden="true" />
           </span>
           <div className="hidden min-w-0 sm:block">
-            <p className="truncate text-label-m font-semibold text-text-primary">DEVteam OS</p>
-            <p className="truncate text-label-s text-text-muted">Agent runtime</p>
+            <p className="truncate text-label-m font-semibold text-text-primary">DEVteam</p>
           </div>
         </div>
 
@@ -162,11 +161,7 @@ export function TopBar({
           ) : null}
         </div>
 
-        <div className="hidden min-w-[220px] flex-1 items-center justify-center gap-2 md:flex">
-          <div className="inline-flex items-center gap-2 rounded-full border border-border-muted bg-surface-base/75 px-3 py-1 text-label-s text-text-muted">
-            <Sparkles className="h-3.5 w-3.5 text-brand-primary" />
-            <span>Runtime telemetry live</span>
-          </div>
+        <div className="hidden min-w-[220px] flex-1 items-center justify-center md:flex">
           <div className="hidden 2xl:block">
             <GlobalCommandBar value={searchValue} onChange={onSearchChange} onSubmit={onSearchSubmit} className="max-w-[380px]" />
           </div>
@@ -190,10 +185,9 @@ export function TopBar({
               label={onToggleContext ? 'Toggle context drawer' : 'Context drawer unavailable'}
               onClick={onToggleContext}
               disabled={!onToggleContext}
+              className="xl:hidden"
             />
           ) : null}
-
-          <IconButton icon={<Bell className="h-4 w-4" />} label="Notifications unavailable: no notifications endpoint is connected" disabled className="hidden sm:inline-flex" />
 
           {showThemeToggle ? (
             <IconButton
@@ -203,11 +197,6 @@ export function TopBar({
               disabled={!onToggleTheme}
             />
           ) : null}
-
-          <span className="hidden rounded-full border border-border-muted bg-surface-base/80 px-2 py-1 text-label-s text-text-muted sm:inline-flex">
-            <Command className="mr-1 h-3 w-3" />
-            K
-          </span>
 
           {authLoading ? (
             <button

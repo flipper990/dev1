@@ -27,6 +27,8 @@ const config: Config = {
           raised: 'var(--color-surface-raised)',
           tint: 'var(--color-surface-tint)',
           overlay: 'var(--color-surface-overlay)',
+          card: 'var(--color-surface-base)',
+          muted: 'var(--color-surface-tint)',
         },
         surfaces: {
           base: 'var(--color-surface-base)',
@@ -39,6 +41,7 @@ const config: Config = {
           default: 'var(--color-border-default)',
           muted: 'var(--color-border-muted)',
           strong: 'var(--color-border-strong)',
+          subtle: 'var(--color-border-muted)',
         },
         outline: {
           subtle: 'var(--color-border-muted)',
@@ -49,6 +52,7 @@ const config: Config = {
           secondary: 'var(--color-text-secondary)',
           muted: 'var(--color-text-muted)',
           inverse: 'var(--color-text-inverse)',
+          tertiary: 'var(--color-text-muted)',
         },
         status: {
           success: 'var(--color-status-success)',
@@ -77,6 +81,9 @@ const config: Config = {
           'secondary-hover': 'var(--color-action-secondary-hover)',
           'ghost-hover': 'var(--color-action-ghost-hover)',
         },
+        accent: {
+          primary: 'var(--color-brand-primary)',
+        },
       },
       fontFamily: {
         sans: ['var(--font-sans)', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
@@ -95,6 +102,9 @@ const config: Config = {
         'body-s': ['14px', { lineHeight: '22px', fontWeight: '450', letterSpacing: '0' }],
         'label-m': ['13px', { lineHeight: '18px', fontWeight: '600', letterSpacing: '0' }],
         'label-s': ['12px', { lineHeight: '16px', fontWeight: '600', letterSpacing: '0.01em' }],
+        'label-xs': ['11px', { lineHeight: '15px', fontWeight: '600', letterSpacing: '0.01em' }],
+        'body-xs': ['13px', { lineHeight: '19px', fontWeight: '450', letterSpacing: '0' }],
+        'heading-xs': ['17px', { lineHeight: '24px', fontWeight: '600', letterSpacing: '-0.01em' }],
         'mono-s': ['12px', { lineHeight: '18px', fontWeight: '500', letterSpacing: '0' }],
       },
       spacing: {

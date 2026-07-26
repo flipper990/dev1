@@ -13,11 +13,11 @@ export function Card({ children, interactive, highlight, padded = true, classNam
     <div
       {...rest}
       className={cn(
-        'rounded-[var(--radius-card)] border border-border-muted bg-surface-base text-text-primary shadow-card',
+        'rounded-[var(--radius-card)] border border-border-muted bg-surface-base text-text-primary',
         'transition-[background-color,border-color,box-shadow,transform] duration-160 ease-ledger',
-        interactive && 'cursor-pointer hover:-translate-y-px hover:border-border-strong hover:bg-surface-base hover:shadow-card-lg',
-        highlight && 'border-brand-primary bg-brand-primary-subtle shadow-card-lg',
-        padded ? 'p-5 sm:p-6' : 'p-0',
+        interactive && 'cursor-pointer hover:-translate-y-px hover:border-border-strong hover:bg-surface-raised hover:shadow-md',
+        highlight && 'border-brand-primary/55 bg-brand-primary-subtle',
+        padded ? 'p-4 sm:p-5' : 'p-0',
         className,
       )}
     >

@@ -3,24 +3,18 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Button, EmptyState, Panel } from '../../components/ui';
-import {
-  BuildEvidencePanel,
-  LaunchChecklist,
-  ProjectStatusSummary,
-  SyncWarningPanel,
-  VerificationSummary,
-} from '../../src/features/projects/components';
+import { Button, EmptyState, Panel, Skeleton } from '../../components/ui';
+import { VerificationSummary } from '../../src/features/projects/components';
 import { LogEvidenceView } from '../../src/features/logs/components';
-import { ProductionTimeline } from '../../src/features/agents/components';
+import { PreviewCanvasFrame } from '../../src/features/preview/components';
 import {
-  AgentPipelineRail,
+  CodeWorkbench,
+  ConversationWorkspace,
   DiagnosticsSummary,
-  ExportActionPanel,
-  TrustRail,
+  MemoryWorkspace,
+  RuntimeControlPanel,
   WorkspaceMainPanel,
   WorkspacePageShell,
-  WorkspaceSidePanel,
   WorkspaceStatusArea,
 } from '../../src/features/workspace/components';
 import { useTrackEvent } from '../../src/lib/telemetry/useTrackEvent';
@@ -35,8 +29,13 @@ import { useWorkspaceActions } from '../../src/features/workspace/hooks/useWorks
 
 function WorkspaceLoading() {
   return (
-    <div className="min-h-screen bg-surface-canvas p-6 text-body-s text-text-secondary">
-      Loading workspace...
+    <div role="status" aria-live="polite" aria-busy="true" className="min-h-screen bg-surface-canvas p-4 sm:p-6">
+      <span className="sr-only">Loading engineering workspace</span>
+      <div className="mx-auto grid max-w-[1800px] gap-3 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_320px]">
+        <Skeleton className="hidden h-[calc(100dvh-3rem)] lg:block" />
+        <div className="space-y-4 rounded-[var(--radius-panel)] border border-border-muted bg-surface-base p-5"><Skeleton className="h-8 w-2/5"/><Skeleton className="h-10"/><Skeleton className="h-[60dvh]"/></div>
+        <Skeleton className="hidden h-[calc(100dvh-3rem)] xl:block" />
+      </div>
     </div>
   );
 }
@@ -55,7 +54,9 @@ function WorkspacePageContent() {
   const trackEvent = useTrackEvent();
   const routeProjectId = searchParams.get('projectId');
   const rawTab = searchParams.get('tab');
+  const requestedSource = searchParams.get('source');
   const [optimisticProject, setOptimisticProject] = useState<import('../../types/dashboard').GeneratedProject | null>(null);
+  const [contextMode, setContextMode] = useState<'run' | 'conversation' | 'memory'>('run');
   const handleRouteChanged = useCallback(() => {
     setOptimisticProject(null);
   }, []);
@@ -134,7 +135,7 @@ function WorkspacePageContent() {
         health_state: projectState.status.healthy ? 'healthy' : 'degraded',
       });
     }
-    if (previewState.activeTab === 'build') {
+    if (previewState.activeTab === 'logs') {
       trackEvent('build_timeline_opened', {
         route: '/workspace',
         project_stage: projectState.status.stage,
@@ -146,6 +147,14 @@ function WorkspacePageContent() {
   const workspaceBanner = generationState.errorMessage
     ? { tone: 'error' as const, title: 'Workspace action failed', description: generationState.errorMessage }
     : projectState.workspaceBanner;
+
+  const navigateWorkspace = useCallback((tab: 'code' | 'preview' | 'logs' | 'diagnostics', source?: string) => {
+    previewState.setActiveTab(tab);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', tab);
+    if (source) params.set('source', source);
+    router.replace(`/workspace?${params.toString()}`, { scroll: false });
+  }, [previewState, router, searchParams]);
 
   const tabContent = useMemo(() => {
     const selectedProject = projectState.selectedProject;
@@ -159,152 +168,54 @@ function WorkspacePageContent() {
       return (
         <EmptyState
           title="No project selected"
-          description="Choose a project by projectId or create a new software artifact from the command dock."
+          description="Choose a project or describe what you want to build below."
           action={<Link href="/projects"><Button variant="secondary">Browse projects</Button></Link>}
         />
       );
     }
 
-    if (activeTab === 'preview') {
-      return (
-        <Panel title="Preview details" subtitle="Metadata for the generated application shown above. The iframe itself is rendered once and keyed by selectedProjectId.">
-          <dl className="grid gap-3 text-body-s sm:grid-cols-3">
-            <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3">
-              <dt className="text-label-s text-text-muted">Bound projectId</dt>
-              <dd className="mt-1 break-all font-mono text-mono-s text-text-primary">{selectedProjectId}</dd>
-            </div>
-            <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3">
-              <dt className="text-label-s text-text-muted">Preview state</dt>
-              <dd className="mt-1 text-text-primary">{previewTruth.label}</dd>
-            </div>
-            <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3">
-              <dt className="text-label-s text-text-muted">Runtime</dt>
-              <dd className="mt-1 text-text-primary">{previewTruth.runtimeType ?? 'Not available'}</dd>
-            </div>
-          </dl>
-          {previewTruth.contradictions.length ? (
-            <ul className="mt-3 space-y-2 text-body-s text-status-warning">
-              {previewTruth.contradictions.map((item) => <li key={item}>{item}</li>)}
-            </ul>
-          ) : null}
-        </Panel>
-      );
-    }
+    if (activeTab === 'preview') return (
+      <PreviewCanvasFrame
+        key={previewState.previewKey}
+        title="App preview"
+        ready={Boolean(workspacePreviewBound(selectedProject, selectedProjectId) && previewTruth.isHealthy)}
+        failed={Boolean(workspacePreviewBound(selectedProject, selectedProjectId) && previewTruth.isFailure)}
+        loading={Boolean(workspacePreviewBound(selectedProject, selectedProjectId) && previewTruth.isLoading)}
+        url={workspacePreviewUrl(selectedProject, selectedProjectId)}
+        message="The app preview appears here when the project runtime is ready."
+        device={previewState.previewDevice}
+        onDeviceChange={previewState.setPreviewDevice}
+        previewTruth={previewTruth}
+        onRetry={actions.startOrRetryPreview}
+        retrying={generationState.retryingPreview}
+      />
+    );
 
-    if (activeTab === 'build') {
-      return (
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-          <BuildEvidencePanel
-            pipelineStep={selectedProject.preview?.previewStep ?? (selectedProject.status === 'generating' ? 'Code generation' : 'Build artifact')}
-            checksPassed={selectedProject.verificationStatus === 'passed' ? 2 : selectedProject.status === 'generated' ? 1 : 0}
-            checksTotal={2}
-            runtimeMs={selectedProject.durationMs}
-            costUsd={selectedProject.totalCostUsd}
-          />
-          <ProductionTimeline events={projectState.pipelineEvents} />
-        </div>
-      );
-    }
-
-    if (activeTab === 'verify') {
-      return (
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-          <VerificationSummary
-            runtimeStatus={
-              selectedProject.verificationStatus === 'passed'
-                ? 'passed'
-                : selectedProject.verificationStatus === 'failed' || selectedProject.verificationStatus === 'warning'
-                  ? 'failed'
-                  : 'pending'
-            }
-            qaStatus={selectedProject.verificationStatus === 'passed' ? 'passed' : 'pending'}
-            securityStatus={selectedProject.verificationStatus === 'passed' && previewTruth.isHealthy ? 'passed' : 'pending'}
-          />
-          <Panel title="Verification gate" subtitle="Completion requires required coverage, flow checks, and no critical failures.">
-            <dl className="grid gap-2 text-body-s text-text-secondary sm:grid-cols-2">
-              <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3"><dt>Required verified</dt><dd className="mt-1 text-text-primary">{completionReport.metrics.requiredSatisfiedPct}%</dd></div>
-              <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3"><dt>Flow pass rate</dt><dd className="mt-1 text-text-primary">{completionReport.metrics.flowPassRate}%</dd></div>
-              <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3"><dt>Critical failures</dt><dd className="mt-1 text-text-primary">{completionReport.metrics.criticalFailuresCount}</dd></div>
-              <div className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3"><dt>Completion gate</dt><dd className="mt-1 text-text-primary">{completionReport.canComplete ? 'Pass' : 'Blocked'}</dd></div>
-            </dl>
-            {completionReport.unresolvedRequiredIds.length > 0 ? (
-              <p className="mt-3 text-body-s text-text-secondary">Missing required items: {completionReport.unresolvedRequiredIds.join(', ')}</p>
-            ) : null}
-          </Panel>
-        </div>
-      );
-    }
-
-    if (activeTab === 'activity') {
-      const history = selectedProject.promptHistory ?? [];
-      return (
-        <Panel title="Activity" subtitle="Change requests and lifecycle events for this projectId.">
-          {history.length ? (
-            <ul className="space-y-2">
-              {history.slice(-8).reverse().map((entry, index) => (
-                <li key={`${selectedProject.id}-${entry.createdAt}-${index}`} className="rounded-[var(--radius-control)] border border-border-muted bg-surface-tint p-3">
-                  <p className="text-label-s text-text-muted">{new Date(entry.createdAt).toLocaleString()}</p>
-                  <p className="mt-1 text-body-s text-text-primary">{entry.text}</p>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-body-s text-text-secondary">No change request history is available for this project.</p>
-          )}
-        </Panel>
-      );
-    }
-
-    if (activeTab === 'logs') {
-      return <LogEvidenceView entries={projectState.logEntries} />;
-    }
-
-    if (activeTab === 'export') {
-      return (
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.55fr)]">
-          <WorkspaceSidePanel>
-            <ExportActionPanel
-              project={selectedProject}
-              completionBlocked={!completionReport.canComplete}
-              exporting={generationState.exporting}
-              onExport={actions.handleExport}
-            />
-            <LaunchChecklist
-              items={[
-                { id: 'build', label: 'Code generated successfully', done: selectedProject.status === 'generated' },
-                { id: 'preview', label: 'Preview is healthy', done: previewTruth.isHealthy, note: previewTruth.isHealthy ? undefined : previewTruth.label },
-                { id: 'verify', label: 'Verification checks passed', done: selectedProject.verificationStatus === 'passed' },
-                { id: 'coverage', label: 'Required contract coverage is 100%', done: completionReport.metrics.requiredSatisfiedPct === 100 },
-              ]}
-            />
-          </WorkspaceSidePanel>
-          <TrustRail project={selectedProject} selectedProjectId={selectedProjectId} />
-        </div>
-      );
-    }
+    if (activeTab === 'code') return <CodeWorkbench projectId={selectedProjectId} requestedPath={requestedSource} onProjectChanged={async () => { await projectState.refreshProject(selectedProjectId!); }} />;
+    if (activeTab === 'logs') return <LogEvidenceView entries={projectState.logEntries} onJumpToSource={(path) => navigateWorkspace('code', path)} onRelatedAgent={() => setContextMode('conversation')} onRelatedPrompt={() => setContextMode('conversation')} />;
 
     return (
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.55fr)]">
-        <WorkspaceSidePanel>
-          {status.key === 'stale' ? <SyncWarningPanel retrying={generationState.retryingPreview} onRefresh={actions.startOrRetryPreview} onInspect={() => previewState.setActiveTab('logs')} /> : null}
-          <ProjectStatusSummary
-            status={status}
-            timeline={projectState.timeline}
-            onPrimaryAction={actions.handlePrimaryAction}
-          />
-          <DiagnosticsSummary project={selectedProject} status={status} previewTruth={previewTruth} onOpenLogs={() => previewState.setActiveTab('logs')} onRetryPreview={actions.startOrRetryPreview} retrying={generationState.retryingPreview} />
-        </WorkspaceSidePanel>
-        <TrustRail project={selectedProject} selectedProjectId={selectedProjectId} />
+      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+        <DiagnosticsSummary project={selectedProject} status={status} previewTruth={previewTruth} onOpenLogs={() => navigateWorkspace('logs')} onRetryPreview={actions.startOrRetryPreview} retrying={generationState.retryingPreview} />
+        <div className="space-y-4">
+          <VerificationSummary runtimeStatus={selectedProject.verificationStatus === 'passed' ? 'passed' : selectedProject.verificationStatus === 'failed' || selectedProject.verificationStatus === 'warning' ? 'failed' : 'pending'} qaStatus={selectedProject.verificationStatus === 'passed' ? 'passed' : 'pending'} securityStatus={selectedProject.verificationStatus === 'passed' && previewTruth.isHealthy ? 'passed' : 'pending'} />
+          <Panel title="Release checks" subtitle="The project can ship when required checks pass.">
+            <dl className="grid gap-2 text-body-s text-text-secondary sm:grid-cols-2 2xl:grid-cols-1">
+              <div className="rounded-[var(--radius-control)] bg-surface-tint p-3"><dt>Required checks</dt><dd className="mt-1 text-text-primary">{completionReport.metrics.requiredSatisfiedPct}% complete</dd></div>
+              <div className="rounded-[var(--radius-control)] bg-surface-tint p-3"><dt>Critical issues</dt><dd className="mt-1 text-text-primary">{completionReport.metrics.criticalFailuresCount}</dd></div>
+              <div className="rounded-[var(--radius-control)] bg-surface-tint p-3"><dt>Release status</dt><dd className="mt-1 text-text-primary">{completionReport.canComplete ? 'Ready' : 'Needs attention'}</dd></div>
+            </dl>
+          </Panel>
+        </div>
       </div>
     );
   }, [
-    actions.handleExport,
-    actions.handlePrimaryAction,
     actions.startOrRetryPreview,
-    generationState.exporting,
     generationState.retryingPreview,
     previewState,
     projectState,
+    requestedSource,
+    navigateWorkspace,
   ]);
 
   return (
@@ -315,7 +226,25 @@ function WorkspacePageContent() {
       canAct={Boolean(projectState.selectedProject)}
       onPrimaryAction={actions.handlePrimaryAction}
       liveMessage={generationState.liveMessage}
-      pipelineContent={<AgentPipelineRail events={projectState.pipelineEvents} status={projectState.status} />}
+      pipelineContent={
+        <div className="space-y-4">
+          <nav aria-label="Workspace context" className="grid grid-cols-3 gap-1 rounded-xl border border-border-subtle bg-surface-muted p-1">
+            {(['run', 'conversation', 'memory'] as const).map((mode) => <button key={mode} onClick={() => setContextMode(mode)} aria-current={contextMode === mode ? 'page' : undefined} className={`rounded-lg px-2 py-2 text-label-xs capitalize transition-colors ${contextMode === mode ? 'bg-surface-card text-text-primary shadow-sm' : 'text-text-tertiary hover:text-text-secondary'}`}>{mode === 'conversation' ? 'AI thread' : mode}</button>)}
+          </nav>
+          {contextMode === 'run' && <RuntimeControlPanel
+              projectId={projectState.selectedProjectId}
+              onRefresh={async () => projectState.selectedProjectId ? projectState.refreshProject(projectState.selectedProjectId) : null}
+            />}
+          {contextMode === 'conversation' && <ConversationWorkspace
+              project={projectState.selectedProject}
+              pipelineEvents={projectState.pipelineEvents}
+              busy={generationState.commandBusy || generationState.retryingPreview}
+              onSubmit={async (prompt) => { await actions.handleCommandSubmit(prompt); }}
+              onRefresh={async () => projectState.selectedProjectId ? projectState.refreshProject(projectState.selectedProjectId) : null}
+            />}
+          {contextMode === 'memory' && <MemoryWorkspace projectId={projectState.selectedProjectId} />}
+        </div>
+      }
     >
       <div className="space-y-4">
         <WorkspaceStatusArea
@@ -326,26 +255,20 @@ function WorkspacePageContent() {
           status={projectState.status}
           loading={projectState.projectLoading || projectState.projectsLoading}
           onSelectProject={actions.selectProject}
-          onPrimaryAction={actions.handlePrimaryAction}
         />
 
         <WorkspaceMainPanel
-          selectedProject={projectState.selectedProject}
           selectedProjectId={projectState.selectedProjectId}
-          previewTruth={projectState.previewTruth}
-          previewKey={previewState.previewKey}
-          previewDevice={previewState.previewDevice}
-          onPreviewDeviceChange={previewState.setPreviewDevice}
-          previewUrl={workspacePreviewUrl(projectState.selectedProject, projectState.selectedProjectId)}
-          previewBound={workspacePreviewBound(projectState.selectedProject, projectState.selectedProjectId)}
-          onRetryPreview={projectState.selectedProject ? actions.startOrRetryPreview : undefined}
           retryingPreview={generationState.retryingPreview}
           commandBusy={generationState.commandBusy}
           onCommandSubmit={(command) => { void actions.handleCommandSubmit(command); }}
-          evidenceOpen={previewState.evidenceOpen}
-          onEvidenceToggle={() => previewState.setEvidenceOpen((value) => !value)}
           activeTab={previewState.activeTab}
-          onTabChange={previewState.setActiveTab}
+          onTabChange={(tab) => {
+            previewState.setActiveTab(tab);
+            const params = new URLSearchParams(searchParams.toString());
+            params.set('tab', tab);
+            router.replace(`/workspace?${params.toString()}`, { scroll: false });
+          }}
           tabContent={tabContent}
         />
       </div>

@@ -26,16 +26,16 @@ export function WorkspacePageShell({
 }: WorkspacePageShellProps) {
   return (
     <AppShell
-      title="AI Engineering Runtime"
-      subtitle="Persistent operational workspace for build orchestration, evidence, runtime verification, and shipping."
-      breadcrumbs={[{ label: 'Workspace', href: '/workspace' }, selectedProjectId ? { label: selectedProjectId } : { label: 'No project selected' }]}
-      actions={<Button onClick={onPrimaryAction} disabled={!canAct} className="rounded-full">{nextActionLabel}</Button>}
-      secondaryActions={<Link href="/projects"><Button variant="secondary" className="rounded-full">Projects</Button></Link>}
-      workspaceName="DEVteam Command"
+      title={selectedProjectName || 'Project workspace'}
+      subtitle="Review the app, inspect source, investigate issues, and make changes."
+      breadcrumbs={[{ label: 'Projects', href: '/projects' }, selectedProjectId ? { label: selectedProjectName || selectedProjectId } : { label: 'Workspace' }]}
+      actions={<Button onClick={onPrimaryAction} disabled={!canAct}>{nextActionLabel}</Button>}
+      secondaryActions={<Link href="/projects"><Button variant="ghost">Projects</Button></Link>}
+      workspaceName="DEVteam"
       projectName={selectedProjectName}
       compactHeader
-      contextTitle="Agent Pipeline"
-      contextDescription="Live execution graph, runtime checks, and verification stream."
+      contextTitle="AI workspace"
+      contextDescription="Requests, agent activity, revisions, and results."
       contextContent={pipelineContent}
     >
       <section aria-live="polite" className="sr-only">{liveMessage}</section>

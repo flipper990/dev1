@@ -55,12 +55,20 @@ function buildPipelineEvents(timeline: WorkflowTimelineViewModel): TimelineEvent
 
 function buildLogEntries(project: GeneratedProject | null, selectedProjectId: string | null): LogEntry[] {
   if (!previewIsBound(project, selectedProjectId)) return [];
+  if (!project) return [];
   const preview = project?.preview;
-  if (!preview) return [];
-
   const entries: LogEntry[] = [];
+  const relatedPrompt = project?.prompts?.at(-1);
+  const filePaths = [...new Set((project.promptHistory ?? []).flatMap((entry) => [...(entry.changedFiles ?? []), ...(entry.added ?? []), ...(entry.modified ?? []), ...(entry.removed ?? [])]))];
+  const relatedFiles = (text: string) => filePaths.filter((path) => text.includes(path) || text.includes(path.split('/').at(-1) ?? path)).slice(0, 8);
+  const ledger = (project?.diagnostics?.pipelineLedger as { records?: Array<Record<string, unknown>> } | undefined)?.records ?? [];
+  ledger.forEach((record, index) => {
+    const message = String(record.errorMessage ?? record.summary ?? `${String(record.phase ?? record.stepId ?? 'pipeline')} ${String(record.status ?? 'recorded')}`);
+    const statusValue = String(record.status ?? 'completed');
+    entries.push({ id: String(record.id ?? `${project!.id}-ledger-${index}`), timestamp: String(record.completedAt ?? record.startedAt ?? project!.createdAt), severity: ['failed', 'blocked'].includes(statusValue) ? 'error' : statusValue === 'retrying' || Number(record.retryCount ?? 0) > 0 ? 'warning' : 'info', step: String(record.stepId ?? record.phase ?? 'pipeline'), stage: String(record.phase ?? 'pipeline'), agent: record.agentRole ? String(record.agentRole) : undefined, runtime: 'generation', message, stackTrace: record.errorMessage ? String(record.errorMessage) : undefined, relatedFiles: relatedFiles(message), relatedPrompt });
+  });
 
-  preview.timeline?.slice(-8).forEach((event, index) => {
+  preview?.timeline?.forEach((event, index) => {
     const message = event.stderrTail ?? event.stdoutTail ?? JSON.stringify(event.details ?? { status: event.previewStatus });
     entries.push({
       id: `${project.id}-timeline-${event.event}-${index}`,
@@ -69,10 +77,16 @@ function buildLogEntries(project: GeneratedProject | null, selectedProjectId: st
       step: event.event,
       message,
       explanation: event.durationMs ? `Duration ${Math.round(event.durationMs / 1000)}s` : undefined,
+      stage: event.event,
+      runtime: preview.previewRuntime ?? 'preview',
+      stackTrace: event.stderrTail,
+      command: typeof event.details?.command === 'string' ? event.details.command : undefined,
+      relatedFiles: relatedFiles(message),
+      relatedPrompt,
     });
   });
 
-  if (preview.previewRuntimeLog) {
+  if (preview?.previewRuntimeLog) {
     entries.push({
       id: `${project.id}-runtime-log`,
       timestamp: preview.previewRuntimeLog.capturedAt,
@@ -80,10 +94,12 @@ function buildLogEntries(project: GeneratedProject | null, selectedProjectId: st
       step: preview.previewStep ?? 'runtime-log',
       message: preview.previewRuntimeLog.stderrTail ?? preview.previewRuntimeLog.stdoutTail ?? 'Runtime process snapshot captured without output.',
       explanation: preview.previewRuntimeLog.cmd ? `Command: ${preview.previewRuntimeLog.cmd}` : undefined,
+      stage: preview.previewStep ?? 'runtime', runtime: preview.previewRuntime ?? 'preview', stackTrace: preview.previewRuntimeLog.stderrTail ?? undefined, command: preview.previewRuntimeLog.cmd ?? undefined,
+      relatedFiles: relatedFiles(preview.previewRuntimeLog.stderrTail ?? preview.previewRuntimeLog.stdoutTail ?? ''), relatedPrompt,
     });
   }
 
-  if (preview.previewError) {
+  if (preview?.previewError) {
     entries.push({
       id: `${project.id}-preview-error`,
       timestamp: preview.previewFailedAt ?? new Date().toISOString(),
@@ -91,10 +107,30 @@ function buildLogEntries(project: GeneratedProject | null, selectedProjectId: st
       step: preview.previewStep ?? 'preview-failed',
       message: preview.previewError,
       explanation: 'Use this evidence to scope the next repair request.',
+      stage: preview.previewStep ?? 'preview', runtime: preview.previewRuntime ?? 'preview', stackTrace: preview.previewError, relatedFiles: relatedFiles(preview.previewError), relatedPrompt,
     });
   }
 
-  if (entries.length === 0) {
+  project?.executionValidation?.buildErrors?.forEach((message, index) => entries.push({ id: `${project.id}-build-${index}`, timestamp: project.completedAt ?? project.createdAt, severity: 'error', step: 'build-validation', stage: 'verification', runtime: 'build', message, stackTrace: message, command: 'npm run build', relatedFiles: relatedFiles(message), relatedPrompt }));
+  project?.executionValidation?.runtimeErrors?.forEach((message, index) => entries.push({ id: `${project.id}-execution-${index}`, timestamp: project.completedAt ?? project.createdAt, severity: 'error', step: 'runtime-validation', stage: 'verification', runtime: 'runtime', message, stackTrace: message, relatedFiles: relatedFiles(message), relatedPrompt }));
+  project?.runtimeValidation?.issues?.forEach((issue, index) => { const message = `${issue.category}: ${issue.message}`; entries.push({ id: `${project.id}-issue-${index}`, timestamp: project.completedAt ?? project.createdAt, severity: 'warning', step: issue.category, stage: 'runtime-validation', runtime: 'runtime', message, explanation: issue.hint, relatedFiles: relatedFiles(message), relatedPrompt }); });
+
+  const failureTrace = project?.diagnostics?.generationFailureTrace as { failedPhase?: string; failedStep?: string; failedAgent?: string; summary?: string; error?: string; recommendedAction?: string } | undefined;
+  if (failureTrace) {
+    const message = failureTrace.summary ?? failureTrace.error ?? `Generation failed in ${failureTrace.failedPhase ?? 'unknown phase'}`;
+    entries.push({ id: `${project.id}-root-cause`, timestamp: project.completedAt ?? project.createdAt, severity: 'error', step: failureTrace.failedStep ?? failureTrace.failedPhase ?? 'generation-failure', stage: failureTrace.failedPhase ?? 'generation', agent: failureTrace.failedAgent, runtime: 'generation', message, stackTrace: failureTrace.error, explanation: failureTrace.recommendedAction, relatedFiles: relatedFiles(message), relatedPrompt, rootCause: true });
+  }
+
+  entries.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  const rootIndex = entries.findIndex((entry) => entry.rootCause);
+  const firstErrorIndex = entries.findIndex((entry) => entry.severity === 'error');
+  const causeIndex = rootIndex >= 0 ? rootIndex : firstErrorIndex;
+  if (causeIndex >= 0) {
+    entries[causeIndex] = { ...entries[causeIndex], rootCause: true };
+    for (let index = causeIndex + 1; index < entries.length; index++) if (entries[index].severity === 'error') entries[index] = { ...entries[index], downstream: true };
+  }
+
+  if (entries.length === 0 && preview) {
     entries.push({
       id: `${project.id}-no-runtime-evidence`,
       timestamp: new Date().toISOString(),

@@ -97,7 +97,7 @@ export function useWorkspaceActions(params: {
   } = params;
 
   const selectProject = useCallback((projectId: string) => {
-    router.push(`/workspace?projectId=${encodeURIComponent(projectId)}${activeTab !== 'overview' ? `&tab=${activeTab}` : ''}`);
+    router.push(`/workspace?projectId=${encodeURIComponent(projectId)}&tab=${activeTab}`);
   }, [activeTab, router]);
 
   const startOrRetryPreview = useCallback(async () => {
@@ -151,7 +151,7 @@ export function useWorkspaceActions(params: {
       return;
     }
     if (previewTruth.isPlaceholder) {
-      setActiveTab('verify');
+      setActiveTab('diagnostics');
       return;
     }
     if (status.key === 'preview-failed' || status.key === 'build-complete' || status.key === 'stale') {
@@ -163,14 +163,14 @@ export function useWorkspaceActions(params: {
       return;
     }
     if (status.key === 'verification-pending' || status.key === 'preview-ready') {
-      setActiveTab('verify');
+      setActiveTab('diagnostics');
       return;
     }
     if (status.key === 'launch-ready') {
-      setActiveTab('export');
+      setActiveTab('diagnostics');
       return;
     }
-    setActiveTab('build');
+    setActiveTab('logs');
   }, [previewTruth.isBroken, previewTruth.isFailure, previewTruth.isPlaceholder, selectedProject, setActiveTab, startOrRetryPreview, status.key]);
 
   const handleCommandSubmit = useCallback(async (command: string) => {
@@ -189,7 +189,7 @@ export function useWorkspaceActions(params: {
         });
         await updateProject(selectedProjectId, command);
         await refreshProject(selectedProjectId);
-        setActiveTab('build');
+        setActiveTab('logs');
       } else {
         setLiveMessage('Creating a new project from command dock.');
         trackEvent('command_submitted', {
@@ -200,9 +200,9 @@ export function useWorkspaceActions(params: {
         const result = await generateProject(command);
         const optimistic = makeOptimisticProject(result.projectId, command, result.project.name);
         setOptimisticProject(optimistic);
-        router.replace(`/workspace?projectId=${encodeURIComponent(result.projectId)}&tab=build`);
+        router.replace(`/workspace?projectId=${encodeURIComponent(result.projectId)}&tab=logs`);
         await refreshProject(result.projectId);
-        setActiveTab('build');
+        setActiveTab('logs');
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Command failed.');

@@ -11,7 +11,6 @@ interface WorkspaceStatusAreaProps {
   status: UnifiedProjectStatus;
   loading: boolean;
   onSelectProject: (projectId: string) => void;
-  onPrimaryAction: () => void;
 }
 
 export function WorkspaceStatusArea({
@@ -22,7 +21,6 @@ export function WorkspaceStatusArea({
   status,
   loading,
   onSelectProject,
-  onPrimaryAction,
 }: WorkspaceStatusAreaProps) {
   return (
     <>
@@ -35,7 +33,6 @@ export function WorkspaceStatusArea({
         status={status}
         loading={loading}
         onSelectProject={onSelectProject}
-        onPrimaryAction={onPrimaryAction}
       />
     </>
   );

@@ -3,19 +3,15 @@
 import Link from 'next/link';
 import type { ComponentType } from 'react';
 import {
-  Activity,
-  Bot,
   BookOpen,
   Boxes,
   CreditCard,
-  FileWarning,
   FolderKanban,
   House,
   PanelLeft,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
-  Settings,
   ShieldCheck,
   Wrench,
 } from 'lucide-react';
@@ -42,15 +38,11 @@ interface LeftNavProps {
 export const DEFAULT_NAV_ITEMS: LeftNavItem[] = [
   { label: 'Overview', href: '/overview', icon: House, section: 'studio' },
   { label: 'Projects', href: '/projects', icon: FolderKanban, section: 'studio' },
-  { label: 'Workspace / Builder', href: '/workspace', icon: Wrench, section: 'studio' },
-  { label: 'Activity', href: '/agents', icon: Activity, section: 'operations' },
-  { label: 'Diagnostics', href: '/workspace?tab=logs', icon: FileWarning, section: 'operations' },
+  { label: 'Workspace', href: '/workspace', icon: Wrench, section: 'studio' },
   { label: 'Deployments', href: '/deployments', icon: Boxes, section: 'operations' },
-  { label: 'Agent runtime', href: '/agents', icon: Bot, section: 'operations' },
   { label: 'Docs', href: '/docs', icon: BookOpen, section: 'operations' },
   { label: 'Billing', href: '/billing', icon: CreditCard, section: 'administration' },
-  { label: 'Settings', href: '/settings', icon: Settings, section: 'administration' },
-  { label: 'Security / Admin', href: '/security', icon: ShieldCheck, section: 'administration' },
+  { label: 'Enterprise controls', href: '/settings', icon: ShieldCheck, section: 'administration' },
 ];
 
 const SECTION_LABELS: Record<NonNullable<LeftNavItem['section']>, string> = {
@@ -102,8 +94,8 @@ export function LeftNav({
     >
       <div className={cn('mb-3.5 flex items-center gap-2', collapsed ? 'justify-center' : 'justify-between')}>
         <div className={cn('min-w-0', collapsed && 'sr-only')}>
-          <p className="text-label-s uppercase tracking-[0.15em] text-text-muted">Runtime</p>
-          <p className="mt-1 truncate text-label-m text-text-primary">Mission control</p>
+          <p className="text-label-s uppercase tracking-[0.15em] text-text-muted">Workspace</p>
+          <p className="mt-1 truncate text-label-m text-text-primary">DEVteam</p>
         </div>
         <IconButton
           icon={collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
@@ -115,18 +107,18 @@ export function LeftNav({
       </div>
 
       <div className={cn('mb-3.5', collapsed ? 'px-0.5' : 'px-1')}>
-        <button
-          type="button"
+        <Link
+          href="/workspace"
           className={cn(
             'flex min-h-10 w-full items-center gap-2 rounded-full border border-border-muted bg-surface-tint px-3 text-label-s text-text-secondary',
             'transition-colors duration-160 ease-ledger hover:border-border-strong hover:text-text-primary',
             collapsed && 'justify-center px-0',
           )}
-          title="Create project"
+          title="New project"
         >
           <Plus className="h-4 w-4 shrink-0" />
-          <span className={cn(collapsed && 'sr-only')}>New mission</span>
-        </button>
+          <span className={cn(collapsed && 'sr-only')}>New project</span>
+        </Link>
       </div>
 
       <nav aria-label="Primary" className="studio-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
@@ -190,7 +182,7 @@ export function LeftNav({
 
       <div className={cn('mt-3.5 flex items-center rounded-[14px] bg-surface-tint px-2 py-1.5', collapsed ? 'justify-center' : 'justify-between')}>
         <PanelLeft className="h-4 w-4 text-text-muted" />
-        <span className={cn('text-label-s text-text-muted', collapsed && 'sr-only')}>Dock mode</span>
+        <span className={cn('text-label-s text-text-muted', collapsed && 'sr-only')}>Navigation</span>
       </div>
     </aside>
   );

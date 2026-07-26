@@ -8,6 +8,7 @@ const ROUTES = [
   '/projects',
   '/workspace',
   '/agents',
+  '/settings',
 ];
 
 const FLAG_VARIANTS = [

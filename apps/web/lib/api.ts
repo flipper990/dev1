@@ -500,6 +500,92 @@ export async function getProjectFile(projectId: string, filePath: string): Promi
   return normalizeFileContent(raw, filePath);
 }
 
+export interface RevisionDiff {
+  path: string;
+  op: 'added' | 'modified' | 'deleted';
+  additions: number;
+  deletions: number;
+  before?: string;
+  after?: string;
+}
+
+export interface ProjectRevisionState {
+  currentVersion: number;
+  history: Array<{ version: number; createdAt: string; prompts: string[]; diffs: RevisionDiff[]; totalTokens: number; totalCostUsd: number; durationMs: number }>;
+}
+
+export async function getProjectRevisionState(projectId: string): Promise<ProjectRevisionState> {
+  return request<ProjectRevisionState>(`/api/projects/${projectId}/versions`);
+}
+
+export type RuntimeCommand = 'pause' | 'resume' | 'stop' | 'skip-stage' | 'approve-stage' | 'reject-stage' | 'retry-stage' | 'retry-run';
+
+export interface ProjectRuntimeStatus {
+  projectId: string;
+  sessionId?: string;
+  control: { state: string; stage: string; approvedStages: string[]; rejectedStages: string[]; skippedStages: string[]; retryCount: number; updatedAt: string };
+  progress: number;
+  currentAgent: string | null;
+  currentTask: string | null;
+  etaMs: number | null;
+  elapsedMs: number;
+  tokens: number;
+  costUsd: number;
+  retries: number;
+  dependencies: Array<{ id: string; name: string; status: string }>;
+  artifacts: { count: number; files: string[] };
+  steps: Array<{ id: string; name: string; agent: string; status: string; durationMs?: number; attempt?: number; error?: string }>;
+  failureReason: string | null;
+}
+
+export async function getProjectRuntime(projectId: string): Promise<ProjectRuntimeStatus> {
+  return request<ProjectRuntimeStatus>(`/api/projects/${projectId}/runtime`);
+}
+
+export async function controlProjectRuntime(projectId: string, command: RuntimeCommand): Promise<{ command: RuntimeCommand; control?: ProjectRuntimeStatus['control']; state?: string; sessionId?: string }> {
+  return request(`/api/projects/${projectId}/runtime/control`, { method: 'POST', body: JSON.stringify({ command }) });
+}
+
+export interface MemoryCatalogEntry {
+  id: string; content: string; source: string; origin: string; scope: string; agentRole: string; type: string;
+  tags: string[]; createdAt: string | null; lastUsedAt: string | null; relevanceScore: number; effectiveness: number | null;
+  confidence: number; accessCount: number; sizeBytes: number; usedByRunIds: string[]; pinned: boolean; editable: boolean; deletable: boolean;
+}
+export interface MemoryInfluence { id: string; projectId: string; runId: string; taskId: string; agentRole: string; memoryId: string; source: string; content: string; relevanceScore: number; effectiveness: number | null; usedAt: string; rank: number; injectedChars: number; }
+export interface MemoryCatalog { projectId: string; runId: string; entries: MemoryCatalogEntry[]; influences: MemoryInfluence[]; }
+export interface MemoryDraft { content: string; source: 'project' | 'agent' | 'shared' | 'long-term' | 'generation-rule'; agentRole: 'spec' | 'builder' | 'qa' | 'polish' | 'global'; type: string; tags: string[]; relevanceScore: number; pinned: boolean; }
+
+export async function getProjectMemories(projectId: string, filters?: { q?: string; source?: string; runId?: string; pinned?: boolean }): Promise<MemoryCatalog> {
+  const params = new URLSearchParams();
+  if (filters?.q) params.set('q', filters.q); if (filters?.source && filters.source !== 'all') params.set('source', filters.source);
+  if (filters?.runId) params.set('runId', filters.runId); if (filters?.pinned) params.set('pinned', 'true');
+  return request<MemoryCatalog>(`/api/projects/${projectId}/memories${params.size ? `?${params}` : ''}`);
+}
+export async function createProjectMemory(projectId: string, draft: MemoryDraft): Promise<{ id: string }> { return request(`/api/projects/${projectId}/memories`, { method: 'POST', body: JSON.stringify(draft) }); }
+export async function updateProjectMemory(projectId: string, memoryId: string, patch: Partial<Pick<MemoryDraft, 'content' | 'tags' | 'relevanceScore' | 'pinned'>>): Promise<{ entry: MemoryCatalogEntry }> { return request(`/api/projects/${projectId}/memories/${memoryId}`, { method: 'PATCH', body: JSON.stringify(patch) }); }
+export async function deleteProjectMemory(projectId: string, memoryId: string): Promise<void> { await request(`/api/projects/${projectId}/memories/${memoryId}`, { method: 'DELETE' }); }
+
+export async function commitProjectFile(projectId: string, filePath: string, content: string, expectedVersion: number): Promise<{ version: number; file: ProjectFileContent; diffs: RevisionDiff[] }> {
+  const encodedPath = filePath.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+  return request(`/api/projects/${projectId}/files/${encodedPath}`, { method: 'PUT', body: JSON.stringify({ content, expectedVersion }) });
+}
+
+export async function createProjectCheckpoint(projectId: string, label: string, expectedVersion: number): Promise<{ version: number; createdAt: string; label: string }> {
+  return request(`/api/projects/${projectId}/checkpoints`, { method: 'POST', body: JSON.stringify({ label, expectedVersion }) });
+}
+
+export async function restoreProjectCheckpoint(projectId: string, sourceVersion: number, expectedVersion: number): Promise<{ version: number; restoredFromVersion: number; diffs: RevisionDiff[] }> {
+  return request(`/api/projects/${projectId}/versions/${sourceVersion}/restore`, { method: 'POST', body: JSON.stringify({ expectedVersion }) });
+}
+
+export async function branchProjectRevision(projectId: string, sourceVersion: number, name?: string): Promise<{ projectId: string; branchedFromProjectId: string; branchedFromVersion: number }> {
+  return request(`/api/projects/${projectId}/versions/${sourceVersion}/branch`, { method: 'POST', body: JSON.stringify(name ? { name } : {}) });
+}
+
+export async function compareProjectRevisions(projectId: string, fromVersion: number, toVersion: number): Promise<{ fromVersion: number; toVersion: number; diffs: RevisionDiff[] }> {
+  return request(`/api/projects/${projectId}/versions/compare?from=${fromVersion}&to=${toVersion}`);
+}
+
 export async function updateProject(
   projectId: string,
   prompt: string,

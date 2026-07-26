@@ -14,11 +14,11 @@ export function EmptyState({ title, description, action, icon, className }: Empt
   return (
     <div
       className={cn(
-        'rounded-[var(--radius-panel)] border border-dashed border-border bg-surface-base px-6 py-10 text-center sm:px-8',
+        'studio-enter rounded-[var(--radius-panel)] border border-dashed border-border-muted bg-surface-base px-6 py-12 text-center sm:px-8',
         className,
       )}
     >
-      <div className="mx-auto inline-grid h-12 w-12 place-items-center rounded-full border border-border-muted bg-surface-raised text-text-muted shadow-hairline">
+      <div aria-hidden="true" className="mx-auto inline-grid h-11 w-11 place-items-center rounded-[var(--radius-card)] border border-border-muted bg-surface-raised text-text-muted">
         {icon ?? <Inbox className="h-5 w-5" aria-hidden="true" />}
       </div>
       <h3 className="mt-4 text-title-s font-semibold text-text-primary">{title}</h3>

@@ -186,6 +186,7 @@ export interface PromptExample {
 
 export interface AgentHooks {
   beforeExecute?: (ctx: ExecutionContext, task: Task) => Promise<Task>;
+  onMemoriesLoaded?: (ctx: ExecutionContext, task: Task, memories: MemoryEntry[]) => Promise<void>;
   afterExecute?:  (ctx: ExecutionContext, task: Task) => Promise<Task>;
   onError?:       (ctx: ExecutionContext, task: Task, error: Error) => Promise<void>;
   onRetry?:       (ctx: ExecutionContext, task: Task, attempt: number) => Promise<boolean>;

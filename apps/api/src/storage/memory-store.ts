@@ -13,6 +13,8 @@ import type {
   Logger,
 } from '../../../../packages/agent-core/src/base-agent.js';
 import { jaccardSimilarity, tokenize, textMatchScore } from './memory-text-utils.js';
+import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { hydrateEntry, touchEntry, rankEntry } from './memory-entry-helpers.js';
 import {
   type StoreKey,
@@ -32,6 +34,12 @@ export type { MemoryStats } from './memory-store-ops.js';
 export type { StoreKey } from './memory-store-io.js';
 export { ALL_ROLES } from './memory-store-io.js';
 
+export interface MemoryInfluenceRecord {
+  id: string; projectId: string; runId: string; taskId: string; agentRole: string;
+  memoryId: string; source: string; content: string; relevanceScore: number;
+  effectiveness: number | null; usedAt: string; rank: number; injectedChars: number;
+}
+
 export class FileMemoryStore implements MemoryStore {
   private baseDir: string;
   private logger: Logger;
@@ -45,6 +53,7 @@ export class FileMemoryStore implements MemoryStore {
 
   private loaded = false;
   private persistDebounce = new Map<StoreKey, ReturnType<typeof setTimeout>>();
+  private influenceLedger: MemoryInfluenceRecord[] = [];
 
   constructor(baseDir: string, logger: Logger) {
     this.baseDir = baseDir;
@@ -56,7 +65,66 @@ export class FileMemoryStore implements MemoryStore {
     const { cache, idIndex } = await loadMemoriesFromDisk(this.baseDir, this.logger);
     this.longTermCache = cache;
     this.idIndex = idIndex;
+    try { this.influenceLedger = JSON.parse(await readFile(join(this.baseDir, 'influence.json'), 'utf-8')) as MemoryInfluenceRecord[]; } catch { this.influenceLedger = []; }
     this.loaded = true;
+  }
+
+  inspectAll(sessionId?: string): MemoryEntry[] {
+    const persisted = [...this.longTermCache.values()].flat();
+    const ephemeral = sessionId
+      ? [...this.shortTermStore.entries()].filter(([key]) => key.startsWith(`${sessionId}:`)).flatMap(([, entries]) => entries)
+      : [];
+    return [...persisted, ...ephemeral].map((entry) => ({ ...entry, tags: [...entry.tags], metadata: { ...entry.metadata } }));
+  }
+
+  async createManaged(entry: MemoryEntryInput): Promise<MemoryEntry> {
+    const full = hydrateEntry(entry);
+    const role = full.agentRole as StoreKey;
+    const entries = this.longTermCache.get(role) ?? [];
+    entries.push(full); this.longTermCache.set(role, entries); this.idIndex.set(full.id, role);
+    await this.persistRole(role);
+    return { ...full };
+  }
+
+  async updateManaged(id: string, patch: { content?: string; tags?: string[]; relevanceScore?: number; pinned?: boolean }): Promise<MemoryEntry | null> {
+    const role = this.idIndex.get(id); if (!role) return null;
+    const entry = (this.longTermCache.get(role) ?? []).find((candidate) => candidate.id === id); if (!entry) return null;
+    if (patch.content !== undefined) entry.content = patch.content;
+    if (patch.tags !== undefined) entry.tags = [...new Set(patch.tags)];
+    if (patch.relevanceScore !== undefined) entry.relevanceScore = patch.relevanceScore;
+    if (patch.pinned !== undefined) entry.metadata = { ...entry.metadata, pinned: patch.pinned };
+    entry.metadata = { ...entry.metadata, updatedAt: new Date().toISOString() };
+    await this.persistRole(role); return { ...entry };
+  }
+
+  async deleteManaged(id: string): Promise<boolean> {
+    const role = this.idIndex.get(id); if (!role) return false;
+    const entries = this.longTermCache.get(role) ?? []; const next = entries.filter((entry) => entry.id !== id);
+    if (next.length === entries.length) return false;
+    this.longTermCache.set(role, next); this.idIndex.delete(id); await this.persistRole(role); return true;
+  }
+
+  async recordInfluence(input: { projectId: string; runId: string; taskId: string; agentRole: string; memories: MemoryEntry[] }): Promise<void> {
+    const usedAt = new Date().toISOString();
+    input.memories.forEach((memory, rank) => this.influenceLedger.push({
+      id: `${input.runId}:${input.taskId}:${memory.id}`, projectId: input.projectId, runId: input.runId,
+      taskId: input.taskId, agentRole: input.agentRole, memoryId: memory.id,
+      source: memory.sessionId ? 'short-term' : memory.agentRole === 'global' ? String(memory.metadata.source ?? 'global') : String(memory.metadata.projectId ? 'project' : 'agent'),
+      content: memory.content, relevanceScore: memory.relevanceScore,
+      effectiveness: Number.isFinite(memory.effectiveness) ? memory.effectiveness : null,
+      usedAt, rank, injectedChars: memory.content.length,
+    }));
+    const governedRules = [
+      { memoryId: 'system:global', source: 'system-rule', content: 'Platform safety, validation, agent conduct, and secure generation contract.' },
+      { memoryId: 'generation:deterministic', source: 'generation-rule', content: 'Incremental generation, dependency, integrity, QA, and deterministic validation rules.' },
+    ];
+    governedRules.forEach((rule, index) => this.influenceLedger.push({ id: `${input.runId}:${input.taskId}:${rule.memoryId}`, projectId: input.projectId, runId: input.runId, taskId: input.taskId, agentRole: input.agentRole, memoryId: rule.memoryId, source: rule.source, content: rule.content, relevanceScore: 2, effectiveness: null, usedAt, rank: input.memories.length + index, injectedChars: rule.content.length }));
+    if (this.influenceLedger.length > 20_000) this.influenceLedger = this.influenceLedger.slice(-20_000);
+    await writeFile(join(this.baseDir, 'influence.json'), JSON.stringify(this.influenceLedger, null, 2), 'utf-8');
+  }
+
+  getInfluence(projectId: string, runId?: string): MemoryInfluenceRecord[] {
+    return this.influenceLedger.filter((record) => record.projectId === projectId && (!runId || record.runId === runId));
   }
 
   // ── Short-Term Memory (session-scoped, in-memory) ──────────────

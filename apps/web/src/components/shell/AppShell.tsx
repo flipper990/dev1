@@ -61,6 +61,7 @@ export function AppShell({
   const [leftNavCollapsed, setLeftNavCollapsed] = useState(false);
   const [contextOpen, setContextOpen] = useState(defaultContextOpen);
   const [themeDark, setThemeDark] = useState(true);
+  const [themeReady, setThemeReady] = useState(false);
   const [currentRoute, setCurrentRoute] = useState(pathname);
   const keyboardTrackedRef = useRef(false);
   const variantTrackedRef = useRef(false);
@@ -92,6 +93,7 @@ export function AppShell({
   }, [pathname]);
 
   useEffect(() => {
+    if (!themeReady) return;
     const root = document.documentElement;
     root.dataset.theme = themeDark ? 'dark' : 'light';
     root.classList.toggle('theme-dark', themeDark);
@@ -100,7 +102,7 @@ export function AppShell({
     } catch {
       // Ignore persistence failures in restricted environments.
     }
-  }, [themeDark]);
+  }, [themeDark, themeReady]);
 
   useEffect(() => {
     try {
@@ -109,7 +111,7 @@ export function AppShell({
       if (saved === 'dark') setThemeDark(true);
     } catch {
       // Use default theme when storage is unavailable.
-    }
+    } finally { setThemeReady(true); }
   }, []);
 
   useEffect(() => {
@@ -263,8 +265,8 @@ export function AppShell({
         showContextToggle={hasContext}
       />
 
-      <div className="mx-auto w-full max-w-[1780px] px-3 py-3 sm:px-4 sm:py-4 lg:px-6">
-        <div className={cn('grid min-w-0 gap-3 xl:grid-cols-[auto_minmax(0,1fr)_minmax(292px,344px)]', hasContext ? '' : 'xl:grid-cols-[auto_minmax(0,1fr)]')}>
+      <div className="mx-auto w-full max-w-[1920px] px-2 py-2 sm:px-3 sm:py-3 lg:px-4">
+        <div className={cn('grid min-w-0 gap-2.5 xl:grid-cols-[auto_minmax(0,1fr)_minmax(292px,336px)]', hasContext ? '' : 'xl:grid-cols-[auto_minmax(0,1fr)]')}>
           <div className="hidden min-h-[var(--shell-content-min-height)] shrink-0 lg:block">
             <div className="sticky top-[calc(var(--shell-header-offset)+10px)] h-[calc(var(--shell-content-min-height)-12px)]">
               <LeftNav
@@ -293,8 +295,8 @@ export function AppShell({
             </div>
           ) : null}
 
-          <main className="studio-surface min-w-0 overflow-hidden rounded-[var(--radius-modal)]">
-            <section className="studio-scroll mx-auto min-h-[var(--shell-content-min-height)] w-full max-w-[1400px] overflow-y-auto px-4 pb-[calc(var(--safe-bottom)+var(--space-6))] pt-5 sm:px-6 sm:pt-6 lg:px-8 lg:pt-8 xl:px-10">
+          <main className="studio-surface min-h-0 min-w-0 overflow-hidden rounded-[var(--radius-panel)]">
+            <section className="studio-scroll mx-auto h-[var(--shell-content-min-height)] w-full max-w-[1580px] overflow-y-auto px-4 pb-[calc(var(--safe-bottom)+var(--space-6))] pt-4 sm:px-5 sm:pt-5 lg:px-6 lg:pt-6 xl:px-7">
               <PageHeader
                 title={title}
                 subtitle={subtitle}
@@ -303,14 +305,14 @@ export function AppShell({
                 secondaryActions={secondaryActions}
                 breadcrumbs={breadcrumbs}
                 compact={compactHeader}
-                className="border-border px-0 pb-5"
+                className="border-border-muted px-0 pb-4"
               />
-              <div className={cn('min-w-0', compactHeader ? 'pt-4' : 'pt-6 sm:pt-7')}>{children}</div>
+              <div className={cn('studio-enter min-w-0', compactHeader ? 'pt-3' : 'pt-5 sm:pt-6')}>{children}</div>
             </section>
           </main>
 
           {hasContext ? (
-            <aside className="studio-surface-soft studio-scroll hidden min-h-[var(--shell-content-min-height)] overflow-y-auto rounded-[var(--radius-modal)] p-3.5 xl:block">
+            <aside className="studio-surface-soft studio-scroll hidden h-[var(--shell-content-min-height)] overflow-y-auto rounded-[var(--radius-panel)] p-3 xl:block">
               <div className="mb-3.5 border-b border-border-muted pb-2.5">
                 <h2 className="text-label-m text-text-primary">{contextTitle}</h2>
                 {contextDescription ? <p className="mt-1 text-body-s text-text-secondary">{contextDescription}</p> : null}

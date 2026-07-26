@@ -96,6 +96,7 @@ export abstract class BaseAgent {
 
       const memories = await loadMemories(task, this.definition, this.memory, this.logger);
       this._lastLoadedMemories = memories;
+      if (this.hooks.onMemoriesLoaded) await this.hooks.onMemoriesLoaded(ctx, task, memories);
       this.logger.debug(`[${this.definition.role}] Loaded ${memories.length} memories`, {
         traceId: ctx.traceId,
         shortTerm: memories.filter(m => m.sessionId).length,

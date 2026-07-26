@@ -405,6 +405,52 @@ export class ProjectGenerator {
   private updater: ProjectUpdater;
   private previewManager?: PreviewManager;
   private apiBaseUrl = 'http://127.0.0.1:3003';
+  private runtimeControls = new Map<string, {
+    sessionId: string;
+    state: 'running' | 'pause_requested' | 'paused' | 'stop_requested' | 'stopped' | 'completed';
+    stage: string;
+    approvedStages: string[];
+    rejectedStages: string[];
+    skippedStages: string[];
+    retryCount: number;
+    updatedAt: string;
+    resume?: () => void;
+  }>();
+
+  getRuntimeControl(projectId: string) {
+    return this.runtimeControls.get(projectId) ?? null;
+  }
+
+  getRuntimeProgress(projectId: string) {
+    const control = this.runtimeControls.get(projectId);
+    return control ? this.sessionManager.getProgress(control.sessionId) ?? null : null;
+  }
+
+  requestRuntimeControl(projectId: string, command: 'pause' | 'resume' | 'stop' | 'skip-stage' | 'approve-stage' | 'reject-stage') {
+    const control = this.runtimeControls.get(projectId);
+    if (!control) return null;
+    if (command === 'pause' && control.state === 'running') control.state = 'pause_requested';
+    if (command === 'resume' && (control.state === 'paused' || control.state === 'pause_requested')) { control.state = 'running'; control.resume?.(); control.resume = undefined; }
+    if (command === 'stop') { control.state = 'stop_requested'; control.resume?.(); control.resume = undefined; }
+    if (command === 'skip-stage' && control.stage && !control.skippedStages.includes(control.stage)) { control.skippedStages.push(control.stage); control.state = 'running'; control.resume?.(); control.resume = undefined; }
+    if (command === 'approve-stage' && control.stage && !control.approvedStages.includes(control.stage)) { control.approvedStages.push(control.stage); control.state = 'running'; control.resume?.(); control.resume = undefined; }
+    if (command === 'reject-stage' && control.stage) { control.rejectedStages.push(control.stage); control.state = 'stop_requested'; control.resume?.(); control.resume = undefined; }
+    control.updatedAt = new Date().toISOString();
+    return control;
+  }
+
+  private async runtimeSafePoint(projectId: string, sessionId: string, stage: string): Promise<'continue' | 'skip'> {
+    const control = this.runtimeControls.get(projectId) ?? { sessionId, state: 'running' as const, stage, approvedStages: [], rejectedStages: [], skippedStages: [], retryCount: 0, updatedAt: new Date().toISOString() };
+    this.runtimeControls.set(projectId, control);
+    control.stage = stage; control.updatedAt = new Date().toISOString();
+    if (control.state === 'stop_requested') { control.state = 'stopped'; throw new Error(`Runtime stopped by user at ${stage}`); }
+    if (control.state === 'pause_requested') {
+      control.state = 'paused';
+      await new Promise<void>((resolve) => { control.resume = resolve; });
+      if ((control as { state: string }).state === 'stop_requested') { control.state = 'stopped'; throw new Error(`Runtime stopped by user at ${stage}`); }
+    }
+    return control.skippedStages.includes(stage) ? 'skip' : 'continue';
+  }
 
   /** Expose the updater so post-pipeline tooling (auto-fix loop, manual
    *  fixes, etc.) can run agent iterations against an existing project. */
@@ -717,6 +763,7 @@ export class ProjectGenerator {
     placeholderSaved?: Promise<void>;
   }): Promise<GenerateResult> {
     const { projectId, sessionId, request } = reservation;
+    this.runtimeControls.set(projectId, { sessionId, state: 'running', stage: 'queued', approvedStages: [], rejectedStages: [], skippedStages: [], retryCount: 0, updatedAt: new Date().toISOString() });
     this.logger.info('[gen:runner:start] background runner started', {
       event: 'gen:runner:start', projectId, sessionId, promptCount: request.prompts.length,
     });
@@ -768,6 +815,8 @@ export class ProjectGenerator {
       const msg = err instanceof Error ? err.message : String(err);
       return { projectId, sessionId, success: false, error: msg };
     } finally {
+      const control = this.runtimeControls.get(projectId);
+      if (control && control.state !== 'stopped') { control.state = 'completed'; control.updatedAt = new Date().toISOString(); }
       this.projectIdToSession.delete(projectId);
       clearActiveGeneration(sessionId);
     }
@@ -2442,7 +2491,9 @@ export class ProjectGenerator {
       session.artifacts.set('generationPhase', 'spec');
       await this.markProgress(project, { phase: 'spec', step: 'spec:orchestrator-invoke' });
       const specStartedAt = Date.now();
+      await this.runtimeSafePoint(projectId, sessionId, 'specification');
       let pipelineState = await runSpecRunner(() => orchestrator.execute(session, phase1Seed));
+      await this.runtimeSafePoint(projectId, sessionId, 'slice-planning');
       this.logger.info('[gen:spec:done] spec phase orchestrator returned', {
         event: 'gen:spec:done', projectId, sessionId,
         durationMs: Date.now() - specStartedAt,
@@ -2641,6 +2692,7 @@ export class ProjectGenerator {
         }
         const slice = slices[sliceIdx];
         const sliceLabel = slice ? `${sliceIdx + 1}/${sliceCount} '${slice.plannedId}'` : 'single-pass';
+        if (await this.runtimeSafePoint(projectId, sessionId, `slice-${sliceIdx + 1}/${sliceCount}`) === 'skip') continue;
         this.logger.info(`▶ Building slice ${sliceLabel}`);
 
         // Stamp the heartbeat phase to the actual executing slice BEFORE
@@ -3579,6 +3631,7 @@ export class ProjectGenerator {
         pipelineStatus: pipelineState.status,
         pipelineError: pipelineState.error ?? null,
       });
+      await this.runtimeSafePoint(projectId, sessionId, 'finalization');
 
       // Tentative status. If QA gate failed, finalise as 'failed' immediately.
       // Otherwise leave as 'generating' — the execution-runner feedback loop
@@ -4642,7 +4695,15 @@ export class ProjectGenerator {
   }
 
   async runReservedUpdate(reservation: { sessionId: string; request: UpdateRequest }): Promise<UpdateResult> {
-    return this.updater.runReserved(reservation);
+    const projectId = reservation.request.projectId;
+    this.runtimeControls.set(projectId, { sessionId: reservation.sessionId, state: 'running', stage: 'update-generation', approvedStages: [], rejectedStages: [], skippedStages: [], retryCount: 1, updatedAt: new Date().toISOString() });
+    await this.runtimeSafePoint(projectId, reservation.sessionId, 'update-generation');
+    try {
+      return await this.updater.runReserved(reservation);
+    } finally {
+      const control = this.runtimeControls.get(projectId);
+      if (control && control.state !== 'stopped' && control.state !== 'stop_requested') { control.state = 'completed'; control.stage = 'completed'; control.updatedAt = new Date().toISOString(); }
+    }
   }
 
   // ── Private helpers ─────────────────────────────────────

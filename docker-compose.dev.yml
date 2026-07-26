@@ -4,6 +4,12 @@ version: '3.9'
 # Active stack: apps/api + apps/web. Use this with `docker compose -f docker-compose.dev.yml up`.
 
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    restart: unless-stopped
+
   postgres:
     image: postgres:16
     environment:
@@ -40,6 +46,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
     restart: unless-stopped
 
   web:

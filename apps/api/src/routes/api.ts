@@ -32,6 +32,17 @@ const GenerateSchema = z.object({
   preferences: z.record(z.unknown()).optional(),
 });
 
+const MemoryCreateSchema = z.object({
+  content: z.string().min(3).max(8000),
+  source: z.enum(['project', 'agent', 'shared', 'long-term', 'generation-rule']),
+  agentRole: z.enum(['spec', 'builder', 'qa', 'polish', 'global']).default('global'),
+  type: z.enum(['context', 'pattern', 'failure', 'error_fix', 'decision', 'preference', 'prompt', 'global']).default('preference'),
+  tags: z.array(z.string().min(1).max(64)).max(20).default([]),
+  relevanceScore: z.number().min(0).max(2).default(1),
+  pinned: z.boolean().default(false),
+});
+const MemoryUpdateSchema = z.object({ content: z.string().min(3).max(8000).optional(), tags: z.array(z.string().min(1).max(64)).max(20).optional(), relevanceScore: z.number().min(0).max(2).optional(), pinned: z.boolean().optional() });
+
 function safeArchivePath(filePath: string): string {
   return toSafeArchiveEntryPath(filePath);
 }
@@ -731,6 +742,60 @@ export function registerRoutes(
   });
 
   app.get('/api/memory/stats', { preHandler: [auth.requireRole('admin')] }, async () => memoryStore.getStats());
+
+  app.get('/api/projects/:id/memories', { preHandler: [auth.requireProjectAccess('viewer')] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const project = request.project ?? await projectStore.get(id); if (!project) return reply.status(404).send({ error: 'Project not found' });
+    const query = request.query as { q?: string; source?: string; runId?: string; pinned?: string };
+    const activeRunId = query.runId ?? project.sessionId;
+    const allInfluences = memoryStore.getInfluence(id);
+    const influences = memoryStore.getInfluence(id, activeRunId);
+    const usedBy = new Map<string, string[]>();
+    allInfluences.forEach((record) => usedBy.set(record.memoryId, [...new Set([...(usedBy.get(record.memoryId) ?? []), record.runId])]));
+    const search = query.q?.trim().toLowerCase();
+    const sourceFor = (entry: ReturnType<typeof memoryStore.inspectAll>[number]) => entry.sessionId ? 'short-term' : String(entry.metadata.source ?? (entry.metadata.projectId ? 'project' : entry.agentRole === 'global' ? 'global' : 'agent'));
+    const mutable = memoryStore.inspectAll(project.sessionId)
+      .filter((entry) => entry.sessionId === project.sessionId || entry.metadata.projectId === id || (entry.agentRole === 'global' && !entry.metadata.projectId))
+      .filter((entry) => !search || entry.content.toLowerCase().includes(search) || entry.tags.some((tag) => tag.toLowerCase().includes(search)))
+      .filter((entry) => !query.source || query.source === 'all' || sourceFor(entry) === query.source || (query.source === 'long-term' && !entry.sessionId))
+      .filter((entry) => query.pinned !== 'true' || entry.metadata.pinned === true)
+      .map((entry) => {
+        const source = sourceFor(entry); const runIds = usedBy.get(entry.id) ?? [];
+        const isOwned = entry.metadata.projectId === id;
+        return { id: entry.id, content: entry.content, source, origin: entry.metadata.originAgent ?? entry.agentRole, scope: entry.sessionId ? `run:${entry.sessionId}` : isOwned ? `project:${id}` : entry.agentRole === 'global' ? 'platform' : `agent:${entry.agentRole}`, agentRole: entry.agentRole, type: entry.type, tags: entry.tags, createdAt: entry.createdAt, lastUsedAt: runIds.length ? influences.filter((record) => record.memoryId === entry.id).at(-1)?.usedAt : entry.lastAccessed, relevanceScore: entry.relevanceScore, effectiveness: Number.isFinite(entry.effectiveness) ? entry.effectiveness : null, confidence: Number.isFinite(entry.effectiveness) ? entry.effectiveness : Math.min(1, entry.relevanceScore / 2), accessCount: entry.accessCount, sizeBytes: Buffer.byteLength(entry.content, 'utf8'), usedByRunIds: runIds, pinned: entry.metadata.pinned === true, editable: isOwned && !entry.sessionId, deletable: isOwned && !entry.sessionId };
+      });
+    const knownIds = new Set(mutable.map((entry) => entry.id));
+    const historical = [...new Map(allInfluences.filter((record) => !knownIds.has(record.memoryId) && !record.memoryId.startsWith('system:') && !record.memoryId.startsWith('generation:')).map((record) => [record.memoryId, record])).values()].map((record) => ({ id: record.memoryId, content: record.content, source: record.source, origin: record.agentRole, scope: `run:${record.runId}`, agentRole: record.agentRole, type: 'context', tags: ['influence-snapshot'], createdAt: record.usedAt, lastUsedAt: allInfluences.filter((item) => item.memoryId === record.memoryId).at(-1)?.usedAt ?? record.usedAt, relevanceScore: record.relevanceScore, effectiveness: record.effectiveness, confidence: record.effectiveness ?? Math.min(1, record.relevanceScore / 2), accessCount: usedBy.get(record.memoryId)?.length ?? 0, sizeBytes: Buffer.byteLength(record.content, 'utf8'), usedByRunIds: usedBy.get(record.memoryId) ?? [], pinned: false, editable: false, deletable: false }));
+    const rules = [
+      { id: 'system:global', content: 'Platform safety, validation, agent conduct, and secure generation contract.', source: 'system-rule', origin: 'Agent prompt registry', scope: 'platform', agentRole: 'global', type: 'prompt', tags: ['security', 'best-practice'], createdAt: null, lastUsedAt: allInfluences.filter((record) => record.source === 'system-rule').at(-1)?.usedAt ?? null, relevanceScore: 2, effectiveness: null, confidence: 1, accessCount: 0, sizeBytes: 78, usedByRunIds: [...new Set(allInfluences.filter((record) => record.source === 'system-rule').map((record) => record.runId))], pinned: true, editable: false, deletable: false },
+      { id: 'generation:deterministic', content: 'Incremental generation, dependency, package, integrity, QA, and deterministic validation rules.', source: 'generation-rule', origin: 'Generation pipeline', scope: 'platform', agentRole: 'global', type: 'prompt', tags: ['architecture', 'testing'], createdAt: null, lastUsedAt: allInfluences.filter((record) => record.memoryId === 'generation:deterministic').at(-1)?.usedAt ?? null, relevanceScore: 2, effectiveness: null, confidence: 1, accessCount: 0, sizeBytes: 91, usedByRunIds: usedBy.get('generation:deterministic') ?? [], pinned: true, editable: false, deletable: false },
+    ].filter((entry) => (!query.source || query.source === 'all' || entry.source === query.source) && (!search || entry.content.toLowerCase().includes(search) || entry.tags.some((tag) => tag.includes(search))));
+    const filteredHistorical = historical.filter((entry) => (!query.source || query.source === 'all' || entry.source === query.source || (query.source === 'long-term' && entry.source !== 'short-term')) && (!search || entry.content.toLowerCase().includes(search)));
+    return { projectId: id, runId: activeRunId, entries: [...rules, ...mutable, ...filteredHistorical], influences };
+  });
+
+  app.post('/api/projects/:id/memories', { preHandler: [auth.requireProjectAccess('member')] }, async (request, reply) => {
+    const { id } = request.params as { id: string }; const parsed = MemoryCreateSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid memory', details: parsed.error.issues });
+    const entry = await memoryStore.createManaged({ agentRole: parsed.data.agentRole, type: parsed.data.type, content: parsed.data.content, relevanceScore: parsed.data.relevanceScore, tags: parsed.data.tags, metadata: { projectId: id, source: parsed.data.source, pinned: parsed.data.pinned, createdBy: getAuthPrincipal(request).userId } });
+    return reply.status(201).send({ id: entry.id });
+  });
+
+  app.patch('/api/projects/:id/memories/:memoryId', { preHandler: [auth.requireProjectAccess('member')] }, async (request, reply) => {
+    const { id, memoryId } = request.params as { id: string; memoryId: string }; const parsed = MemoryUpdateSchema.safeParse(request.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid memory update', details: parsed.error.issues });
+    const existing = memoryStore.inspectAll().find((entry) => entry.id === memoryId);
+    if (!existing) return reply.status(404).send({ error: 'Memory not found' });
+    if (existing.metadata.projectId !== id) return reply.status(403).send({ error: 'Only project-owned memory can be edited' });
+    return { entry: await memoryStore.updateManaged(memoryId, parsed.data) };
+  });
+
+  app.delete('/api/projects/:id/memories/:memoryId', { preHandler: [auth.requireProjectAccess('member')] }, async (request, reply) => {
+    const { id, memoryId } = request.params as { id: string; memoryId: string }; const existing = memoryStore.inspectAll().find((entry) => entry.id === memoryId);
+    if (!existing) return reply.status(404).send({ error: 'Memory not found' });
+    if (existing.metadata.projectId !== id) return reply.status(403).send({ error: 'Only project-owned memory can be deleted' });
+    await memoryStore.deleteManaged(memoryId); return reply.status(204).send();
+  });
 
   app.post('/api/memory/decay', { preHandler: [auth.requireRole('admin')] }, async () => {
     await memoryStore.runDecay();

@@ -1,5 +1,5 @@
 import type { GeneratedProject } from '../../../../types/dashboard';
-import { Badge, Button, Select } from '../../../../components/ui';
+import { Badge, Select } from '../../../../components/ui';
 import type { UnifiedProjectStatus } from '../../projects/model';
 import { sortProjectsByUpdated } from '../../projects/model';
 
@@ -10,7 +10,6 @@ interface WorkspaceHeaderProps {
   status: UnifiedProjectStatus;
   loading?: boolean;
   onSelectProject: (projectId: string) => void;
-  onPrimaryAction: () => void;
 }
 
 function formatStack(project: GeneratedProject | null) {
@@ -31,12 +30,11 @@ export function WorkspaceHeader({
   status,
   loading = false,
   onSelectProject,
-  onPrimaryAction,
 }: WorkspaceHeaderProps) {
   const sortedProjects = sortProjectsByUpdated(projects);
 
   return (
-    <section className="studio-surface-soft overflow-hidden rounded-[var(--radius-panel)] p-4 sm:p-5">
+    <section className="border-b border-border-muted px-1 pb-3">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -52,8 +50,8 @@ export function WorkspaceHeader({
           </div>
         </div>
 
-        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
-          <div className="min-w-0 flex-1 lg:w-[360px] lg:flex-none">
+        <div className="w-full sm:w-auto">
+          <div className="min-w-0 sm:w-[320px]">
             <label htmlFor="workspace-project" className="sr-only">Project context</label>
             <Select
               id="workspace-project"
@@ -69,9 +67,6 @@ export function WorkspaceHeader({
               ))}
             </Select>
           </div>
-          <Button onClick={onPrimaryAction} disabled={!project} variant="secondary" className="rounded-full">
-            {status.nextActionLabel}
-          </Button>
         </div>
       </div>
     </section>
